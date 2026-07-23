@@ -1,0 +1,17 @@
+# Real, if slow, single-process CPU training run for the tiny model preset.
+batch_size: 8
+seq_len: 64
+grad_accum_steps: 1
+max_steps: 200
+warmup_steps: 20
+max_lr: 3.0e-4
+min_lr: 3.0e-5
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+log_interval: 10
+eval_interval: 50
+eval_steps: 10
+checkpoint_interval: 100
+amp_dtype: bfloat16
+seed: 1337

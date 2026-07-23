@@ -1,0 +1,20 @@
+# Fast pipeline sanity-check against tests/fixtures/synthetic_corpus.txt
+# (only ~300 tokens) -- short seq_len/high LR tuned to overfit it in
+# seconds, so you can verify the whole pipeline runs end to end quickly.
+# For a real corpus, use tiny_cpu.yaml instead.
+batch_size: 8
+seq_len: 16
+grad_accum_steps: 1
+max_steps: 150
+warmup_steps: 10
+max_lr: 5.0e-3
+min_lr: 5.0e-4
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+log_interval: 10
+eval_interval: 50
+eval_steps: 5
+checkpoint_interval: 75
+amp_dtype: bfloat16
+seed: 0
