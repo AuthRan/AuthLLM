@@ -15,8 +15,6 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from ashugpt.training.amp import autocast_context
-
 
 def perplexity_from_loss(loss: float) -> float:
     return math.exp(loss)
@@ -33,7 +31,18 @@ def evaluate(
     over up to `max_batches` batches of val_loader. Leaves the model in
     eval() mode -- callers resuming training should call model.train()
     themselves afterward (kept explicit rather than an automatic side
-    effect of this function)."""
+    effect of this function).
+
+    Imports autocast_context lazily (inside the function, not at module
+    top level): ashugpt.training's __init__ imports trainer.py, which
+    imports this module for its own periodic-validation call, so a
+    module-level "from ashugpt.training.amp import ..." here would create
+    a real circular import whenever something imports ashugpt.eval before
+    ashugpt.training -- deferring it to call time breaks the cycle
+    without changing either package's public API.
+    """
+    from ashugpt.training.amp import autocast_context
+
     model.eval()
     device = next(model.parameters()).device
 
