@@ -1,6 +1,12 @@
 # Spec: AshuGPT — GPT-style Decoder-only LLM Built From Scratch
 
-Status: **Phase 1 (Specify) — awaiting review.** No code written yet.
+Status: **Implementation substantially complete** — see [README.md](README.md)
+for the primary technical documentation (architecture, math, training,
+inference, reproducibility, commands). This file is the original design
+spec plus a living, honest milestone-by-milestone log of what was actually
+built, where a plan changed after something was measured, and what
+remains unbuilt (§"What's Not Built" in the README has the current
+summary; the milestone table below has the full detail).
 
 ## Objective
 

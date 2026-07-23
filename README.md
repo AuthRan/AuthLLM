@@ -1,140 +1,188 @@
 # AshuGPT
 
-Educational, from-scratch GPT-style decoder-only LLM. See [SPEC.md](SPEC.md)
-for the full design spec and milestone roadmap.
+**An educational, from-scratch GPT-style decoder-only language model.**
+Tokenizer, Transformer architecture (RoPE, RMSNorm, SwiGLU, causal
+attention), training loop, distributed training, memory optimization,
+autoregressive generation, and an inference API — implemented directly
+against PyTorch tensor/autograd primitives, not assembled from
+`transformers.AutoModel`. Built as a from-the-ground-up study of the
+complete LLM stack, following the trajectory of Sebastian Raschka's
+*Build a Large Language Model (From Scratch)*.
 
-**Status: scaffolding + tokenizer + model + training pipeline + cached
-generation + DDP + memory optimization + scaling/memory estimation +
-pretrained-checkpoint comparison + inference API done (SPEC.md M0-M11,
-M13; M6 fully closed out).** Package structure, config system,
-model-size presets, a from-scratch BPE tokenizer, the full `AshuGPT`
-model, a complete training pipeline (DistributedDataParallel included),
-autoregressive text generation (greedy/temperature/top-k/top-p,
-KV-cached by default), five configurable memory optimizations, a memory
-estimator + `python -m ashugpt.inspect_model` CLI, a real
-GPT-2-vs-AshuGPT architecture comparison + checkpoint loader that
-correctly proves direct weight loading is impossible rather than
-pretending otherwise, and a FastAPI inference server (`ashugpt/api/`,
-model loaded once at startup, `python scripts/serve.py`) all exist and
-are tested. Not yet built: on-disk/streaming data pipeline for a real
-large corpus, FSDP/model parallelism, or the M15 web frontend.
+> **Read this before anything else below**: this project has trained real
+> models, at real (small) scale, from random initialization. It has never
+> trained a billion-parameter model, and it has never trained — or been
+> able to load — any external checkpoint like GPT-2's. Every claim in
+> this document distinguishes three things that are easy to blur together:
+>
+> | Claim | Means | True here for |
+> |---|---|---|
+> | **"I implemented this architecture"** | Code exists that can construct it; weights would be random | `tiny`, `small`, `medium`, `xl_1b` — all four presets |
+> | **"I trained this checkpoint"** | Real gradient descent ran, on real data, producing a real checkpoint file | `tiny` and `small` only, on the small demo corpora in `tests/fixtures/` |
+> | **"I loaded this pretrained checkpoint for inference"** | Someone else's trained weights, used without training or fine-tuning them here | **Not true of anything in this repo.** GPT-2's weights were compared against, never loaded successfully — see [§12](#12-pretrained-checkpoints-comparison-not-loading) — and never claimed as trained by this project |
 
-## Project Structure
+See [§13](#13-provenance-trained--implemented--loaded) for the full,
+itemized version of this table.
 
+---
+
+## Table of Contents
+
+1. [Motivation](#1-motivation)
+2. [What Was Implemented From Scratch](#2-what-was-implemented-from-scratch)
+3. [Architecture Overview](#3-architecture-overview)
+4. [Model Configuration Presets](#4-model-configuration-presets)
+5. [Tokenization](#5-tokenization)
+6. [Transformer Mathematics](#6-transformer-mathematics)
+7. [Next-Token Prediction & Training Objective](#7-next-token-prediction--training-objective)
+8. [Training Pipeline](#8-training-pipeline)
+9. [Distributed Training (DDP)](#9-distributed-training-ddp)
+10. [Inference](#10-inference)
+11. [Scaling to Billion-Parameter Architectures](#11-scaling-to-billion-parameter-architectures)
+12. [Pretrained Checkpoints: Comparison, Not Loading](#12-pretrained-checkpoints-comparison-not-loading)
+13. [Provenance: Trained / Implemented / Loaded](#13-provenance-trained--implemented--loaded)
+14. [Reproducibility & Commands](#14-reproducibility--commands)
+15. [Project Structure](#15-project-structure)
+16. [Testing](#16-testing)
+17. [What's Not Built](#17-whats-not-built)
+
+---
+
+## 1. Motivation
+
+Most practical LLM work today means calling `AutoModelForCausalLM.from_pretrained(...)`
+— which is the right call for shipping a product, and the wrong one for
+understanding what's actually happening inside a forward pass. AshuGPT
+exists to answer, with working code and measured numbers rather than
+received wisdom, questions like:
+
+- What does RoPE actually rotate, and why does that make attention
+  distance-aware without a learned parameter?
+- Why does gradient checkpointing trade compute for memory, and how much
+  of each, really, on real hardware?
+- What does `DistributedDataParallel` actually synchronize, and when?
+- Is mixed precision always a win? (Measured answer, §8.1: **no** — a
+  17-44x *slowdown* was measured on CPU hardware without native bf16
+  support, the opposite of the textbook claim.)
+- Can you just load GPT-2's weights into a differently-designed decoder?
+  (Measured answer, §12: **no**, and the reasons are specific, not vague.)
+
+Every non-trivial claim in this document is either **measured** (a real
+number from a real run, reproducible via the command shown next to it) or
+explicitly marked as an **estimate** with its formula shown. Nothing here
+is asserted from memory of how transformers "generally" behave.
+
+## 2. What Was Implemented From Scratch
+
+| Layer | From scratch | Library provides |
+|---|---|---|
+| Tokenizer (byte-level BPE) | Trainer, encoder/decoder, special tokens, batching | — (no `tiktoken`/`sentencepiece`) |
+| Model math (attention, RoPE, RMSNorm, SwiGLU, causal mask) | All of it, in `ashugpt/model/` | PyTorch tensor ops (`matmul`, `softmax`, autograd) — not `torch.nn.MultiheadAttention`, not `transformers` |
+| Training loop | Forward/backward/step orchestration, LR schedule, checkpointing | `torch.optim.AdamW`/`SGD` (not reimplemented), `torch.autograd` |
+| Mixed precision | Wiring/configuration | `torch.autocast`, `torch.amp.GradScaler` |
+| Distributed training | Setup/wrap/rank-zero logic, `no_sync()` gradient-accumulation handling | `torch.distributed`, `torch.nn.parallel.DistributedDataParallel` |
+| Sampling (temperature/top-k/top-p) | All of it, in `ashugpt/inference/generate.py` | — |
+| KV caching | All of it | — |
+| Memory estimation | All of it, in `ashugpt/utils/memory.py` | — |
+| Inference API | Routing, validation schemas, service layer | FastAPI/Pydantic/uvicorn (HTTP framework, not model logic) |
+| GPT-2 comparison & conversion | All of it, in `ashugpt/inference/pretrained_loader.py` | — (no `transformers.GPT2LMHeadModel` import anywhere) |
+
+The line is deliberate: PyTorch's tensor library, autograd engine, and
+`nn.Module` base class are used as infrastructure (nobody hand-writes a
+CUDA kernel or a reverse-mode autodiff engine for an educational project
+like this), but every *architectural* and *algorithmic* decision — what
+gets rotated, what gets normalized how, what gets synchronized when — is
+implemented and tested directly in this codebase.
+
+## 3. Architecture Overview
+
+```mermaid
+flowchart TD
+    A["input_ids : (batch, seq_len)"] --> B["Token Embedding"]
+    B --> C["Decoder Block × n_layers"]
+    C --> E["Final RMSNorm"]
+    E --> F["LM Head (tied to embedding)"]
+    F --> G["logits : (batch, seq_len, vocab_size)"]
+
+    subgraph BLOCK["One Decoder Block — pre-norm, residual"]
+        direction TB
+        X["x"] --> N1["RMSNorm"]
+        N1 --> ATT["Causal Self-Attention + RoPE"]
+        ATT --> ADD1(("+"))
+        X --> ADD1
+        ADD1 --> N2["RMSNorm"]
+        N2 --> FFN["SwiGLU Feed-Forward"]
+        FFN --> ADD2(("+"))
+        ADD1 --> ADD2
+        ADD2 --> OUT["block output"]
+    end
 ```
-authLLM/
-├── SPEC.md                  # full design spec + milestone roadmap
-├── README.md                 # this file
-├── pyproject.toml            # package metadata, installs as `ashugpt`
-├── requirements.txt          # dev/runtime dependencies
-├── .gitignore
-├── configs/
-│   ├── model/                  # one YAML preset per model scale
-│   │   ├── tiny.yaml            # ~7M params   — fast iteration, CPU seconds/step
-│   │   ├── small.yaml           # ~30M params  — the real CPU-training target
-│   │   ├── medium.yaml          # ~124M params — shape-tested, needs GPU to train
-│   │   └── xl_1b.yaml           # ~1.23B params — shape-tested only, needs GPU
-│   └── train/                  # one YAML preset per training run
-│       ├── tiny_cpu.yaml         # a real (if slow) CPU run against a real corpus
-│       └── synthetic_demo.yaml   # tuned to overfit the tiny synthetic corpus in seconds
-├── scripts/
-│   ├── train_tokenizer.py     # CLI: train a BPE tokenizer from a text file
-│   ├── train.py                # CLI: train an AshuGPT model end to end
-│   ├── benchmark_memory.py     # memory/speed impact of each Milestone 9 optimization
-│   ├── demo_pretrained_loading.py  # live GPT-2 metadata vs. AshuGPT's architecture
-│   ├── serve.py                 # run the FastAPI inference server locally
-│   └── benchmark_server.py      # throughput benchmark against a running server
-├── ashugpt/                   # the installable package
-│   ├── generate.py             # CLI: python -m ashugpt.generate --prompt "..."
-│   ├── inspect_model.py        # CLI: python -m ashugpt.inspect_model --config 1b
-│   ├── config.py               # ModelConfig + TrainConfig dataclasses + YAML loaders
-│   ├── api/                    # FastAPI inference server (separate from model code)
-│   │   ├── schemas.py            # Pydantic request/response models
-│   │   ├── service.py            # the ONLY bridge to ashugpt.model/tokenizer/inference
-│   │   └── app.py                # routes, startup, HTTP status codes
-│   ├── model/                  # transformer architecture (implemented)
-│   │   ├── norm.py               # RMSNorm
-│   │   ├── rope.py               # Rotary positional embeddings
-│   │   ├── attention.py          # Causal multi-head self-attention
-│   │   ├── feedforward.py        # SwiGLU feed-forward network
-│   │   ├── block.py              # One decoder block (attn + ffn + norms + residuals)
-│   │   └── gpt.py                # AshuGPT: embedding + N blocks + final norm + LM head
-│   ├── tokenizer/
-│   │   └── bpe_scratch.py       # from-scratch byte-level BPE tokenizer (implemented)
-│   ├── data/
-│   │   └── dataset.py           # load+tokenize, sliding-window chunking, train/val split
-│   ├── training/
-│   │   ├── optim.py              # AdamW factory + warmup/cosine LR schedule
-│   │   ├── amp.py                # mixed-precision (autocast + GradScaler) helpers
-│   │   ├── checkpoint.py         # save/resume (model + optimizer + step)
-│   │   ├── ddp.py                # DistributedDataParallel setup/wrap/cleanup
-│   │   └── trainer.py            # the training loop itself
-│   ├── eval/
-│   │   └── perplexity.py        # validation loop + perplexity
-│   ├── inference/
-│   │   ├── generate.py          # sampling strategies + the autoregressive decoding loop
-│   │   └── pretrained_loader.py # GPT-2 architecture comparison + (refused) checkpoint conversion
-│   └── utils/
-│       └── memory.py            # parameter-count-based memory estimator (no model built)
-└── tests/
-    ├── fixtures/
-    │   ├── tiny_corpus.txt        # varied small corpus for tokenizer tests/demo
-    │   └── synthetic_corpus.txt   # tiny, highly repetitive corpus for fast pipeline verification
-    ├── unit/                     # one file per component (see ashugpt/ layout above)
-    └── integration/
-        ├── test_train_step.py    # proves the model actually learns (tiny overfitting test)
-        ├── test_ddp.py           # real 2-process DDP run vs. single-process baseline
-        └── _ddp_worker.py        # the script each DDP process actually runs (not a pytest file)
-```
 
-## Setup
-
-```
-python -m venv .venv
-.venv\Scripts\activate          # Windows; use `source .venv/bin/activate` on Linux/Mac
-pip install -e .
-pip install -r requirements.txt
-```
-
-## Tests
-
-```
-pytest                    # everything
-pytest tests/unit         # fast, run constantly
-pytest tests/integration  # slower (~30s) -- an end-to-end proof the model can learn
-```
-
-## Model Config Presets
-
-Each `configs/model/*.yaml` loads into a `ModelConfig` dataclass
-(`ashugpt/config.py`). Shape constraints (e.g. `d_model` divisible by
-`n_heads`) are validated at load time, so a broken preset fails immediately
-with a clear error instead of deep inside a training run.
+`x = x + Attention(RMSNorm(x))`, then `x = x + SwiGLU(RMSNorm(x))` —
+repeated `n_layers` times. No positional-embedding table exists anywhere
+in the graph above: position information enters *inside* attention, via
+RoPE (§6.2), not as something added to the input.
 
 ```python
 from ashugpt.config import load_model_config
+from ashugpt.model import AshuGPT
 
-config = load_model_config("configs/model/small.yaml")
-print(config.head_dim)              # 64
-print(config.approx_param_count())  # ~29.9M
+config = load_model_config("configs/model/tiny.yaml")
+model = AshuGPT(config)
+print(model.num_parameters())  # exact count
 ```
 
-## Tokenizer
+## 4. Model Configuration Presets
 
-`ashugpt/tokenizer/bpe_scratch.py` is a from-scratch byte-level BPE
-tokenizer (the same family of algorithm GPT-2/GPT-3 use) — see the module
-docstring for how it works. Special tokens `<pad>`, `<bos>`, `<eos>`,
-`<unk>` get fixed ids 0-3; `<unk>` is reserved but never actually produced,
-since byte-level encoding has no out-of-vocabulary case.
+| Preset | Layers | `d_model` | Heads | Vocab | Context | Parameters (exact) | Trained here? |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `tiny` | 4 | 128 | 4 | 50,304 | 256 | 7,292,032 | ✅ Yes — fast-iteration / demo scale |
+| `small` | 6 | 384 | 6 | 50,304 | 512 | 29,938,560 | ✅ Yes — the real "trained from scratch" target |
+| `medium` | 12 | 768 | 12 | 50,304 | 1,024 | 123,587,328 | ❌ No — shape/forward-pass tested only |
+| `xl_1b` | 22 | 2,048 | 32 | 50,304 | 2,048 | 1,233,479,680 | ❌ No — shape-tested only (see §11) |
 
-Train one from a text file:
+Every row's parameter count is *exact*, not estimated: `AshuGPT.num_parameters()`
+on a real constructed model is tested to match `ModelConfig.approx_param_count()`
+(pure shape arithmetic, no model built) precisely, for every preset.
+`vocab_size=50,304` is GPT-2's 50,257-token BPE vocabulary padded to the
+nearest multiple of 64 (a standard nanoGPT-style convention for GPU tensor
+alignment — harmless on CPU, free on GPU).
+
+```python
+from ashugpt.config import load_model_config
+config = load_model_config("configs/model/small.yaml")
+print(config.head_dim, config.approx_param_count())  # 64, 29938560
+```
+
+## 5. Tokenization
+
+`ashugpt/tokenizer/bpe_scratch.py` — a byte-level BPE tokenizer built
+without any tokenizer library, the same algorithm family GPT-2/GPT-3 use:
+
+1. **Pre-tokenize** with a regex into chunks (words, punctuation runs,
+   whitespace) so merges never glue two different words together.
+2. **Bytes, not characters, are the base alphabet** — every chunk becomes
+   raw UTF-8 bytes, and each of the 256 possible byte values starts as its
+   own token. This means *any* Unicode text is representable from the
+   start; there is no out-of-vocabulary character.
+3. **Training** repeatedly merges the most frequent adjacent token pair
+   across the corpus, `vocab_size - 260` times (260 = 4 special tokens +
+   256 byte tokens, the minimum possible vocabulary).
+4. **Encoding** replays the learned merges, in the order they were
+   learned, on new text. **Decoding** concatenates each token's bytes and
+   decodes as UTF-8 — lossless, verified by round-trip tests on tricky
+   inputs (multi-space runs, mixed Unicode/emoji, tabs/newlines).
+
+Special tokens `<pad>`, `<bos>`, `<eos>`, `<unk>` get fixed ids 0-3.
+`<unk>` is reserved but **never actually produced** — byte-level encoding
+has no out-of-vocabulary case, proven by a test that encodes text in a
+script the tokenizer never saw during training and confirms `unk_id`
+never appears in the output.
 
 ```
 python scripts/train_tokenizer.py --input tests/fixtures/tiny_corpus.txt \
     --vocab-size 2000 --output tokenizer.json
 ```
-
-Use it:
 
 ```python
 from ashugpt.tokenizer import BPETokenizer
@@ -144,424 +192,240 @@ ids = tok.encode("Mia and Rex explored the forest.", add_bos=True, add_eos=True)
 tok.decode(ids)  # "Mia and Rex explored the forest."
 
 batch = tok.encode_batch(["short text", "a longer piece of text"], max_length=32)
-# batch["input_ids"], batch["attention_mask"] -- ready for a DataLoader
+# batch["input_ids"], batch["attention_mask"] -- ready for a DataLoader,
+# right-padded with pad_id, no custom collate_fn needed
 ```
 
-A `tiktoken`-backed production wrapper behind the same interface (per
-SPEC.md's hybrid tokenizer decision) is deferred to when the real training
-pipeline needs it — not built this milestone.
+## 6. Transformer Mathematics
 
-## Model
+### 6.1 Attention Mechanism
 
-`ashugpt/model/gpt.py` assembles everything above into `AshuGPT`:
-token embedding -> `config.n_layers` x `TransformerBlock` -> final RMSNorm
--> LM head.
+For each token, attention computes a weighted average of *every other
+token's* value vector, where the weight comes from how well that token's
+query matches each other token's key:
+
+```
+Attention(Q, K, V) = softmax( (Q Kᵀ) / √d_head + mask ) V
+```
+
+`Q`, `K`, `V` come from three separate, bias-free linear projections of
+the same input (`ashugpt/model/attention.py`), split into `n_heads`
+independent heads, rotated with RoPE (§6.2), combined via masked
+scaled dot-product attention, then merged and projected once more. The
+manual formula above is implemented explicitly (`q @ k.transpose(-2,-1)`,
+`masked_fill`, `softmax`, `@ v`) as the default — not
+`torch.nn.functional.scaled_dot_product_attention` — specifically so the
+math stays visible and directly testable. An opt-in fused-kernel path
+(`use_efficient_attention=True`) exists too, verified to produce
+numerically identical output (§8.3's efficient-attention entry).
+
+### 6.2 RoPE (Rotary Positional Embeddings)
+
+No positional-embedding table exists in this model. Instead, each
+query/key vector is **rotated** by an angle proportional to its position,
+inside every attention layer:
+
+```
+for each dimension pair (i, i + head_dim/2):
+    θ_i = position × theta^(-2i / head_dim)
+    [x_i', x_{i+d/2}'] = [[cos θ_i, -sin θ_i], [sin θ_i, cos θ_i]] · [x_i, x_{i+d/2}]
+```
+
+The key property: `dot(rotate(q, m), rotate(k, n))` depends only on the
+*relative* offset `m - n`, not on the absolute positions — proven directly
+by a test comparing the same relative offset at two different absolute
+position pairs (`(5,2)` and `(40,37)`, both offset 3) and confirming the
+dot product matches. Rotation also **preserves vector norm** (it's an
+orthogonal transform) — also tested directly.
+
+### 6.3 RMSNorm
+
+```
+RMSNorm(x) = (x / sqrt(mean(x², dim=-1) + eps)) × weight
+```
+
+Rescales each token's activation vector to unit root-mean-square, then
+applies a learned per-dimension scale — unlike LayerNorm, **no
+mean-centering and no bias term**. Cheaper, and what LLaMA-family models
+use instead of LayerNorm. Computed internally in `float32` regardless of
+the input's dtype (squaring activations under bf16/fp16 can lose
+precision) — a numerical-stability detail that matters once mixed
+precision (§8.1) is in the picture.
+
+### 6.4 SwiGLU
+
+```
+SwiGLU(x) = (SiLU(x·W_gate) ⊙ (x·W_up)) · W_down
+```
+
+A *gated* feed-forward network: the `gate` branch (via `SiLU(z) =
+z·sigmoid(z)`) controls how much of the `up` branch passes through,
+elementwise, before the down-projection. Three weight matrices instead of
+a plain FFN's two — `d_ff` is sized at roughly `2/3 × 4 × d_model`
+(the LLaMA convention) to keep the parameter/FLOP budget comparable to a
+non-gated 4×-`d_model` FFN despite the extra matrix.
+
+### 6.5 Causal Masking
 
 ```python
-import torch
-from ashugpt.config import load_model_config
-from ashugpt.model import AshuGPT
-
-config = load_model_config("configs/model/tiny.yaml")
-model = AshuGPT(config)
-
-input_ids = torch.randint(0, config.vocab_size, (2, 16))
-out = model(input_ids)
-out.logits.shape  # (2, 16, vocab_size)
-
-print(model.num_parameters())  # exact count; compare to config.approx_param_count()
+def causal_mask(seq_len_q, seq_len_k, offset, device):
+    q_positions = arange(seq_len_q) + offset   # absolute position of each query
+    k_positions = arange(seq_len_k)            # absolute position of each key
+    return k_positions > q_positions            # True = blocked
 ```
 
-**Next-token prediction and the shift**: `labels` is `input_ids` shifted one
-position into the future, not the same text re-passed in --
+Query position `i` (absolute position `offset + i`, where `offset`
+accounts for any already-cached tokens) may attend to key position `j`
+iff `j <= offset + i`. With `offset=0` and equal query/key lengths this is
+the standard upper-triangular mask; with a nonzero offset (a new token
+attending back through a KV cache, §10.1) it correctly allows attending to
+every cached position plus itself. **Verified empirically, not just by
+inspecting the mask matrix**: changing a *later* token's input content and
+confirming every *earlier* token's output is bit-for-bit unchanged — the
+only way that's possible is if the earlier positions truly never saw the
+later one.
+
+## 7. Next-Token Prediction & Training Objective
+
+Given `"The cat sat down"`, a decoder-only LM is trained so that, at every
+position, the prediction from everything up to and including that
+position matches whatever token actually came next:
 
 ```
-input_ids: The  cat  sat
-labels:    cat  sat  down
+input_ids: The  cat  sat        (3 tokens, positions 0, 1, 2)
+labels:    cat  sat  down       (3 tokens, positions 0, 1, 2)
 ```
 
-`logits[:, t, :]` (computed causally from `input_ids[:, :t+1]`) is compared
-directly against `labels[:, t]` with no extra shifting inside the model —
-the data pipeline is responsible for the shift when it slices a token
-stream into windows (`input_ids = tokens[i:i+L]`, `labels = tokens[i+1:i+L+1]`).
-Padding positions in `labels` should be set to `-100`, which
-`F.cross_entropy` ignores by default:
+`labels` is **not** a re-encoding of the same text — it is `input_ids`
+shifted one position into the future. Because causal attention already
+guarantees `logits[:, t, :]` only saw `input_ids[:, :t+1]` (§6.5),
+comparing `logits[:, t, :]` against `labels[:, t]` directly — **with no
+further shifting inside the model** — is exactly the next-token
+objective. The shift happens once, upstream, when the data pipeline
+slices a token stream into overlapping windows:
+`input_ids = tokens[i:i+L]`, `labels = tokens[i+1:i+L+1]`
+(`ashugpt/data/dataset.py`'s `TokenizedDataset`) — the same convention
+nanoGPT uses, deliberately different from Hugging Face's "pass identical
+sequences, shift internally" convention.
 
 ```python
 labels = torch.tensor([[264, 266, 270]])  # already the shifted targets
 out = model(input_ids, labels=labels)
-out.loss  # scalar
+out.loss                                   # scalar cross-entropy
 out.loss.backward()
 ```
 
-## Training
+Padding positions in `labels` should be set to `-100`, which
+`F.cross_entropy` ignores by default — no extra masking logic needed.
 
-Verify the whole pipeline in seconds against the tiny synthetic corpus:
+## 8. Training Pipeline
 
+```mermaid
+flowchart TD
+    A["Raw text corpus"] --> B["BPE tokenizer (train or load)"]
+    B --> C["Flat token stream"]
+    C --> D["TokenizedDataset\n(sliding window, one-token shift)"]
+    D --> E["DataLoader\n(DistributedSampler if DDP)"]
+    E --> F["Forward pass (autocast)"]
+    F --> G["Cross-entropy loss"]
+    G --> H["Backward pass\n(scaled if fp16, no_sync() mid-accumulation)"]
+    H --> I{"grad_accum_steps\nreached?"}
+    I -- no --> F
+    I -- yes --> J["Gradient clipping"]
+    J --> K["Optimizer step (AdamW/SGD)"]
+    K --> L["LR scheduler step\n(warmup + cosine decay)"]
+    L --> M{"eval_interval?"}
+    M -- yes --> N["Validation loss + perplexity"]
+    M -- no --> O{"checkpoint_interval?"}
+    N --> O
+    O -- yes --> P["Save checkpoint\n(rank 0 only)"]
+    O -- no --> Q{"max_steps reached?"}
+    P --> Q
+    Q -- no --> F
+    Q -- yes --> R["Done"]
 ```
-python scripts/train_tokenizer.py --input tests/fixtures/synthetic_corpus.txt \
-    --vocab-size 300 --output tokenizer.json
-python scripts/train.py --model configs/model/tiny.yaml --train configs/train/synthetic_demo.yaml \
-    --tokenizer tokenizer.json --input tests/fixtures/synthetic_corpus.txt \
-    --checkpoint-dir checkpoints/demo --log-path training_log.csv
-```
 
-For a real (larger) corpus, use `configs/train/tiny_cpu.yaml` instead, and
-a tokenizer/`--val-fraction` sized appropriately for it.
-
-**Pipeline**: `load_and_tokenize()` turns a text file into one flat token
-stream; `TokenizedDataset` slices it into overlapping fixed-length
-`(input_ids, labels)` windows (see the Model section above for the shift);
-a standard `DataLoader` batches them — no custom `collate_fn` needed, since
-every window is already the same fixed length.
-
-**Training loop** (`ashugpt/training/trainer.py`), one iteration:
+The training loop (`ashugpt/training/trainer.py`), one iteration, with
+every required step visible in the actual code shape:
 
 ```python
-lr = get_lr(step, config)                              # scheduler step
+lr = get_lr(step, config)                                # scheduler step
 for group in optimizer.param_groups: group["lr"] = lr
 
-optimizer.zero_grad(set_to_none=True)                   # gradient reset
+optimizer.zero_grad(set_to_none=True)                     # gradient reset
 
 for _ in range(config.grad_accum_steps):
-    with autocast_context(device.type, amp_dtype):       # mixed precision
-        output = model(input_ids, labels=labels)         # forward pass
-        loss = output.loss / config.grad_accum_steps     # loss calculation
-    scaler.scale(loss).backward()                         # backward pass, gradient-scaled if amp_dtype=float16
+    with autocast_context(device.type, amp_dtype):         # mixed precision
+        output = model(input_ids, labels=labels)           # forward pass
+        loss = output.loss / config.grad_accum_steps       # loss calculation
+    scaler.scale(loss).backward()                           # backward pass, gradient-scaled if fp16
 
 scaler.unscale_(optimizer)
 torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)  # gradient clipping
 
-scaler.step(optimizer)                                   # optimizer step
+scaler.step(optimizer)                                     # optimizer step
 scaler.update()
 ```
 
-`scaler` always exists (`build_grad_scaler`) but is only *enabled* for
-`amp_dtype="float16"` — bf16 doesn't need loss scaling (same exponent range
-as fp32), so under bf16 or no AMP, `scaler.scale/unscale_/step/update` are
-all no-ops and the code above runs unchanged. Every `grad_accum_steps`
-micro-batches share one optimizer step, with the loss divided by
-`grad_accum_steps` first so accumulated gradients average correctly.
+`scaler` (`build_grad_scaler`) always exists but is only *enabled* for
+`amp_dtype="float16"` — bf16 needs no loss scaling (same exponent range as
+fp32), so under bf16 or no AMP, every `scaler.*` call above is a
+verified-transparent no-op and the code runs unchanged either way.
 
-**Validation + perplexity**: `evaluate()` runs a no-grad pass over
-`val_loader`, averages the loss, and reports `exp(loss)` as perplexity — a
-random-init model should sit near `vocab_size`; the overfitting test drives
-it down toward 1.
-
-**Checkpointing**: `save_checkpoint`/`load_checkpoint` persist model
-weights, optimizer state, and the step count together via
-`torch.save`/`torch.load(weights_only=True)` — see `ashugpt/training/checkpoint.py`'s
-docstring for why this (rather than literal safetensors) is the right
-format for a *resumable* checkpoint specifically.
+**Checkpointing** (`save_checkpoint`/`load_checkpoint`) persists model
+weights, optimizer state, and step count via `torch.save`/
+`torch.load(weights_only=True)` — not literal safetensors, deliberately: a
+*resumable* checkpoint bundles heterogeneous state (tensors + step
+counters + optimizer momentum buffers) that a pure-tensor format doesn't
+cleanly support, while `weights_only=True` still restricts unpickling to
+plain tensors/dicts/numbers, preserving the "no arbitrary code execution"
+intent safetensors is about.
 
 **Proof it learns**: `tests/integration/test_train_step.py` trains a tiny
-model on `tests/fixtures/synthetic_corpus.txt` (a handful of short
-sentences repeated many times) for 150 steps and asserts the loss drops by
-more than 75% — in practice it goes from ~5.5 (near `ln(vocab_size)`,
-i.e. random guessing) to well under 0.1.
+model on a deliberately repetitive synthetic corpus for 150 steps and
+asserts the loss drops by more than 75% — in practice, ~5.5 (near
+`ln(vocab_size)`, i.e. random guessing) down to well under 0.1.
 
-## Generation
+### 8.1 Mixed Precision
 
-```
-python -m ashugpt.generate --checkpoint checkpoints/demo/step_150.pt \
-    --tokenizer tokenizer.json --prompt "Once upon a time" \
-    --max-new-tokens 50 --temperature 0.8 --top-k 50 --top-p 0.9
+`torch.autocast` runs most ops in bf16/fp16 while keeping numerically
+sensitive ones (like softmax accumulation) in fp32 internally
+(`ashugpt/training/amp.py`). **Measured, not assumed**: on this project's
+CPU-only dev hardware (no native bf16 instructions), bf16 autocast was
+**17-44x slower** than fp32, not faster (isolated timing: 134.5s vs. 3.0s
+for one forward+backward at scale) — the sharpest lesson in this whole
+project: mixed precision's benefit is *hardware-dependent*. Peak memory
+did drop 21.3% (bf16 tensors genuinely are smaller), just at a steep time
+cost on hardware without the compute support to back it up. On a GPU with
+tensor cores, or a CPU with AVX512-BF16, both memory *and* speed would
+improve — check your actual hardware, not the general claim.
 
-# Greedy decoding (deterministic, no randomness at all):
-python -m ashugpt.generate --checkpoint ... --tokenizer ... --prompt "..." --temperature 0.0
-```
+### 8.2 Gradient Accumulation
 
-`ashugpt/inference/generate.py` implements the decoding loop **with a KV
-cache by default** (`use_cache=True`; pass `False` or CLI `--no-cache` for
-the naive baseline). See the "KV Cache" section below for how caching
-changes what gets run each step:
+Splits a target *effective* batch into `grad_accum_steps` smaller
+micro-batches, summing their (pre-divided) losses' gradients before one
+optimizer step. **Measured**: `batch_size=1, grad_accum_steps=8` (same
+effective batch as `batch_size=8, grad_accum_steps=1`) cut peak RSS by
+**47.2%** (757.0MB → 399.9MB) at essentially the same per-step time
+(3.44s → 3.64s) — because both scenarios do identical total compute, just
+shaped differently in memory.
 
-```python
-for _ in range(max_new_tokens):
-    logits = model(generated).logits[:, -1, :]        # 1. run the model, 2. final-token logits
-    next_tokens = sample_next_token(logits, ...)        # 3. logits -> probabilities -> 4. pick a token
-    generated = torch.cat([generated, next_tokens], 1)   # 5. append
-    if eos hit for every row: break                       # 6. stop at max length or EOS
-```
+### 8.3 Gradient Checkpointing
 
-**logits → temperature → softmax → top-k → top-p, in order:**
+Discards intermediate activations after each block's forward pass and
+*recomputes* them during backward instead of storing them
+(`torch.utils.checkpoint.checkpoint(block, ..., use_reentrant=False)`,
+DDP-safe). Only engaged when there's a backward pass to save memory for
+(`self.training`) and no KV cache to reconcile (`kv_caches is None`) —
+generation never needs it. **Measured**: **-38.3% peak RSS** (757.0MB →
+467.1MB) for a modest +19% per-step time cost (3.44s → 4.11s) — the
+single biggest individual-lever memory win measured. Verified *exact*
+(not approximate) equivalence first: logits, loss, and every parameter's
+gradient match the non-checkpointed run within float32 tolerance.
 
-- **Logits** are the model's raw, unnormalized output scores over the
-  vocabulary — one real number per token, computed by `lm_head`. They
-  aren't probabilities yet: they can be negative, and don't sum to 1.
-- **Temperature scaling** divides logits by `T` *before* softmax. `T < 1`
-  spreads the gap between the largest and everything else further apart
-  (sharper, more confident distribution → more repetitive/conservative
-  text); `T > 1` compresses the gaps (flatter distribution → more random/
-  diverse text). `T = 0` is undefined for this formula (division by zero),
-  so it's handled as its own case: greedy decoding, just take the argmax.
-- **Softmax** turns (temperature-scaled) logits into an actual probability
-  distribution: `exp(logit_i) / sum(exp(logit_j))` — non-negative, sums to
-  1, and preserves the *ranking* of the logits (softmax is monotonic) while
-  temperature controls how *peaked* that distribution is.
-- **Top-k** throws away every token outside the k highest logits *before*
-  softmax normalizes what's left — a hard cutoff on vocabulary breadth,
-  regardless of how the probability mass happens to be shaped. Good at
-  preventing a long tail of implausible tokens, but k is fixed even when
-  the model is very confident (few good options) or very unsure (many
-  plausible options).
-- **Top-p (nucleus)** instead keeps the *smallest* set of highest-probability
-  tokens whose probabilities sum to at least `p`, so the cutoff adapts to
-  the model's confidence at that specific position: a peaked distribution
-  keeps very few tokens, a flat one keeps many. `top_k` and `top_p` can be
-  combined (top-k narrows the field first, top-p then trims that further).
-
-**Avoiding invalid probabilities**: `top_k`/`top_p` always leave at least
-one token unmasked per row (top-k keeps ≥1 by construction; top-p always
-keeps the single most-likely token even if its own probability already
-exceeds `p`), so `softmax` can never collapse a row to all `-inf` → NaN.
-`temperature`/`top_k`/`top_p` are validated (must be ≥0, positive, and in
-`(0, 1]` respectively) and rejected early with a clear error otherwise.
-
-**Batching + EOS**: `generate()` accepts `input_ids` of shape `(batch,
-prompt_len)`. Rows that emit `eos_id` are pinned to keep "generating"
-`eos_id` for every later position (via `torch.where` on a per-row
-`finished` mask) rather than left to keep sampling — this keeps the output
-tensor rectangular without corrupting a finished row's content, and
-`tokenizer.decode()` already strips every special token regardless of
-position, so no separate trimming step is needed. The whole loop breaks
-early once every row in the batch has finished, not just when max
-generation length is hit.
-
-## KV Cache
-
-Without caching, generating token *t* re-runs attention over all *t*
-earlier tokens *again*, even though their keys/values never change once
-computed — the model already predicted them correctly on every previous
-step. A KV cache just remembers those keys/values instead of recomputing
-them.
-
-The mechanism itself (`CausalSelfAttention`/`TransformerBlock`/`AshuGPT`
-all accept `kv_cache`/`position_offset` and return the updated cache) has
-existed since Milestones 3-4 — it was built then specifically so this
-milestone would be pure wiring, not new attention math. `generate()` now
-actually uses it:
-
-```python
-# batch=B, n_heads=H, head_dim=D, d_model=H*D, vocab=V, prompt length=P
-
-# First call: the whole prompt at once
-output = model(input_ids, kv_caches=None, position_offset=0)
-# input_ids:            (B, P)
-# per-layer Q, K, V:    (B, H, P, D)          -- computed for every prompt position
-# output.kv_caches[i]:  (B, H, P, D), (B, H, P, D)   -- one (k, v) pair per layer
-# output.logits:        (B, P, V)
-
-# Every step after that: just the ONE new token
-output = model(next_token, kv_caches=kv_caches, position_offset=cache_len)
-# next_token:            (B, 1)
-# per-layer Q, K, V for *just this token*: (B, H, 1, D)
-# inside attention: k = cat(cached_k, new_k) -> (B, H, cache_len+1, D); same for v
-# attention scores: (B,H,1,D) @ (B,H,D,cache_len+1) -> (B, H, 1, cache_len+1)
-#   -- the one new query attends over every cached position plus itself
-# output.kv_caches[i]:   (B, H, cache_len+1, D), ...   -- cache grew by 1
-# output.logits:         (B, 1, V)
-```
-
-`position_offset` must always equal the absolute position of the input's
-*first* token, so RoPE rotates it correctly (position 0 for the initial
-prompt call; `cache_len` for every call after, since that's exactly where
-the new token sits once everything cached so far is accounted for).
-
-**Correctness, not speed, is the point of this milestone** — both paths
-must produce the same tokens:
-
-```python
-out_cached   = generate(model, prompt, max_new_tokens=50, temperature=0.0, use_cache=True)
-out_uncached = generate(model, prompt, max_new_tokens=50, temperature=0.0, use_cache=False)
-assert torch.equal(out_cached, out_uncached)  # true -- greedy decoding is fully deterministic
-```
-
-Verified two ways: greedy decoding (no randomness at all) gives
-byte-identical tokens; comparing raw logits directly between one full
-forward pass and the equivalent sequence of cached incremental calls shows
-~1e-7 max absolute difference (ordinary float32 op-order noise, not a
-correctness gap). A real (if modest, at this tiny scale) speedup shows up
-too — 1.5-1.7x by 150 generated tokens on the `tiny` model config, growing
-with generation length as expected, since caching removes exactly the O(n)
-redundant recomputation per step that the uncached path does.
-
-No pre-allocated cache buffer or other speed optimization was added beyond
-that — deliberately, since the milestone's own instruction was to verify
-correctness first and not optimize further yet.
-
-## Distributed Training (DDP)
-
-`scripts/train.py` needs no flags to become distributed — the same command
-becomes multi-process just by how it's launched:
-
-```
-# Single process (unchanged from before):
-python scripts/train.py --model configs/model/tiny.yaml --train configs/train/tiny_cpu.yaml \
-    --tokenizer tokenizer.json --input corpus.txt --checkpoint-dir checkpoints/run1
-
-# Multi-GPU (or multi-process-on-CPU), 2 processes on one machine:
-torchrun --nproc_per_node=2 scripts/train.py --model configs/model/tiny.yaml \
-    --train configs/train/tiny_cpu.yaml --tokenizer tokenizer.json --input corpus.txt \
-    --checkpoint-dir checkpoints/run1
-
-# Multiple machines, e.g. 2 nodes x 4 GPUs each:
-torchrun --nnodes=2 --nproc_per_node=4 --rdzv_id=100 --rdzv_backend=c10d \
-    --rdzv_endpoint=<master-node-ip>:29500 scripts/train.py --model ... --train ...
-```
-
-`torchrun` sets `RANK`/`LOCAL_RANK`/`WORLD_SIZE`/`MASTER_ADDR`/`MASTER_PORT`
-in every process's environment; `ashugpt/training/ddp.py::setup_distributed()`
-reads those and does the rest. Not launched via `torchrun`? `WORLD_SIZE` is
-unset, `setup_distributed()` returns a world_size=1 `DistributedInfo`
-without touching `torch.distributed` at all, and every `if
-info.is_distributed:` branch in `trainer.py` is simply skipped — single-GPU
-and multi-GPU are the same code path, not two implementations.
-
-> **Windows note**: this project's dev/test environment (a CPU-only torch
-> wheel on Windows) hits a `torchrun`/`torch.distributed.run` rendezvous
-> bug unrelated to this code (`TCPStore` built without libuv support) — see
-> SPEC.md's M11 entry. `tests/integration/test_ddp.py` works around it by
-> launching processes directly with the same env vars torchrun would set,
-> which exercises identical `dist.init_process_group()` code. If you hit
-> this on a real deployment, that manual-launch pattern is the fallback;
-> on a normal Linux/CUDA setup, plain `torchrun` is expected to just work.
-
-### What happens during one training step across multiple GPUs
-
-```
-GPU 0 (rank 0)                          GPU 1 (rank 1)
---------------                          --------------
-model replica (weights identical --     model replica (weights identical --
-  broadcast from rank 0 at DDP            broadcast from rank 0 at DDP
-  wrap time)                              wrap time)
-batch shard (its 1/world_size of        batch shard (a *different*
-  this step's data, via                   1/world_size, via
-  DistributedSampler)                     DistributedSampler)
-
-forward pass  -> local loss             forward pass  -> local loss
-backward pass -> local gradients        backward pass -> local gradients
-        \                                      /
-         \____________  DDP all-reduce  ______/
-                      \/
-      every GPU's gradients are averaged together;
-      after this, every replica holds the *same*
-      (mean) gradient for every parameter
-                      /\
-         ____________/  \____________
-        /                             \
-optimizer.step()                 optimizer.step()
-(applies the identical            (applies the identical
- averaged gradient)                averaged gradient)
-        \                             /
-         \___________________________/
-      every replica is still identical --
-      DDP doesn't need to re-sync weights,
-      only gradients, because they started
-      identical and applied identical updates
-```
-
-The all-reduce is triggered automatically by autograd hooks the moment
-`loss.backward()` finishes on every rank — there's no explicit "sync
-gradients" call anywhere in `trainer.py`; it's built into what
-`DistributedDataParallel` wraps `.backward()` with. The one place this
-*does* need explicit handling is **gradient accumulation**: DDP
-synchronizes on every `.backward()` by default, which is correct but
-wasteful mid-accumulation-window (you only need the final, fully-summed
-gradient, not an average-of-partial-sums at every micro-step). `trainer.py`
-wraps every micro-step except the last in `model.no_sync()`, so the
-all-reduce only actually happens once per optimizer step, on the last
-micro-batch — the same number of communications regardless of
-`grad_accum_steps`.
-
-### The 9 requirements
-
-| # | Requirement | Where |
-|---|---|---|
-| 1 | Process initialization | `setup_distributed()` — `dist.init_process_group(backend=...)` |
-| 2 | Rank/world-size handling | Read from `RANK`/`WORLD_SIZE`/`LOCAL_RANK` env vars into a `DistributedInfo` |
-| 3 | DDP wrapping | `wrap_model_for_ddp()` — moves to device, wraps in `DistributedDataParallel` if `world_size > 1` |
-| 4 | DistributedSampler | Built in `train()`, `shuffle=True`, `seed=config.seed`; `set_epoch()` called every epoch boundary so shuffling actually differs epoch to epoch (a well-known easy-to-forget DDP correctness detail) |
-| 5 | Device assignment | `nccl` → `cuda:{local_rank}`; `gloo` → `cpu`; same `wrap_model_for_ddp()` call either way |
-| 6 | Synchronization | Automatic on `.backward()` via DDP; explicitly *deferred* (not skipped) during grad-accum micro-steps via `no_sync()` |
-| 7 | Rank-zero-only logging | Every `print`/history-append/CSV-write gated on `info.is_main_process` |
-| 8 | Rank-zero-only checkpointing | Same gate, plus always saves `unwrap_model(model)` — DDP's own `state_dict()` prefixes every key with `"module."`, which would silently break loading a distributed-trained checkpoint into a plain model for inference later if not unwrapped first |
-| 9 | Process group cleanup | `cleanup_distributed()` runs in a `finally` block around the whole training loop, so it fires even if training raises |
-
-**Resuming** works identically distributed or not: every rank
-independently reads the same checkpoint file from shared/local disk (simplest
-correct approach for single-node multi-GPU) via `unwrap_model(model)`, so
-the loaded state always matches regardless of which mode originally saved
-it. **Gradient accumulation** and **mixed precision** are exactly the
-Milestone 5 implementations, unmodified — `no_sync()` (above) is the only
-place DDP and grad-accum actually interact; AMP's `autocast`/`GradScaler`
-don't care how many processes are running.
-
-### Verifying it actually works: a real 2-process test
-
-`tests/integration/test_ddp.py` launches two real, independent OS
-processes running `_ddp_worker.py` (gloo backend), on a fixed 8-example
-dataset split evenly 4-and-4 across the two ranks. Two things are checked:
-
-1. **The ranks stay in sync**: despite training on *disjoint* data shards,
-   both ranks' final weights are `torch.equal` — bit-identical. That's only
-   possible if gradients were actually averaged across ranks before the
-   optimizer step; if synchronization were broken, each rank would drift
-   toward whatever its own local shard implies and diverge.
-2. **The result matches a single-process baseline, exactly**: with equal
-   per-rank shard sizes, DDP's cross-rank gradient average mathematically
-   equals a single-process gradient computed over the whole combined
-   dataset as one batch (`mean(mean_A, mean_B) == mean(A ∪ B)` when
-   `|A| == |B|`) — not an approximation, algebra. A plain, non-distributed
-   `train()` call over all 8 examples at once is run directly in the test
-   process and compared against the DDP result within `atol=1e-5`.
-
-A third check confirms rank-zero-only behavior directly: the captured
-stdout from both processes combined contains exactly one `"train_loss"`
-log line and exactly one `"Saved checkpoint"` line (not two), and exactly
-one checkpoint file exists on disk.
-
-Also manually verified with a full 150-step run of `scripts/train.py`
-through the real CLI (2 processes, `tiny` model, real synthetic-corpus
-data): correct convergence (loss ~5.5 → ~0.08, matching the single-process
-result), exactly one checkpoint saved. It took noticeably longer than
-single-process (~140s vs. ~10s) — on CPU/gloo, an all-reduce happens on
-every single optimizer step regardless of how small the model is, so at
-this tiny scale the run is communication-overhead-bound, not
-compute-bound. That's expected and matches DDP's usual tradeoff profile:
-it pays off when per-step compute is large relative to the fixed
-communication cost (bigger models, bigger batches, or NCCL/GPU instead of
-gloo/CPU), not on a 7M-parameter model doing 150 tiny steps.
-
-Not implementing FSDP or model parallelism.
-
-## Memory Optimization
-
-Five configurable levers, each addressing a *different* part of a training
-run's memory footprint. All live on `TrainConfig` and get applied inside
-`train()` via `AshuGPT.set_memory_optimizations()` / `build_optimizer()` --
-none require touching `ModelConfig` (the architecture itself doesn't
-change; only how much memory computing it takes does):
-
-```yaml
-gradient_checkpointing: true
-amp_dtype: bfloat16          # SPEC calls this "mixed_precision"
-gradient_accumulation_steps: 8   # TrainConfig field name: grad_accum_steps
-use_efficient_attention: true
-optimizer: sgd                # or "adamw" (default)
-```
-
-`scripts/benchmark_memory.py` measures every one of them (peak process RSS
-+ per-step wall-clock time, via `psutil`, each scenario in its own fresh
-subprocess so PyTorch's CPU allocator cache from one run can't inflate the
-next one's reading):
-
-```
-python scripts/benchmark_memory.py
-```
-
-Actual measured results (`benchmark` config: 5.4M params, d_model=256,
-6 layers, 8 heads, seq_len=256, 1 step; CPU/no-GPU environment):
+**Full memory-optimization comparison** (`scripts/benchmark_memory.py`,
+peak RSS via `psutil`, each scenario in its own fresh subprocess — 5.4M-param
+benchmark model, seq_len=256, CPU):
 
 | scenario | peak RSS (MB) | vs. baseline | s/step |
 |---|---:|---:|---:|
@@ -570,190 +434,260 @@ Actual measured results (`benchmark` config: 5.4M params, d_model=256,
 | mixed_precision (bf16) | 595.7 | -21.3% | **59.62** |
 | grad_accum_x8 (same effective batch) | 399.9 | **-47.2%** | 3.64 |
 | efficient_attention | 624.7 | -17.5% | 3.56 |
-| sgd_optimizer | 756.4 | -0.1% | 3.37 |
+| sgd_optimizer | 756.4 | -0.1%* | 3.37 |
 | all_combined | 371.5 | **-50.9%** | 66.68 |
 
-### 1. Gradient checkpointing
+\* Optimizer choice (AdamW's 2 state buffers/param vs. SGD's 1 — proven
+*exactly* 2x vs. 1x by direct tensor-element counting after a real
+optimizer step) gets swamped here because this model's ~41MB of AdamW
+state is tiny next to seq_len=256 activation memory. It matters more when
+parameter count is large *relative to* activation size — bigger models,
+shorter sequences — not the regime this benchmark highlights.
 
-**Problem**: a normal forward pass keeps every intermediate activation
-(the output of every Linear, every attention score matrix, etc.) alive in
-memory, because backward() needs them to compute gradients. That's
-`O(n_layers x seq_len x batch_size x d_model)`-ish memory, and it's the
-single biggest consumer of training memory once you get past a few layers.
+Every optimization above is proven correct (matches the unoptimized path
+exactly, or its exact predicted memory multiplier) before any memory
+number is trusted — configurable via `TrainConfig`:
 
-**Fix**: discard activations after each block's forward pass and
-*recompute* them during backward instead of storing them --
-`torch.utils.checkpoint.checkpoint(block, x, ..., use_reentrant=False)`
-wraps each `TransformerBlock`. `use_reentrant=False` is the modern,
-DDP-safe mode (the older reentrant mode has known issues with DDP's
-gradient hooks). Only engaged when it can actually help: `self.training`
-(no backward pass during generation, so no point) and `kv_caches is None`
-(checkpointing re-runs a block's forward from scratch, which can't be
-reconciled with a growing cache -- and generation never has a backward
-pass to checkpoint for anyway).
+```yaml
+gradient_checkpointing: true
+amp_dtype: bfloat16
+grad_accum_steps: 8
+use_efficient_attention: true
+optimizer: sgd    # or "adamw" (default)
+```
 
-**Tradeoff**: roughly one extra forward pass per checkpointed block during
-backward -- you're trading compute (recompute) for memory (don't store).
+```
+python scripts/benchmark_memory.py
+```
 
-**Measured**: **-38.3% peak RSS** (757.0MB → 467.1MB), for a modest +19%
-per-step time cost (3.44s → 4.11s) from the extra recompute — exactly the
-tradeoff the theory predicts, and the single biggest memory win of any
-individual lever measured here (only beaten by stacking everything
-together in `all_combined`, -50.9%).
-Verified exact (not approximate) equivalence first, since
-"faster and correct" only matters after "correct":
-`test_gradient_checkpointing_matches_normal_forward_and_gradients` checks
-logits, loss, *and every parameter's gradient* match the non-checkpointed
-run within float32 tolerance.
+## 9. Distributed Training (DDP)
 
-**Configurable**: `TrainConfig.gradient_checkpointing`, or directly via
-`model.set_memory_optimizations(gradient_checkpointing=True)`.
+```mermaid
+sequenceDiagram
+    participant R0 as GPU 0 (rank 0)
+    participant R1 as GPU 1 (rank 1)
 
-### 2. Mixed precision
+    Note over R0,R1: Model replicas start IDENTICAL — DDP broadcasts rank 0's weights at wrap time
 
-**Problem**: fp32 activations and weights take 4 bytes per element; on
-hardware with fast lower-precision compute, that's both more memory
-*and* slower than necessary.
+    par
+        R0->>R0: forward pass on its batch shard
+    and
+        R1->>R1: forward pass on its batch shard
+    end
+    par
+        R0->>R0: backward pass → local gradients
+    and
+        R1->>R1: backward pass → local gradients
+    end
 
-**Fix**: `torch.autocast` runs most ops in bf16 (or fp16) while keeping a
-few numerically-sensitive ops (like softmax accumulation) in fp32
-internally — implemented in `ashugpt/training/amp.py`, already built in
-Milestone 5.
+    R0-->>R1: all-reduce (average gradients)
+    R1-->>R0: all-reduce (average gradients)
+    Note over R0,R1: Both now hold the IDENTICAL averaged gradient
 
-**Tradeoff**: bf16 needs no loss scaling (same exponent range as fp32,
-just less mantissa precision) but *does* need hardware that actually
-computes bf16 efficiently. fp16 has a narrower exponent range and needs
-`GradScaler` to avoid gradients underflowing to zero — already wired up
-(disabled unless `amp_dtype="float16"`, so it's a no-op in the bf16 case).
+    par
+        R0->>R0: optimizer.step()
+    and
+        R1->>R1: optimizer.step()
+    end
+    Note over R0,R1: Replicas stay identical — same start + same gradient + same update
+```
 
-**Measured**: **-21.3% peak RSS** (757.0MB → 595.7MB) — bf16 tensors
-genuinely are smaller — but **17x slower per step** (3.44s → 59.62s) in
-the full benchmark. This is the sharpest lesson in this whole milestone:
-mixed precision's benefit is *hardware-dependent*, not universal. On a
-GPU with tensor cores, or a CPU with native bf16 instructions
-(AVX512-BF16, or equivalent), bf16 is both faster and lower memory. On
-this benchmark's CPU, which lacks that hardware support, bf16 autocast
-falls back to a much slower emulated path — an isolated single
-forward+backward at the original (larger, seq_len=512) benchmark size
-measured a **~44x slowdown** (134.5s vs 3.0s), which is exactly why the
-benchmark script had to shrink its problem size to stay tractable at all.
-A real consequence worth knowing before assuming "bf16 = free speedup" —
-check your actual hardware, not just the theory.
+The all-reduce is triggered automatically by autograd hooks the instant
+`loss.backward()` finishes on every rank — no explicit "sync gradients"
+call anywhere in `trainer.py`. The one place this needs explicit handling
+is **gradient accumulation**: DDP synchronizes on every `.backward()` by
+default, which is correct but wasteful mid-accumulation-window. Every
+micro-step except the last is wrapped in `model.no_sync()`, so the
+all-reduce fires exactly once per optimizer step regardless of
+`grad_accum_steps`.
 
-**Configurable**: `TrainConfig.amp_dtype` (`"bfloat16"` / `"float16"` / `"none"`).
+Same command, becomes distributed just by how it's launched:
 
-### 3. Efficient attention
+```
+# Single process:
+python scripts/train.py --model configs/model/tiny.yaml --train configs/train/tiny_cpu.yaml \
+    --tokenizer tokenizer.json --input corpus.txt --checkpoint-dir checkpoints/run1
 
-**Problem**: the manual attention implementation (Milestone 3) explicitly
-materializes the full `(seq_len, seq_len)` score matrix per head as its
-own tensor — `O(seq_len^2)` memory, and on GPU, extra round-trips through
-memory bandwidth that a fused kernel avoids.
+# 2 processes, one machine:
+torchrun --nproc_per_node=2 scripts/train.py --model configs/model/tiny.yaml \
+    --train configs/train/tiny_cpu.yaml --tokenizer tokenizer.json --input corpus.txt \
+    --checkpoint-dir checkpoints/run1
 
-**Fix**: an optional path through `torch.nn.functional.scaled_dot_product_attention`
-(`CausalSelfAttention.use_efficient_attention`), reusing the *exact same*
-`causal_mask()` this project already had, just converted to SDPA's
-additive-bias convention. On GPU this dispatches to a FlashAttention-style
-kernel with `O(seq_len)` attention-matrix memory instead of `O(seq_len^2)`;
-on CPU it's mainly a fused-kernel/less-Python-overhead win.
+# 2 nodes x 4 GPUs:
+torchrun --nnodes=2 --nproc_per_node=4 --rdzv_id=100 --rdzv_backend=c10d \
+    --rdzv_endpoint=<master-node-ip>:29500 scripts/train.py --model ... --train ...
+```
 
-**Tradeoff**: less transparent — the manual path stays the default
-specifically so the actual math (score, mask, softmax, weighted sum)
-remains visible and directly testable; the efficient path is opt-in for
-when it actually matters.
+`torchrun` sets `RANK`/`LOCAL_RANK`/`WORLD_SIZE`/`MASTER_ADDR`/`MASTER_PORT`;
+`setup_distributed()` reads those. Not launched via `torchrun`?
+`WORLD_SIZE` is unset, a `world_size=1` `DistributedInfo` comes back
+without touching `torch.distributed` at all, and every
+`if info.is_distributed:` branch is simply skipped — single-GPU and
+multi-GPU are the same code path, not two implementations.
 
-**Measured**: **-17.5% peak RSS** (757.0MB → 624.7MB) at essentially the
-same speed (3.44s → 3.56s) — a real, "free" win even on CPU, from not
-allocating the score matrix as its own separate tensor; expect a much
-larger memory reduction specifically on GPU, where SDPA also gets to
-choose an `O(seq_len)`-memory FlashAttention-style kernel instead of just
-avoiding one intermediate CPU tensor. Correctness first, as always: `test_attention.py`
-checks the efficient path matches the manual path's output
-(`atol=1e-5`), still can't attend to future tokens, and stays correct
-under KV-cache incremental calls — the same three properties already
-proven for the manual path.
+| Requirement | Where |
+|---|---|
+| Process initialization | `dist.init_process_group(backend=...)` — gloo (CPU) or nccl (GPU) |
+| Rank/world-size handling | `RANK`/`WORLD_SIZE`/`LOCAL_RANK` env vars → `DistributedInfo` |
+| DDP wrapping | `wrap_model_for_ddp()` |
+| DistributedSampler | `shuffle=True`, `set_epoch()` every epoch boundary (an easy-to-forget correctness detail) |
+| Device assignment | `nccl` → `cuda:{local_rank}`; `gloo` → `cpu` |
+| Synchronization | Automatic on `.backward()`; deferred (not skipped) via `no_sync()` during accumulation |
+| Rank-zero-only logging/checkpointing | Gated on `info.is_main_process`; checkpoints always save `unwrap_model(model)` — DDP's own `state_dict()` prefixes every key with `"module."`, which would silently break loading into a plain model later if not unwrapped |
+| Process group cleanup | `cleanup_distributed()` in a `finally` block — fires even if training raises |
 
-**Configurable**: `TrainConfig.use_efficient_attention`, or directly via
-`model.set_memory_optimizations(efficient_attention=True)`.
+**Verified with a real 2-process test** (`tests/integration/test_ddp.py`,
+gloo backend, two independent OS processes): both ranks converge to
+**bit-identical weights** despite training on *disjoint* data shards
+(only possible if gradients were genuinely synchronized), and that result
+**exactly matches** a single-process mathematical baseline
+(`mean(mean_A, mean_B) == mean(A ∪ B)` for equal shard sizes — algebra,
+not approximation). Also manually verified end-to-end through the real
+CLI: 150-step 2-process run converged correctly (loss ~5.5 → ~0.08,
+matching single-process), exactly one checkpoint saved by rank 0. Took
+~140s vs. ~10s single-process — expected: gloo/CPU all-reduce overhead
+dominates at this tiny scale; DDP pays off when per-step compute is large
+relative to fixed communication cost (bigger models/batches, or NCCL/GPU).
 
-### 4. Gradient accumulation
+Not implementing FSDP or model parallelism.
 
-**Problem**: peak activation memory scales with the *per-step* batch
-size. Wanting the gradient quality/statistics of a large effective batch
-collides with only having memory for a small one.
+## 10. Inference
 
-**Fix**: split the target effective batch into `grad_accum_steps` smaller
-micro-batches, summing their (divided) losses' gradients before one
-optimizer step — already built in Milestone 5, `no_sync()`-aware for DDP
-since Milestone 8.
+### 10.1 KV Caching
 
-**Tradeoff**: more forward/backward passes (more wall-clock time) to
-reach the same effective batch size, in exchange for peak memory bounded
-by the *micro*-batch size, not the effective one.
+Without caching, generating token *t* re-runs attention over all *t*
+earlier tokens *again* — wasted work, since their keys/values never
+change once computed. A KV cache remembers them instead:
 
-**Measured**: **-47.2% peak RSS** (757.0MB → 399.9MB) at essentially the
-same per-step time (3.44s → 3.64s) — comparing `batch_size=8,
-grad_accum_steps=1` against the same *effective* batch size of 8 via
-`batch_size=1, grad_accum_steps=8`. The second-biggest single-lever memory
-win measured, for almost no speed cost — because both scenarios do the
-same total amount of compute, just organized into differently-shaped
-chunks.
+```python
+# First call: the whole prompt at once
+output = model(input_ids, kv_caches=None, position_offset=0)
+# output.kv_caches[i]: (B, H, P, D) per layer -- K/V for every prompt position
 
-**Configurable**: `TrainConfig.grad_accum_steps`.
+# Every call after: just the ONE new token
+output = model(next_token, kv_caches=kv_caches, position_offset=cache_len)
+# inside attention: k = cat(cached_k, new_k) -> (B, H, cache_len+1, D)
+# the one new query attends over every cached position plus itself
+# output.kv_caches[i] grew by 1
+```
 
-### 5. Memory-efficient optimizer configuration
+`position_offset` must equal the absolute position of the input's first
+token, so RoPE (§6.2) rotates it correctly. **Verified two ways**: greedy
+decoding (no randomness) gives byte-identical tokens whether
+`use_cache=True` or `False`; comparing raw logits between one full forward
+pass and the equivalent incremental-cached calls shows ~1e-7 max absolute
+difference (ordinary float32 op-order noise, not a correctness gap). Real
+speedup measured: **1.5-1.7x by 150 generated tokens** at `tiny` scale,
+growing with length — exactly the O(n) redundant recomputation removed.
 
-**Problem**: AdamW keeps two extra full-size buffers per parameter
-(`exp_avg`, `exp_avg_sq` — the first and second moment estimates), so
-optimizer state alone is 2x the model's own parameter memory, on top of
-gradients (1x) and the parameters themselves (1x) — 4x total, before any
-activations.
+### 10.2 Sampling Methods
 
-**Fix**: `optimizer="sgd"` (with momentum) keeps only *one* state buffer
-per parameter instead of two — `TrainConfig.optimizer`, wired through
-`build_optimizer()`.
+```python
+for _ in range(max_new_tokens):
+    logits = model(generated).logits[:, -1, :]         # 1. run model, 2. final-token logits
+    next_tokens = sample_next_token(logits, ...)         # 3. logits -> probabilities -> 4. pick a token
+    generated = torch.cat([generated, next_tokens], 1)    # 5. append
+    if eos hit for every row: break                        # 6. stop at max length or EOS
+```
 
-**Tradeoff**: SGD+momentum typically needs more careful learning-rate
-tuning and more steps to reach the same loss AdamW would — it's a
-well-known, real convergence-speed cost for the memory savings, not a
-free lunch.
+**logits → temperature → softmax → top-k → top-p**, in the order applied:
 
-**Measured**: exactly 2x vs. 1x, proven directly by counting state tensor
-elements after one real optimizer step (`test_adamw_keeps_twice_the_optimizer_state_sgd_does`)
-— `state_numel(AdamW) == 2 * param_count`, `state_numel(SGD) == param_count`,
-both exactly, since state is lazily allocated per-parameter and both
-optimizers were stepped once on the same model. In the end-to-end
-benchmark script, this effect gets swamped: **-0.1% peak RSS** (757.0MB →
-756.4MB, noise) — a genuinely useful lesson in its own right about *when*
-each lever actually matters. This benchmark's 5.4M-parameter model's
-AdamW state is only ~41MB (2 x 5.4M x 4 bytes); its seq_len=256,
-batch_size=8 activations (especially attention's per-layer
-`O(seq_len^2)` score matrices) run into the hundreds of MB. Optimizer
-choice matters most when parameter count is large *relative to*
-activation size — bigger models, shorter sequences, larger models trained
-on shorter contexts — not the long-sequence regime the other scenarios
-here were tuned to highlight.
+- **Logits**: raw, unnormalized scores from `lm_head` — can be negative,
+  don't sum to 1.
+- **Temperature** divides logits by `T` before softmax. `T<1` sharpens the
+  distribution (more repetitive/confident); `T>1` flattens it (more
+  diverse). `T=0` is undefined by this formula (division by zero), so
+  it's special-cased as pure greedy argmax instead.
+- **Softmax**: `exp(logit_i)/Σexp(logit_j)` — a real distribution;
+  monotonic, so it preserves ranking while temperature controls peakedness.
+- **Top-k**: hard cutoff — keep exactly the `k` highest logits.
+- **Top-p (nucleus)**: adaptive cutoff — keep the smallest set of tokens
+  whose probabilities sum to ≥`p`, so a confident position keeps few
+  candidates and an uncertain one keeps many. Combinable with top-k
+  (top-k narrows first, top-p trims further).
 
-**Configurable**: `TrainConfig.optimizer` (`"adamw"` / `"sgd"`).
+Both filters always leave ≥1 token unmasked (top-k by construction;
+top-p always keeps the single most-likely token even below threshold), so
+softmax can never collapse a row to all `-inf` → NaN. Batched generation
+with per-row EOS handling: a finished row is pinned to keep "generating"
+`eos_id` (via `torch.where` on a `finished` mask) so the output tensor
+stays rectangular without corrupting other rows; `tokenizer.decode()`
+strips every special token regardless of position, so no separate
+trimming is needed.
 
-Every optimization above is proven correct (matches the unoptimized path,
-or its exact expected memory multiplier) before any memory number is
-trusted — the same "correctness before speed" discipline as Milestone 7's
-KV cache.
+```
+python -m ashugpt.generate --checkpoint checkpoints/demo/step_150.pt \
+    --tokenizer tokenizer.json --prompt "Once upon a time" \
+    --max-new-tokens 50 --temperature 0.8 --top-k 50 --top-p 0.9
 
-## Scaling to 1B+ Parameters
+python -m ashugpt.generate --checkpoint ... --tokenizer ... --prompt "..." --temperature 0.0   # greedy
+```
+
+### 10.3 Inference API (FastAPI)
+
+```
+python scripts/serve.py --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json
+curl -X POST http://127.0.0.1:8000/generate -H "Content-Type: application/json" \
+    -d '{"prompt": "Once upon a time", "max_new_tokens": 50, "temperature": 0.8, "top_k": 50, "top_p": 0.9}'
+```
+
+```json
+{"generated_text": "Once upon a time...", "tokens_generated": 50, "generation_time": 0.31, "tokens_per_second": 161.3}
+```
+
+Real measured output (891K-param demo checkpoint, CPU): single request
+20 tokens greedy → `generation_time=0.134s`, `tokens_per_second=149.4`;
+5 sequential requests via `scripts/benchmark_server.py` → `mean=167.3 tok/s`.
+
+```
+ashugpt/api/
+├── schemas.py   -- Pydantic request/response models (pure data contracts)
+├── service.py   -- InferenceService: the ONLY file touching ashugpt.model/tokenizer/inference
+└── app.py       -- FastAPI routes, HTTP status codes, startup config
+```
+
+A `lifespan` handler reads `ASHUGPT_CHECKPOINT`/`ASHUGPT_TOKENIZER` env
+vars **once** at process startup and builds one `InferenceService`, stored
+on `app.state` — every request afterward reuses it (proven directly: a
+test wraps `InferenceService.load` in a call counter and asserts it fires
+exactly once across multiple requests). `/generate`'s handler is a plain
+`def`, not `async def` — CPU-bound torch inference is blocking work, and
+Starlette dispatches sync handlers to a worker thread pool automatically,
+keeping the event loop (and `/health`) free; an `async def` doing the same
+blocking math would freeze the whole server instead.
+
+**Layered validation/errors**: Pydantic (`422`, structurally invalid
+request — empty prompt, negative `max_new_tokens`) → the model's own
+runtime checks (`400`, e.g. `prompt_len + max_new_tokens` exceeding
+`context_length`, which Pydantic can't know without asking the loaded
+model) → catch-all (`500`, never a raw traceback to the client).
+
+| | Training | Inference (this server) |
+|---|---|---|
+| Gradients | Computed and applied every step | Never — `model.eval()` + `no_grad()` throughout |
+| Input | Batches of `(input_ids, labels)` windows | One prompt at a time, no labels, no loss |
+| Optimizer/scheduler | Actively stepping | Not constructed at all |
+| Memory | Weights + gradients + optimizer state + activations | Weights + a small KV cache only |
+| Output | A scalar loss | Sampled token ids, decoded to text |
+
+Every `/generate` call uses `use_cache=True` (§10.1) — the direct reason
+`tokens_per_second` stays roughly flat across `max_new_tokens` instead of
+degrading; without caching, each additional token costs strictly more
+than the last.
+
+## 11. Scaling to Billion-Parameter Architectures
 
 **This project has never trained anything at `medium` or `xl_1b` scale.**
-What it *can* do is tell you, instantly and without building anything,
+What it *can* do, instantly and without building anything, is report
 exactly how big a config is and roughly what training it would cost:
 
 ```
 python -m ashugpt.inspect_model --config 1b
-python -m ashugpt.inspect_model --config small --batch-size 8 --seq-len 512 --optimizer sgd
-python -m ashugpt.inspect_model --all              # every built-in preset, side by side
+python -m ashugpt.inspect_model --all
 ```
 
 ```
-=== xl_1b ===  [ARCHITECTURE CONFIGURATION -- not a trained model; see explanation below]
+=== xl_1b ===  [ARCHITECTURE CONFIGURATION -- not a trained model]
 Layers:                       22
 Hidden dimension:             2048
 Attention heads:              32
@@ -766,110 +700,34 @@ Gradient memory (FP32):      4.934 GB
 Optimizer memory:            9.868 GB
 Activation memory (est.):    7.151 GB
 Estimated total (training):  26.887 GB
-(activation estimate assumes batch_size=1, seq_len=2048, optimizer=adamw)
 ```
 
-That last line is a real, if rough, number: ~16 bytes/param for
-weights+gradients+AdamW state (1.23B × 16B ≈ 19.7GB) plus ~7GB of
-estimated activation memory ≈ 26.7GB, which is what the tool actually
-computes — consistent with the standard rule of thumb for full-precision
-Adam training, computed from this project's own `ModelConfig` shape
-formula rather than quoted from memory.
+`~16 bytes/param` for weights+gradients+AdamW state (1.23B × 16B ≈
+19.7GB) plus ~7GB estimated activation memory ≈ 26.7GB — matches the
+standard rule of thumb for full-precision Adam training, computed from
+this project's own shape formula, not quoted. Weights/gradients/optimizer
+state are estimated at **FP32** regardless of `amp_dtype` — because
+that's what this project's training loop actually does; `autocast` only
+wraps the forward pass, parameters are never permanently downcast (exactly
+the finding in §8.1's bf16 measurement). Activations are estimated at
+**BF16** by default, dominated by each layer's `O(seq_len²)` attention
+score matrix. **Calibration**: sanity-checked against §8.3's real measured
+RSS — the estimator came in at roughly a third of the real number, the gap
+traced to ~190MB of fixed Python/PyTorch process overhead that doesn't
+scale with model size (so accuracy *improves*, not worsens, at GB scale).
 
-**How the estimate is built** (`ashugpt/utils/memory.py`), and why it's
-honest about what it does and doesn't know about *this* project's
-training loop specifically, not a generic textbook formula:
+Every preset reports in under a second — `estimate_memory()` only calls
+`ModelConfig.approx_param_count()` (pure arithmetic); nothing here
+constructs an `nn.Module`.
 
-- **Weights** — `param_count x 4 bytes` (FP32) or `x 2 bytes` (BF16).
-  Both are reported because they answer different questions: FP32 is
-  what a checkpoint on disk / the actual training state costs; BF16 is
-  what a bf16-native inference deployment would cost.
-- **Gradients** and **optimizer state** are always estimated at FP32 —
-  because that's what this project's training loop actually does.
-  `TrainConfig.amp_dtype` only wraps the *forward pass* in `autocast`
-  (Milestone 5); parameters themselves are never permanently cast to a
-  lower dtype, so gradients and AdamW's `exp_avg`/`exp_avg_sq` inherit
-  fp32 from the parameters regardless of `amp_dtype`. This is exactly
-  the finding from the Memory Optimization section above (bf16 barely
-  moved the needle on weight/optimizer memory in the real benchmark) —
-  the estimator matches what was actually measured, not a generic
-  mixed-precision-training assumption that wouldn't apply here.
-- **Activations** are estimated at `bf16` by default (matching
-  `TrainConfig`'s own default `amp_dtype`), dominated by each layer's
-  `(batch, n_heads, seq_len, seq_len)` attention score matrix — the one
-  genuinely quadratic term, and usually the largest single tensor once
-  `seq_len` is more than a few hundred.
-- Gradient checkpointing's effect on activation memory is deliberately
-  **not** modeled symbolically here — Milestone 9 already *measured* it
-  directly (-38.3% peak RSS), which is more trustworthy than re-deriving
-  an estimate for something already proven empirically.
-- **Calibration**: sanity-checked against Milestone 9's real measured RSS
-  for a small training run — the estimator came in at roughly a third of
-  the real number, with the gap traced to fixed Python/PyTorch process
-  overhead (confirmed independently: importing torch and allocating one
-  tensor alone costs ~190MB RSS in this environment) that doesn't scale
-  with model size. So accuracy should *improve*, not worsen, at the
-  GB-scale configs this tool exists for — that gap is single-digit
-  percent of a 27GB estimate, not of a 750MB one.
-
-Every preset — `tiny`, `small`, `medium`, `xl_1b` — reports in well under
-a second, including `xl_1b`, because `estimate_memory()` only ever calls
-`ModelConfig.approx_param_count()` (pure arithmetic, Milestone 1); nothing
-here constructs an `nn.Module`. `test_estimate_memory_is_instant_even_for_a_billion_parameter_config`
-asserts this directly (< 1 second).
-
-### Implemented architecture vs. trained model vs. pretrained checkpoint
-
-Three genuinely different things this project is careful never to
-conflate, and which `python -m ashugpt.inspect_model`'s output spells out
-in full every time it runs (not just for `xl_1b` — the same explanation
-prints regardless of which config you inspect):
-
-1. **Implemented architecture** — a `ModelConfig` this codebase *can*
-   construct into a real `nn.Module`. Has a parameter count and a memory
-   estimate. Every weight would be freshly random-initialized if actually
-   built. This is all any `inspect_model` report describes, `xl_1b`
-   included.
-2. **Model trained from scratch** — an architecture that was *actually*
-   trained: real gradient descent, real data, a real checkpoint file on
-   disk (`ashugpt/training/checkpoint.py`, the gitignored `checkpoints/`
-   directory — self-trained only). Every checkpoint this project can
-   currently load was trained this way, at `tiny`/`small` scale, on the
-   small demo corpora in `tests/fixtures/`. Nothing at `medium` or
-   `xl_1b` scale has been trained — this CPU-only environment makes that
-   impractical, and the Memory Optimization section above has the
-   measured numbers (not assumptions) showing exactly why.
-3. **Pretrained checkpoint loaded for inference** — public weights
-   (e.g. GPT-2's) downloaded and mapped onto this architecture for
-   *inference only*, never trained or fine-tuned by this project. This is
-   SPEC.md milestone M13 (`pretrained_loader.py`), not yet built. Its
-   checkpoints would live in the gitignored `pretrained/` directory, kept
-   strictly separate from `checkpoints/` so a self-trained model is never
-   mistaken for a downloaded one.
-
-`xl_1b` is case 1, full stop. Every report says so explicitly.
-
-## Pretrained Checkpoints (Loading, Not Training)
+## 12. Pretrained Checkpoints: Comparison, Not Loading
 
 **AshuGPT cannot load GPT-2's public pretrained weights and produce a
-working model.** Not "hasn't been tried yet" — determined, tested, and
-demonstrated against GPT-2's real published checkpoint metadata that it
-*cannot*, for reasons that no amount of tensor renaming or reshaping
-fixes. `ashugpt/inference/pretrained_loader.py` implements the comparison
-and the loader; this section is the summary.
-
-**Why GPT-2**: the best-known public decoder-only checkpoint, and — more
-usefully — one that differs from AshuGPT in exactly the dimensions this
-project actually built custom (positional encoding, normalization, FFN
-structure), making the comparison maximally informative rather than a
-coincidental near-match.
-
-All facts below are verified against the real `openai-community/gpt2`
-checkpoint on Hugging Face — its `config.json` and its safetensors
-header (which lists every tensor's name/shape/dtype), fetched live via
-`scripts/demo_pretrained_loading.py` without downloading the full ~548MB
-of weight data (irrelevant to the architecture question — names and
-shapes decide it, not values):
+working model.** Not "hasn't been tried" — determined, tested, and
+demonstrated against GPT-2's real published checkpoint metadata (fetched
+live from Hugging Face: `config.json` in full, the safetensors header via
+an HTTP range request — no full ~548MB weight download needed, since
+architecture compatibility is decided by tensor names/shapes, not values):
 
 ```
 python scripts/demo_pretrained_loading.py
@@ -877,239 +735,215 @@ python scripts/demo_pretrained_loading.py
 
 | Aspect | GPT-2 | AshuGPT |
 |---|---|---|
-| Positional encoding | Learned absolute embedding table (`wpe`), added once to the input | RoPE: parameter-free Q/K rotation, applied every layer |
-| Normalization | LayerNorm (mean-centered, has bias) | RMSNorm (no centering, no bias) |
-| Feed-forward | Plain 2-matrix GELU MLP (`c_fc`, `c_proj`), with bias | Gated 3-matrix SwiGLU (`gate_proj`/`up_proj`/`down_proj`), no bias |
-| Attention QKV | One combined `c_attn` matrix, `Conv1D` layout (transposed vs. `nn.Linear`), with bias | Separate `q_proj`/`k_proj`/`v_proj`, `nn.Linear` layout, no bias |
-| Vocabulary | 50,257, GPT-2's own trained BPE merges | Configurable; AshuGPT's from-scratch BPE has independently-trained merges even at matching `vocab_size` |
-| Embedding tying | Tied (confirmed: no separate `lm_head.weight` in the real checkpoint) | Same default |
+| Positional encoding | Learned absolute table (`wpe`), added once | RoPE, applied every layer, parameter-free |
+| Normalization | LayerNorm (mean-centered, bias) | RMSNorm (no centering, no bias) |
+| Feed-forward | Plain 2-matrix GELU MLP, with bias | Gated 3-matrix SwiGLU, no bias |
+| Attention QKV | One combined `c_attn`, `Conv1D` (transposed) layout, with bias | Separate `q/k/v_proj`, `nn.Linear` layout, no bias |
+| Vocabulary | 50,257, GPT-2's own BPE merges | Independently-trained BPE, even at matching `vocab_size` |
 
-### Two independent, fundamental incompatibilities
+**Two independent, fundamental incompatibilities** (not fixable by any
+renaming/reshaping):
 
 1. **Positional encoding.** GPT-2's attention weights were trained
-   assuming position info arrives as an additive embedding mixed into the
-   input *before* the first layer, with Q/K used exactly as projected.
-   AshuGPT's attention *unconditionally rotates* Q/K via RoPE inside every
-   layer — a computation GPT-2's weights never saw during training, and
-   AshuGPT has no flag to disable. No rename fixes a different algorithm.
+   assuming position arrives as an additive embedding *before* the first
+   layer. AshuGPT's attention unconditionally *rotates* Q/K via RoPE
+   inside every layer — a computation GPT-2's weights never saw, and
+   AshuGPT has no flag to disable. Different algorithm, not a rename.
 2. **Feed-forward gating.** AshuGPT's `gate_proj` has no counterpart in
-   GPT-2's plain 2-matrix MLP *at all*. Loading GPT-2's weights would
-   leave `gate_proj` at random initialization — the result would be a
-   random-plus-GPT-2 hybrid, not a reproduction of GPT-2.
+   GPT-2's plain MLP *at all* — it would be left at random initialization,
+   making the result a random-plus-GPT-2 hybrid.
 
-A third issue, independent of the above: `RMSNorm`'s weight and
-`LayerNorm`'s weight share a shape but scale mathematically different
-quantities — shape compatibility isn't semantic compatibility.
+**Concrete proof this isn't a rounding error**: building AshuGPT at
+GPT-2's exact shape gives **151,862,784 parameters**, not GPT-2's actual
+~124M — the ~28M gap is `gate_proj`, a matrix that structurally does not
+exist in GPT-2.
 
-**A concrete number that makes this tangible**: building an AshuGPT model
-at GPT-2's exact shape (12 layers, d_model=768, 12 heads, vocab 50,257)
-gives **151,862,784 parameters** — not GPT-2's actual ~124M. The gap is
-almost entirely `gate_proj`: 12 layers × 768 × 3072 ≈ 28.3M extra
-parameters that SwiGLU has and a plain GELU MLP doesn't. Even the
-"shape-matched" model isn't actually the same shape once you count
-correctly — the FFN structure difference isn't a rounding error, it's a
-different number of matrices.
-
-### What was implemented anyway (the genuinely solvable part)
-
-Splitting GPT-2's combined `c_attn` into separate Q/K/V, undoing
-`Conv1D`'s transposed weight layout, and mapping token embeddings, final
-norm, and per-layer RMSNorm weights — real, tested, numerically-verified
-code (`convert_gpt2_state_dict`), not a stub. If GPT-2 used RoPE and a
-gated FFN, this alone would be a working conversion. It doesn't, so:
+What genuinely *is* solvable — implemented, tested, numerically verified —
+is splitting `c_attn` into Q/K/V, undoing `Conv1D`'s transpose, and mapping
+embeddings/norms:
 
 ```python
 from ashugpt.inference.pretrained_loader import load_gpt2_checkpoint, IncompatibleArchitectureError
 
 try:
-    model, report = load_gpt2_checkpoint(gpt2_state_dict)  # strict=True by default
+    model, report = load_gpt2_checkpoint(gpt2_state_dict)   # strict=True by default
 except IncompatibleArchitectureError as e:
-    print(e)  # explains exactly why, lists every missing/unexpected key
-
-# Or, explicitly opting into a non-functional result for inspection only:
-model, report = load_gpt2_checkpoint(gpt2_state_dict, strict=False)
-report.summary()  # missing_keys, unexpected_keys, fundamental_incompatibilities
+    print(e)   # explains exactly why, lists every missing/unexpected key
 ```
 
-Real output against the live-fetched `gpt2` checkpoint metadata: **75
-tensors** successfully mapped (embeddings, norms, attention Q/K/V/O across
-12 layers), **36 missing** (every `gate_proj`/`up_proj`/`down_proj` — no
-source tensor exists for any of them), **110 unexpected** (`wpe.weight`,
-every bias, every `mlp.c_fc`/`mlp.c_proj`, and the static causal-mask
-buffer GPT-2 stores as `h.{i}.attn.bias`, which was never a trainable
-weight to begin with). `load_state_dict`'s own `missing_keys`/
-`unexpected_keys` accounting (PyTorch's built-in mechanism, not
-reinvented) is the authoritative source for both counts.
+Real result against the live-fetched checkpoint metadata: **75 tensors**
+mapped (embeddings, norms, attention Q/K/V/O across 12 layers), **36
+missing** (every `gate_proj`/`up_proj`/`down_proj`), **110 unexpected**
+(`wpe.weight`, every bias, every GELU-MLP weight, the static causal-mask
+buffer GPT-2 stores as `h.{i}.attn.bias`). `load_gpt2_checkpoint(strict=True)`
+— the default — **raises `IncompatibleArchitectureError`** rather than
+returning a model that looks loaded but silently produces wrong output.
 
-**Fails loudly by default**: `load_gpt2_checkpoint(strict=True)` — the
-default — raises `IncompatibleArchitectureError` with the full report
-rather than returning a model that looks loaded but silently produces
-wrong output. `strict=False` exists only for inspecting what *would* have
-transferred; its output is explicitly documented as non-functional.
+## 13. Provenance: Trained / Implemented / Loaded
 
-### "I implemented this" vs. "I trained this" vs. "I loaded this"
-
-Three claims this project is careful never to conflate:
+The full version of the table at the top of this document:
 
 1. **"I implemented this architecture."** True of everything in
-   `ashugpt/model/`. Building any config (`tiny` through `xl_1b`) produces
+   `ashugpt/model/`. Building any preset (`tiny` through `xl_1b`) produces
    a real `nn.Module` with randomly-initialized weights — nothing has
    learned anything yet.
 2. **"I trained this checkpoint."** True only of checkpoints actually
    produced by `ashugpt/training/trainer.py` — real gradient descent, real
    data, a real file in the gitignored `checkpoints/` directory. Currently
-   true at `tiny`/`small` scale on the demo corpora in `tests/fixtures/`
-   only (see the Scaling section above for why nothing bigger has been
-   trained here). **Never true of GPT-2's weights** — this project did
-   not train GPT-2, and as shown above, couldn't even successfully load
-   it if it wanted to skip the training and just borrow the weights.
+   true at `tiny`/`small` scale only, on the small demo corpora in
+   `tests/fixtures/` — see §11 for the measured reasons nothing bigger has
+   been trained here. **Never true of GPT-2's weights.**
 3. **"I loaded this publicly available pretrained checkpoint for
    inference."** Would be true if a checkpoint's *own* architecture were
    reimplemented and its weights genuinely loaded for inference-only use
-   (`pretrained/` directory, kept separate from self-trained
-   `checkpoints/`). Not yet built for any model (SPEC.md M13's
-   originally-scoped `pretrained_loader.py` — this milestone showed that
-   scope needs GPT-2's *own* architecture reimplemented alongside
+   (a `pretrained/` directory, kept separate from self-trained
+   `checkpoints/`). **Not true of anything in this repo** — §12 showed
+   that scope needs GPT-2's *own* architecture reimplemented alongside
    AshuGPT's, not a conversion into AshuGPT's, since conversion is
-   provably impossible here). `ashugpt/model/` (AshuGPT) and
-   `ashugpt/inference/pretrained_loader.py` (GPT-2 comparison/conversion
-   logic) stay in separate modules on purpose — the custom implementation
-   never imports or depends on any external model implementation, and
-   nothing here imports `transformers.GPT2LMHeadModel` or any other
-   library's actual model class, only raw `config.json`/safetensors-header
-   metadata fetched by hand.
+   provably impossible. `ashugpt/model/` and
+   `ashugpt/inference/pretrained_loader.py` stay in separate modules on
+   purpose: the custom implementation never imports or depends on any
+   external model implementation, and nothing here imports
+   `transformers.GPT2LMHeadModel` or any other library's model class —
+   only raw `config.json`/safetensors-header metadata, fetched by hand.
 
-## Inference API
+## 14. Reproducibility & Commands
 
-A FastAPI server exposing a self-trained AshuGPT checkpoint over HTTP:
-
-```
-python scripts/serve.py --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json
-# server now listening on http://127.0.0.1:8000
-```
+**Setup**
 
 ```
-curl -X POST http://127.0.0.1:8000/generate \
-    -H "Content-Type: application/json" \
-    -d '{"prompt": "Once upon a time", "max_new_tokens": 50, "temperature": 0.8, "top_k": 50, "top_p": 0.9}'
+python -m venv .venv
+.venv\Scripts\activate            # Windows; `source .venv/bin/activate` on Linux/Mac
+pip install -e .                  # torch, pyyaml, fastapi, uvicorn
+pip install -r requirements.txt   # + pytest, psutil, httpx (dev/test only)
 ```
 
-```json
-{
-  "generated_text": "Once upon a time...",
-  "tokens_generated": 50,
-  "generation_time": 0.31,
-  "tokens_per_second": 161.3
-}
-```
+**Seeding**: `TrainConfig.seed` is passed to `torch.manual_seed()` before
+model construction and before the training loop starts; `DistributedSampler`
+uses its own explicit `seed` parameter so every rank agrees on the same
+shuffle before partitioning it. This gives same-seed/same-hardware runs
+consistent behavior — bit-for-bit reproducibility across *different*
+hardware/thread-counts/PyTorch versions isn't claimed (floating-point
+summation order isn't guaranteed identical across those), and
+checkpoint-resume reproduces the *loss trajectory*, not an exact RNG
+replay of the interrupted run (a deliberate simplification — see
+`ashugpt/training/checkpoint.py`).
 
-Real measured output from the demo checkpoint above (20 tokens, greedy):
-`generation_time=0.134s`, `tokens_per_second=149.4` for a single request;
-`scripts/benchmark_server.py` against 5 sequential requests (30 tokens
-each) measured `mean=167.3 tok/s` — small numbers, because this is a
-891K-parameter demo checkpoint on CPU, not a claim about what any
-particular hardware/model combination should achieve.
-
-### How the server works
+**Train a tokenizer**
 
 ```
-ashugpt/api/
-├── schemas.py   -- Pydantic request/response models (pure data contracts)
-├── service.py   -- InferenceService: the ONLY file that touches
-│                   ashugpt.model / ashugpt.tokenizer / ashugpt.inference
-└── app.py       -- FastAPI routes, HTTP status codes, startup config
+python scripts/train_tokenizer.py --input <corpus.txt> --vocab-size 2000 --output tokenizer.json
 ```
 
-`scripts/serve.py --checkpoint ... --tokenizer ...` sets two environment
-variables (`ASHUGPT_CHECKPOINT`, `ASHUGPT_TOKENIZER`) and hands off to
-`uvicorn.run("ashugpt.api.app:app", ...)`. A FastAPI `lifespan` handler
-reads those env vars **once**, at process startup, and constructs one
-`InferenceService` (tokenizer + model, loaded via the same
-`load_model_for_inference()`/`BPETokenizer.load()` this project already
-uses everywhere else) stored on `app.state`. Every `/generate` request
-afterward reuses that same object — `test_model_is_loaded_exactly_once_across_multiple_requests`
-proves this directly, by wrapping `InferenceService.load` in a call
-counter and asserting it fires exactly once across multiple requests.
-Reloading the checkpoint per-request would mean paying disk I/O + weight
-deserialization + model construction on every single call — the whole
-point of a *server* instead of the CLI script is that this cost is paid
-once, not per request.
-
-`POST /generate`'s handler is a plain `def`, not `async def`, on purpose:
-CPU-bound `torch` inference is blocking work, and FastAPI/Starlette
-dispatch sync handlers to a worker thread pool automatically so the event
-loop stays free for other requests (health checks, etc.) while a
-generation is in flight. An `async def` handler doing the same blocking
-matrix math would instead freeze the *entire* server — including
-`/health` — until that one generation finished.
-
-**Validation and error handling, layered**:
-
-- Pydantic (`schemas.py`) rejects structurally invalid requests before the
-  handler ever runs — empty prompt, negative `max_new_tokens`, out-of-range
-  `temperature`/`top_p` — with a `422` and a field-level error list.
-- The model's own runtime checks (e.g. `prompt_len + max_new_tokens`
-  exceeding `context_length`, which Pydantic can't know without asking the
-  loaded model) are caught as `ValueError` and reported as `400` — a
-  client error, distinct from `422` because the *shape* of the request was
-  fine, but it's invalid given *this specific* loaded model.
-- Anything else unexpected is caught and returned as `500` with a short
-  message — a raw Python traceback is never sent to a client.
-- `GET /health` reports `model_loaded`, the checkpoint path, and parameter
-  count; a request before startup finishes (or if it fails) gets
-  `{"status": "loading", "model_loaded": false}` / a clear `RuntimeError`
-  at process start (missing env vars) rather than a server that silently
-  serves broken responses.
-
-### How inference differs from training
-
-| | Training (`ashugpt/training/trainer.py`) | Inference (this server) |
-|---|---|---|
-| Gradients | Computed and applied every step | Never — `model.eval()` + `torch.no_grad()` throughout `generate()` |
-| Input | A batch of `(input_ids, labels)` windows from a dataset | One prompt at a time, no labels, no loss |
-| Optimizer / scheduler | AdamW/SGD + warmup-cosine LR, both actively stepping | Not constructed at all — nothing to optimize |
-| Memory profile | Weights + gradients + optimizer state + activations (see the Memory Optimization section) | Weights only, plus a small KV cache — no gradient/optimizer memory whatsoever |
-| Output | A scalar loss | Sampled token ids, decoded to text |
-| Determinism | Depends on data shuffling + (if sampling) RNG | `temperature=0.0` is fully deterministic; otherwise depends only on the sampling RNG, seeded per-request if desired |
-
-The API server never imports anything from `ashugpt.training` — it has no
-optimizer, no gradient computation, no dataset. `InferenceService.load()`
-calls `model.eval()` once at startup, and every `generate()` call runs
-inside that mode for the life of the process.
-
-### How KV caching improves generation here
-
-Every `/generate` call runs `ashugpt.inference.generate.generate()` with
-`use_cache=True` (the default since Milestone 7) — the prompt is
-processed once, and each subsequent token only requires running the
-*newest* token through the model, attending back through the cached
-keys/values from every earlier position, instead of re-running the whole
-growing sequence from scratch at every step. See the KV Cache section
-above for the full mechanism and the measured 1.5-1.7x speedup at `tiny`
-scale; in this server, that's the direct reason `tokens_per_second`
-climbing with `max_new_tokens` (up to a point) instead of falling is even
-possible — without caching, each additional token costs strictly more
-than the last (O(n) more attention work), which would show up as
-`tokens_per_second` *decreasing* over the course of a single long request.
-
-### Running locally
+**Train a model**
 
 ```
-pip install -e .                     # now includes fastapi + uvicorn (pyproject.toml)
-pip install -r requirements.txt      # + httpx, for tests/unit/test_api.py's TestClient
+python scripts/train.py --model configs/model/small.yaml --train configs/train/tiny_cpu.yaml \
+    --tokenizer tokenizer.json --input <corpus.txt> --checkpoint-dir checkpoints/run1
 
-python scripts/serve.py --checkpoint <path-to-.pt> --tokenizer <path-to-tokenizer.json> \
-    [--host 0.0.0.0] [--port 8000]
+# Distributed (see §9):
+torchrun --nproc_per_node=2 scripts/train.py --model ... --train ... --tokenizer ... --input ... \
+    --checkpoint-dir checkpoints/run1
 
-# or, container/env-var style, without the wrapper script:
-ASHUGPT_CHECKPOINT=<path> ASHUGPT_TOKENIZER=<path> uvicorn ashugpt.api.app:app --host 0.0.0.0 --port 8000
+# Resume:
+python scripts/train.py --model ... --train ... --tokenizer ... --input ... \
+    --checkpoint-dir checkpoints/run1 --resume-from checkpoints/run1/step_100.pt
 ```
 
+Quick pipeline sanity-check (seconds, not minutes) against the bundled
+tiny synthetic corpus:
+
 ```
+python scripts/train_tokenizer.py --input tests/fixtures/synthetic_corpus.txt --vocab-size 300 --output tokenizer.json
+python scripts/train.py --model configs/model/tiny.yaml --train configs/train/synthetic_demo.yaml \
+    --tokenizer tokenizer.json --input tests/fixtures/synthetic_corpus.txt --checkpoint-dir checkpoints/demo
+```
+
+**Evaluate**
+
+```
+python scripts/evaluate.py --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json \
+    --input <corpus.txt> --seq-len 64
+```
+
+**Generate**
+
+```
+python -m ashugpt.generate --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json \
+    --prompt "Once upon a time" --max-new-tokens 50 --temperature 0.8 --top-k 50 --top-p 0.9
+```
+
+**Serve**
+
+```
+python scripts/serve.py --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json --port 8000
 python scripts/benchmark_server.py --url http://127.0.0.1:8000 --requests 10 --max-new-tokens 50
 ```
 
-Tests (`tests/unit/test_api.py`) use FastAPI's `TestClient` — in-process,
-no real socket or subprocess needed — against a tiny fixture checkpoint
-built fresh per test session, so they run in the normal `pytest` suite
-without needing a server already running.
+**Inspect a config / estimate memory**
+
+```
+python -m ashugpt.inspect_model --config 1b
+```
+
+**Compare against GPT-2 / memory benchmark**
+
+```
+python scripts/demo_pretrained_loading.py
+python scripts/benchmark_memory.py
+```
+
+## 15. Project Structure
+
+```
+authLLM/
+├── SPEC.md                    # full design spec + honest milestone-by-milestone log
+├── README.md                  # this file
+├── pyproject.toml             # package metadata (torch, pyyaml, fastapi, uvicorn)
+├── requirements.txt           # + pytest, psutil, httpx (dev/test only)
+├── configs/
+│   ├── model/                 # tiny / small / medium / xl_1b presets (§4)
+│   └── train/                 # tiny_cpu.yaml (real corpus), synthetic_demo.yaml (fast sanity check)
+├── scripts/                   # CLI entry points (train_tokenizer, train, evaluate, serve, benchmark_*, demo_pretrained_loading)
+├── ashugpt/                   # the installable package
+│   ├── generate.py             # CLI: python -m ashugpt.generate
+│   ├── inspect_model.py        # CLI: python -m ashugpt.inspect_model
+│   ├── config.py                # ModelConfig + TrainConfig
+│   ├── api/                     # FastAPI server (§10.3) — separate from model code
+│   ├── model/                   # architecture: norm, rope, attention, feedforward, block, gpt (§6)
+│   ├── tokenizer/                # from-scratch BPE (§5)
+│   ├── data/                     # tokenized-dataset loading/chunking (§7)
+│   ├── training/                 # optim, amp, checkpoint, ddp, trainer (§8-9)
+│   ├── eval/                     # perplexity (§8)
+│   ├── inference/                # generate.py (§10), pretrained_loader.py (§12)
+│   └── utils/                    # memory.py, the memory estimator (§11)
+└── tests/
+    ├── fixtures/                 # tiny_corpus.txt, synthetic_corpus.txt
+    ├── unit/                     # one file per component
+    └── integration/              # test_train_step.py, test_ddp.py — slower, real end-to-end proofs
+```
+
+## 16. Testing
+
+```
+pytest                    # everything (210 tests)
+pytest tests/unit          # fast, run constantly
+pytest tests/integration   # slower — real training run + real 2-process DDP run
+```
+
+Every architectural component (RMSNorm, RoPE, attention, SwiGLU, causal
+masking, KV cache) is tested against a *known property*, not just "it
+runs": exact numerical equivalence with a hand-computed reference,
+provable invariants (rotation preserves norm, causal masking provably
+blocks future tokens), or exact expected memory multipliers. Every memory
+or speed claim in this document has a `scripts/benchmark_*.py` or test
+behind the specific number quoted.
+
+## 17. What's Not Built
+
+See [SPEC.md](SPEC.md) for the full milestone-by-milestone log, including
+honest notes on where an original plan changed after something was
+actually measured. Not yet built: an on-disk/streaming data pipeline for a
+real large corpus (current pipeline is in-memory, adequate at the scales
+actually trained here), FSDP/model parallelism, and a browser frontend for
+the inference API.
