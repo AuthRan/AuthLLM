@@ -188,6 +188,21 @@ only `tiny` and `small` are expected to actually be trained to convergence on
 current hardware. This keeps the "1B+ configurable" requirement honest: the
 *architecture* supports it today, the *training run* doesn't yet.
 
+**Milestone 10** added `ashugpt/utils/memory.py` + `python -m
+ashugpt.inspect_model` specifically to make that distinction checkable,
+not just asserted: exact parameter count and estimated FP32/BF16
+weight/gradient/optimizer/activation memory for any preset, computed as
+pure arithmetic on `ModelConfig` (no `nn.Module` ever built, so it's
+instant even for `xl_1b`). Measured `xl_1b` estimate: 1,233,479,680 params,
+4.93GB FP32 weights, 2.47GB BF16 weights, ~26.9GB estimated total training
+memory with AdamW at batch_size=1/seq_len=2048 — consistent with the
+well-known "~16 bytes/param for weights+grad+Adam state" rule of thumb
+(1.23B × 16B ≈ 19.7GB, + ~7GB activations ≈ 26.7GB). The CLI's output
+explicitly labels every report "ARCHITECTURE CONFIGURATION -- not a
+trained model" and prints the implemented-architecture /
+trained-from-scratch / pretrained-checkpoint distinction every time, so
+this can never be read as a claim that `xl_1b` was actually trained.
+
 ## Training Pipeline
 
 1. Load `ModelConfig` + `TrainConfig`, build model, optimizer (AdamW), LR

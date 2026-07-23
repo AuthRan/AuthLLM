@@ -4,22 +4,17 @@ Educational, from-scratch GPT-style decoder-only LLM. See [SPEC.md](SPEC.md)
 for the full design spec and milestone roadmap.
 
 **Status: scaffolding + tokenizer + model + training pipeline + cached
-generation + DDP + memory optimization done (SPEC.md M0-M11 + M6 fully
-closed out).** Package structure, config system, model-size presets, a
-from-scratch BPE tokenizer, the full `AshuGPT` model, a complete training
-pipeline (DistributedDataParallel included), autoregressive text
-generation (greedy/temperature/top-k/top-p, KV-cached by default), and
-five configurable memory optimizations (gradient checkpointing, mixed
-precision, efficient attention, gradient accumulation, optimizer choice)
-all exist and are tested — including end-to-end tests proving the model
-learns, that cached/uncached generation and checkpointed/non-checkpointed
-training produce identical results, that `python -m ashugpt.generate`
-produces real text, that a real 2-process DDP run converges to the same
-weights as a single-process baseline, and a real benchmark measuring each
-memory optimization's actual memory/speed impact
-(`scripts/benchmark_memory.py`). Not yet built: on-disk/streaming data
-pipeline for a real large corpus, FSDP/model parallelism, or the clean
-inference API class.
+generation + DDP + memory optimization + scaling/memory estimation done
+(SPEC.md M0-M11 + M6 fully closed out).** Package structure, config
+system, model-size presets, a from-scratch BPE tokenizer, the full
+`AshuGPT` model, a complete training pipeline (DistributedDataParallel
+included), autoregressive text generation (greedy/temperature/top-k/top-p,
+KV-cached by default), five configurable memory optimizations, and a
+memory estimator + `python -m ashugpt.inspect_model` CLI that can report
+exact parameter count and estimated memory for any config — including
+`xl_1b` (1.23B params) — without ever building an `nn.Module`, all exist
+and are tested. Not yet built: on-disk/streaming data pipeline for a real
+large corpus, FSDP/model parallelism, or the clean inference API class.
 
 ## Project Structure
 
@@ -45,6 +40,7 @@ authLLM/
 │   └── benchmark_memory.py     # memory/speed impact of each Milestone 9 optimization
 ├── ashugpt/                   # the installable package
 │   ├── generate.py             # CLI: python -m ashugpt.generate --prompt "..."
+│   ├── inspect_model.py        # CLI: python -m ashugpt.inspect_model --config 1b
 │   ├── config.py               # ModelConfig + TrainConfig dataclasses + YAML loaders
 │   ├── model/                  # transformer architecture (implemented)
 │   │   ├── norm.py               # RMSNorm
@@ -67,7 +63,8 @@ authLLM/
 │   │   └── perplexity.py        # validation loop + perplexity
 │   ├── inference/
 │   │   └── generate.py          # sampling strategies + the autoregressive decoding loop
-│   └── utils/                     # logging/seeding/device helpers — empty
+│   └── utils/
+│       └── memory.py            # parameter-count-based memory estimator (no model built)
 └── tests/
     ├── fixtures/
     │   ├── tiny_corpus.txt        # varied small corpus for tokenizer tests/demo
@@ -731,3 +728,112 @@ Every optimization above is proven correct (matches the unoptimized path,
 or its exact expected memory multiplier) before any memory number is
 trusted — the same "correctness before speed" discipline as Milestone 7's
 KV cache.
+
+## Scaling to 1B+ Parameters
+
+**This project has never trained anything at `medium` or `xl_1b` scale.**
+What it *can* do is tell you, instantly and without building anything,
+exactly how big a config is and roughly what training it would cost:
+
+```
+python -m ashugpt.inspect_model --config 1b
+python -m ashugpt.inspect_model --config small --batch-size 8 --seq-len 512 --optimizer sgd
+python -m ashugpt.inspect_model --all              # every built-in preset, side by side
+```
+
+```
+=== xl_1b ===  [ARCHITECTURE CONFIGURATION -- not a trained model; see explanation below]
+Layers:                       22
+Hidden dimension:             2048
+Attention heads:              32
+Vocabulary size:              50,304
+Context length:               2048
+Parameter count:             1,233,479,680
+Weight memory (FP32):        4.934 GB
+Weight memory (BF16):        2.467 GB
+Gradient memory (FP32):      4.934 GB
+Optimizer memory:            9.868 GB
+Activation memory (est.):    7.151 GB
+Estimated total (training):  26.887 GB
+(activation estimate assumes batch_size=1, seq_len=2048, optimizer=adamw)
+```
+
+That last line is a real, if rough, number: ~16 bytes/param for
+weights+gradients+AdamW state (1.23B × 16B ≈ 19.7GB) plus ~7GB of
+estimated activation memory ≈ 26.7GB, which is what the tool actually
+computes — consistent with the standard rule of thumb for full-precision
+Adam training, computed from this project's own `ModelConfig` shape
+formula rather than quoted from memory.
+
+**How the estimate is built** (`ashugpt/utils/memory.py`), and why it's
+honest about what it does and doesn't know about *this* project's
+training loop specifically, not a generic textbook formula:
+
+- **Weights** — `param_count x 4 bytes` (FP32) or `x 2 bytes` (BF16).
+  Both are reported because they answer different questions: FP32 is
+  what a checkpoint on disk / the actual training state costs; BF16 is
+  what a bf16-native inference deployment would cost.
+- **Gradients** and **optimizer state** are always estimated at FP32 —
+  because that's what this project's training loop actually does.
+  `TrainConfig.amp_dtype` only wraps the *forward pass* in `autocast`
+  (Milestone 5); parameters themselves are never permanently cast to a
+  lower dtype, so gradients and AdamW's `exp_avg`/`exp_avg_sq` inherit
+  fp32 from the parameters regardless of `amp_dtype`. This is exactly
+  the finding from the Memory Optimization section above (bf16 barely
+  moved the needle on weight/optimizer memory in the real benchmark) —
+  the estimator matches what was actually measured, not a generic
+  mixed-precision-training assumption that wouldn't apply here.
+- **Activations** are estimated at `bf16` by default (matching
+  `TrainConfig`'s own default `amp_dtype`), dominated by each layer's
+  `(batch, n_heads, seq_len, seq_len)` attention score matrix — the one
+  genuinely quadratic term, and usually the largest single tensor once
+  `seq_len` is more than a few hundred.
+- Gradient checkpointing's effect on activation memory is deliberately
+  **not** modeled symbolically here — Milestone 9 already *measured* it
+  directly (-38.3% peak RSS), which is more trustworthy than re-deriving
+  an estimate for something already proven empirically.
+- **Calibration**: sanity-checked against Milestone 9's real measured RSS
+  for a small training run — the estimator came in at roughly a third of
+  the real number, with the gap traced to fixed Python/PyTorch process
+  overhead (confirmed independently: importing torch and allocating one
+  tensor alone costs ~190MB RSS in this environment) that doesn't scale
+  with model size. So accuracy should *improve*, not worsen, at the
+  GB-scale configs this tool exists for — that gap is single-digit
+  percent of a 27GB estimate, not of a 750MB one.
+
+Every preset — `tiny`, `small`, `medium`, `xl_1b` — reports in well under
+a second, including `xl_1b`, because `estimate_memory()` only ever calls
+`ModelConfig.approx_param_count()` (pure arithmetic, Milestone 1); nothing
+here constructs an `nn.Module`. `test_estimate_memory_is_instant_even_for_a_billion_parameter_config`
+asserts this directly (< 1 second).
+
+### Implemented architecture vs. trained model vs. pretrained checkpoint
+
+Three genuinely different things this project is careful never to
+conflate, and which `python -m ashugpt.inspect_model`'s output spells out
+in full every time it runs (not just for `xl_1b` — the same explanation
+prints regardless of which config you inspect):
+
+1. **Implemented architecture** — a `ModelConfig` this codebase *can*
+   construct into a real `nn.Module`. Has a parameter count and a memory
+   estimate. Every weight would be freshly random-initialized if actually
+   built. This is all any `inspect_model` report describes, `xl_1b`
+   included.
+2. **Model trained from scratch** — an architecture that was *actually*
+   trained: real gradient descent, real data, a real checkpoint file on
+   disk (`ashugpt/training/checkpoint.py`, the gitignored `checkpoints/`
+   directory — self-trained only). Every checkpoint this project can
+   currently load was trained this way, at `tiny`/`small` scale, on the
+   small demo corpora in `tests/fixtures/`. Nothing at `medium` or
+   `xl_1b` scale has been trained — this CPU-only environment makes that
+   impractical, and the Memory Optimization section above has the
+   measured numbers (not assumptions) showing exactly why.
+3. **Pretrained checkpoint loaded for inference** — public weights
+   (e.g. GPT-2's) downloaded and mapped onto this architecture for
+   *inference only*, never trained or fine-tuned by this project. This is
+   SPEC.md milestone M13 (`pretrained_loader.py`), not yet built. Its
+   checkpoints would live in the gitignored `pretrained/` directory, kept
+   strictly separate from `checkpoints/` so a self-trained model is never
+   mistaken for a downloaded one.
+
+`xl_1b` is case 1, full stop. Every report says so explicitly.
