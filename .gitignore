@@ -6,4 +6,5 @@ __pycache__/
 /checkpoints/
 /pretrained/
 /data/
+/learning/
 *.safetensors
