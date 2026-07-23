@@ -4,17 +4,20 @@ Educational, from-scratch GPT-style decoder-only LLM. See [SPEC.md](SPEC.md)
 for the full design spec and milestone roadmap.
 
 **Status: scaffolding + tokenizer + model + training pipeline + cached
-generation + DDP + memory optimization + scaling/memory estimation done
-(SPEC.md M0-M11 + M6 fully closed out).** Package structure, config
-system, model-size presets, a from-scratch BPE tokenizer, the full
-`AshuGPT` model, a complete training pipeline (DistributedDataParallel
-included), autoregressive text generation (greedy/temperature/top-k/top-p,
-KV-cached by default), five configurable memory optimizations, and a
-memory estimator + `python -m ashugpt.inspect_model` CLI that can report
-exact parameter count and estimated memory for any config — including
-`xl_1b` (1.23B params) — without ever building an `nn.Module`, all exist
-and are tested. Not yet built: on-disk/streaming data pipeline for a real
-large corpus, FSDP/model parallelism, or the clean inference API class.
+generation + DDP + memory optimization + scaling/memory estimation +
+pretrained-checkpoint comparison done (SPEC.md M0-M11, M13; M6 fully
+closed out).** Package structure, config system, model-size presets, a
+from-scratch BPE tokenizer, the full `AshuGPT` model, a complete training
+pipeline (DistributedDataParallel included), autoregressive text
+generation (greedy/temperature/top-k/top-p, KV-cached by default), five
+configurable memory optimizations, a memory estimator +
+`python -m ashugpt.inspect_model` CLI, and a real GPT-2-vs-AshuGPT
+architecture comparison + checkpoint loader (`ashugpt/inference/pretrained_loader.py`)
+that correctly determines and proves direct weight loading is impossible
+(RoPE vs. learned absolute positions; SwiGLU vs. plain GELU MLP) rather
+than pretending otherwise, all exist and are tested. Not yet built:
+on-disk/streaming data pipeline for a real large corpus, FSDP/model
+parallelism, or the clean inference API class.
 
 ## Project Structure
 
@@ -37,7 +40,8 @@ authLLM/
 ├── scripts/
 │   ├── train_tokenizer.py     # CLI: train a BPE tokenizer from a text file
 │   ├── train.py                # CLI: train an AshuGPT model end to end
-│   └── benchmark_memory.py     # memory/speed impact of each Milestone 9 optimization
+│   ├── benchmark_memory.py     # memory/speed impact of each Milestone 9 optimization
+│   └── demo_pretrained_loading.py  # live GPT-2 metadata vs. AshuGPT's architecture
 ├── ashugpt/                   # the installable package
 │   ├── generate.py             # CLI: python -m ashugpt.generate --prompt "..."
 │   ├── inspect_model.py        # CLI: python -m ashugpt.inspect_model --config 1b
@@ -62,7 +66,8 @@ authLLM/
 │   ├── eval/
 │   │   └── perplexity.py        # validation loop + perplexity
 │   ├── inference/
-│   │   └── generate.py          # sampling strategies + the autoregressive decoding loop
+│   │   ├── generate.py          # sampling strategies + the autoregressive decoding loop
+│   │   └── pretrained_loader.py # GPT-2 architecture comparison + (refused) checkpoint conversion
 │   └── utils/
 │       └── memory.py            # parameter-count-based memory estimator (no model built)
 └── tests/
@@ -837,3 +842,133 @@ prints regardless of which config you inspect):
    mistaken for a downloaded one.
 
 `xl_1b` is case 1, full stop. Every report says so explicitly.
+
+## Pretrained Checkpoints (Loading, Not Training)
+
+**AshuGPT cannot load GPT-2's public pretrained weights and produce a
+working model.** Not "hasn't been tried yet" — determined, tested, and
+demonstrated against GPT-2's real published checkpoint metadata that it
+*cannot*, for reasons that no amount of tensor renaming or reshaping
+fixes. `ashugpt/inference/pretrained_loader.py` implements the comparison
+and the loader; this section is the summary.
+
+**Why GPT-2**: the best-known public decoder-only checkpoint, and — more
+usefully — one that differs from AshuGPT in exactly the dimensions this
+project actually built custom (positional encoding, normalization, FFN
+structure), making the comparison maximally informative rather than a
+coincidental near-match.
+
+All facts below are verified against the real `openai-community/gpt2`
+checkpoint on Hugging Face — its `config.json` and its safetensors
+header (which lists every tensor's name/shape/dtype), fetched live via
+`scripts/demo_pretrained_loading.py` without downloading the full ~548MB
+of weight data (irrelevant to the architecture question — names and
+shapes decide it, not values):
+
+```
+python scripts/demo_pretrained_loading.py
+```
+
+| Aspect | GPT-2 | AshuGPT |
+|---|---|---|
+| Positional encoding | Learned absolute embedding table (`wpe`), added once to the input | RoPE: parameter-free Q/K rotation, applied every layer |
+| Normalization | LayerNorm (mean-centered, has bias) | RMSNorm (no centering, no bias) |
+| Feed-forward | Plain 2-matrix GELU MLP (`c_fc`, `c_proj`), with bias | Gated 3-matrix SwiGLU (`gate_proj`/`up_proj`/`down_proj`), no bias |
+| Attention QKV | One combined `c_attn` matrix, `Conv1D` layout (transposed vs. `nn.Linear`), with bias | Separate `q_proj`/`k_proj`/`v_proj`, `nn.Linear` layout, no bias |
+| Vocabulary | 50,257, GPT-2's own trained BPE merges | Configurable; AshuGPT's from-scratch BPE has independently-trained merges even at matching `vocab_size` |
+| Embedding tying | Tied (confirmed: no separate `lm_head.weight` in the real checkpoint) | Same default |
+
+### Two independent, fundamental incompatibilities
+
+1. **Positional encoding.** GPT-2's attention weights were trained
+   assuming position info arrives as an additive embedding mixed into the
+   input *before* the first layer, with Q/K used exactly as projected.
+   AshuGPT's attention *unconditionally rotates* Q/K via RoPE inside every
+   layer — a computation GPT-2's weights never saw during training, and
+   AshuGPT has no flag to disable. No rename fixes a different algorithm.
+2. **Feed-forward gating.** AshuGPT's `gate_proj` has no counterpart in
+   GPT-2's plain 2-matrix MLP *at all*. Loading GPT-2's weights would
+   leave `gate_proj` at random initialization — the result would be a
+   random-plus-GPT-2 hybrid, not a reproduction of GPT-2.
+
+A third issue, independent of the above: `RMSNorm`'s weight and
+`LayerNorm`'s weight share a shape but scale mathematically different
+quantities — shape compatibility isn't semantic compatibility.
+
+**A concrete number that makes this tangible**: building an AshuGPT model
+at GPT-2's exact shape (12 layers, d_model=768, 12 heads, vocab 50,257)
+gives **151,862,784 parameters** — not GPT-2's actual ~124M. The gap is
+almost entirely `gate_proj`: 12 layers × 768 × 3072 ≈ 28.3M extra
+parameters that SwiGLU has and a plain GELU MLP doesn't. Even the
+"shape-matched" model isn't actually the same shape once you count
+correctly — the FFN structure difference isn't a rounding error, it's a
+different number of matrices.
+
+### What was implemented anyway (the genuinely solvable part)
+
+Splitting GPT-2's combined `c_attn` into separate Q/K/V, undoing
+`Conv1D`'s transposed weight layout, and mapping token embeddings, final
+norm, and per-layer RMSNorm weights — real, tested, numerically-verified
+code (`convert_gpt2_state_dict`), not a stub. If GPT-2 used RoPE and a
+gated FFN, this alone would be a working conversion. It doesn't, so:
+
+```python
+from ashugpt.inference.pretrained_loader import load_gpt2_checkpoint, IncompatibleArchitectureError
+
+try:
+    model, report = load_gpt2_checkpoint(gpt2_state_dict)  # strict=True by default
+except IncompatibleArchitectureError as e:
+    print(e)  # explains exactly why, lists every missing/unexpected key
+
+# Or, explicitly opting into a non-functional result for inspection only:
+model, report = load_gpt2_checkpoint(gpt2_state_dict, strict=False)
+report.summary()  # missing_keys, unexpected_keys, fundamental_incompatibilities
+```
+
+Real output against the live-fetched `gpt2` checkpoint metadata: **75
+tensors** successfully mapped (embeddings, norms, attention Q/K/V/O across
+12 layers), **36 missing** (every `gate_proj`/`up_proj`/`down_proj` — no
+source tensor exists for any of them), **110 unexpected** (`wpe.weight`,
+every bias, every `mlp.c_fc`/`mlp.c_proj`, and the static causal-mask
+buffer GPT-2 stores as `h.{i}.attn.bias`, which was never a trainable
+weight to begin with). `load_state_dict`'s own `missing_keys`/
+`unexpected_keys` accounting (PyTorch's built-in mechanism, not
+reinvented) is the authoritative source for both counts.
+
+**Fails loudly by default**: `load_gpt2_checkpoint(strict=True)` — the
+default — raises `IncompatibleArchitectureError` with the full report
+rather than returning a model that looks loaded but silently produces
+wrong output. `strict=False` exists only for inspecting what *would* have
+transferred; its output is explicitly documented as non-functional.
+
+### "I implemented this" vs. "I trained this" vs. "I loaded this"
+
+Three claims this project is careful never to conflate:
+
+1. **"I implemented this architecture."** True of everything in
+   `ashugpt/model/`. Building any config (`tiny` through `xl_1b`) produces
+   a real `nn.Module` with randomly-initialized weights — nothing has
+   learned anything yet.
+2. **"I trained this checkpoint."** True only of checkpoints actually
+   produced by `ashugpt/training/trainer.py` — real gradient descent, real
+   data, a real file in the gitignored `checkpoints/` directory. Currently
+   true at `tiny`/`small` scale on the demo corpora in `tests/fixtures/`
+   only (see the Scaling section above for why nothing bigger has been
+   trained here). **Never true of GPT-2's weights** — this project did
+   not train GPT-2, and as shown above, couldn't even successfully load
+   it if it wanted to skip the training and just borrow the weights.
+3. **"I loaded this publicly available pretrained checkpoint for
+   inference."** Would be true if a checkpoint's *own* architecture were
+   reimplemented and its weights genuinely loaded for inference-only use
+   (`pretrained/` directory, kept separate from self-trained
+   `checkpoints/`). Not yet built for any model (SPEC.md M13's
+   originally-scoped `pretrained_loader.py` — this milestone showed that
+   scope needs GPT-2's *own* architecture reimplemented alongside
+   AshuGPT's, not a conversion into AshuGPT's, since conversion is
+   provably impossible here). `ashugpt/model/` (AshuGPT) and
+   `ashugpt/inference/pretrained_loader.py` (GPT-2 comparison/conversion
+   logic) stay in separate modules on purpose — the custom implementation
+   never imports or depends on any external model implementation, and
+   nothing here imports `transformers.GPT2LMHeadModel` or any other
+   library's actual model class, only raw `config.json`/safetensors-header
+   metadata fetched by hand.
