@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ashugpt"
+version = "0.1.0"
+description = "Educational, from-scratch GPT-style decoder-only LLM"
+requires-python = ">=3.11"
+dependencies = [
+    "torch",
+    "pyyaml",
+]
+
+[tool.setuptools.packages.find]
+include = ["ashugpt*"]

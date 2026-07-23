@@ -1,0 +1,12 @@
+# ~30M params. The real "trained from scratch on CPU" target (Milestone M12).
+name: small
+vocab_size: 50304
+d_model: 384
+n_layers: 6
+n_heads: 6
+n_kv_heads: 6
+d_ff: 1024
+context_length: 512
+rope_theta: 10000.0
+norm_eps: 1.0e-5
+tie_embeddings: true

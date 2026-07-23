@@ -1,0 +1,13 @@
+# ~124M params (roughly GPT-2 small scale). Shape/forward tested on CPU;
+# real training run needs GPU.
+name: medium
+vocab_size: 50304
+d_model: 768
+n_layers: 12
+n_heads: 12
+n_kv_heads: 12
+d_ff: 2048
+context_length: 1024
+rope_theta: 10000.0
+norm_eps: 1.0e-5
+tie_embeddings: true
