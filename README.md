@@ -5,19 +5,19 @@ for the full design spec and milestone roadmap.
 
 **Status: scaffolding + tokenizer + model + training pipeline + cached
 generation + DDP + memory optimization + scaling/memory estimation +
-pretrained-checkpoint comparison done (SPEC.md M0-M11, M13; M6 fully
-closed out).** Package structure, config system, model-size presets, a
-from-scratch BPE tokenizer, the full `AshuGPT` model, a complete training
-pipeline (DistributedDataParallel included), autoregressive text
-generation (greedy/temperature/top-k/top-p, KV-cached by default), five
-configurable memory optimizations, a memory estimator +
-`python -m ashugpt.inspect_model` CLI, and a real GPT-2-vs-AshuGPT
-architecture comparison + checkpoint loader (`ashugpt/inference/pretrained_loader.py`)
-that correctly determines and proves direct weight loading is impossible
-(RoPE vs. learned absolute positions; SwiGLU vs. plain GELU MLP) rather
-than pretending otherwise, all exist and are tested. Not yet built:
-on-disk/streaming data pipeline for a real large corpus, FSDP/model
-parallelism, or the clean inference API class.
+pretrained-checkpoint comparison + inference API done (SPEC.md M0-M11,
+M13; M6 fully closed out).** Package structure, config system,
+model-size presets, a from-scratch BPE tokenizer, the full `AshuGPT`
+model, a complete training pipeline (DistributedDataParallel included),
+autoregressive text generation (greedy/temperature/top-k/top-p,
+KV-cached by default), five configurable memory optimizations, a memory
+estimator + `python -m ashugpt.inspect_model` CLI, a real
+GPT-2-vs-AshuGPT architecture comparison + checkpoint loader that
+correctly proves direct weight loading is impossible rather than
+pretending otherwise, and a FastAPI inference server (`ashugpt/api/`,
+model loaded once at startup, `python scripts/serve.py`) all exist and
+are tested. Not yet built: on-disk/streaming data pipeline for a real
+large corpus, FSDP/model parallelism, or the M15 web frontend.
 
 ## Project Structure
 
@@ -41,11 +41,17 @@ authLLM/
 │   ├── train_tokenizer.py     # CLI: train a BPE tokenizer from a text file
 │   ├── train.py                # CLI: train an AshuGPT model end to end
 │   ├── benchmark_memory.py     # memory/speed impact of each Milestone 9 optimization
-│   └── demo_pretrained_loading.py  # live GPT-2 metadata vs. AshuGPT's architecture
+│   ├── demo_pretrained_loading.py  # live GPT-2 metadata vs. AshuGPT's architecture
+│   ├── serve.py                 # run the FastAPI inference server locally
+│   └── benchmark_server.py      # throughput benchmark against a running server
 ├── ashugpt/                   # the installable package
 │   ├── generate.py             # CLI: python -m ashugpt.generate --prompt "..."
 │   ├── inspect_model.py        # CLI: python -m ashugpt.inspect_model --config 1b
 │   ├── config.py               # ModelConfig + TrainConfig dataclasses + YAML loaders
+│   ├── api/                    # FastAPI inference server (separate from model code)
+│   │   ├── schemas.py            # Pydantic request/response models
+│   │   ├── service.py            # the ONLY bridge to ashugpt.model/tokenizer/inference
+│   │   └── app.py                # routes, startup, HTTP status codes
 │   ├── model/                  # transformer architecture (implemented)
 │   │   ├── norm.py               # RMSNorm
 │   │   ├── rope.py               # Rotary positional embeddings
@@ -972,3 +978,138 @@ Three claims this project is careful never to conflate:
    nothing here imports `transformers.GPT2LMHeadModel` or any other
    library's actual model class, only raw `config.json`/safetensors-header
    metadata fetched by hand.
+
+## Inference API
+
+A FastAPI server exposing a self-trained AshuGPT checkpoint over HTTP:
+
+```
+python scripts/serve.py --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json
+# server now listening on http://127.0.0.1:8000
+```
+
+```
+curl -X POST http://127.0.0.1:8000/generate \
+    -H "Content-Type: application/json" \
+    -d '{"prompt": "Once upon a time", "max_new_tokens": 50, "temperature": 0.8, "top_k": 50, "top_p": 0.9}'
+```
+
+```json
+{
+  "generated_text": "Once upon a time...",
+  "tokens_generated": 50,
+  "generation_time": 0.31,
+  "tokens_per_second": 161.3
+}
+```
+
+Real measured output from the demo checkpoint above (20 tokens, greedy):
+`generation_time=0.134s`, `tokens_per_second=149.4` for a single request;
+`scripts/benchmark_server.py` against 5 sequential requests (30 tokens
+each) measured `mean=167.3 tok/s` — small numbers, because this is a
+891K-parameter demo checkpoint on CPU, not a claim about what any
+particular hardware/model combination should achieve.
+
+### How the server works
+
+```
+ashugpt/api/
+├── schemas.py   -- Pydantic request/response models (pure data contracts)
+├── service.py   -- InferenceService: the ONLY file that touches
+│                   ashugpt.model / ashugpt.tokenizer / ashugpt.inference
+└── app.py       -- FastAPI routes, HTTP status codes, startup config
+```
+
+`scripts/serve.py --checkpoint ... --tokenizer ...` sets two environment
+variables (`ASHUGPT_CHECKPOINT`, `ASHUGPT_TOKENIZER`) and hands off to
+`uvicorn.run("ashugpt.api.app:app", ...)`. A FastAPI `lifespan` handler
+reads those env vars **once**, at process startup, and constructs one
+`InferenceService` (tokenizer + model, loaded via the same
+`load_model_for_inference()`/`BPETokenizer.load()` this project already
+uses everywhere else) stored on `app.state`. Every `/generate` request
+afterward reuses that same object — `test_model_is_loaded_exactly_once_across_multiple_requests`
+proves this directly, by wrapping `InferenceService.load` in a call
+counter and asserting it fires exactly once across multiple requests.
+Reloading the checkpoint per-request would mean paying disk I/O + weight
+deserialization + model construction on every single call — the whole
+point of a *server* instead of the CLI script is that this cost is paid
+once, not per request.
+
+`POST /generate`'s handler is a plain `def`, not `async def`, on purpose:
+CPU-bound `torch` inference is blocking work, and FastAPI/Starlette
+dispatch sync handlers to a worker thread pool automatically so the event
+loop stays free for other requests (health checks, etc.) while a
+generation is in flight. An `async def` handler doing the same blocking
+matrix math would instead freeze the *entire* server — including
+`/health` — until that one generation finished.
+
+**Validation and error handling, layered**:
+
+- Pydantic (`schemas.py`) rejects structurally invalid requests before the
+  handler ever runs — empty prompt, negative `max_new_tokens`, out-of-range
+  `temperature`/`top_p` — with a `422` and a field-level error list.
+- The model's own runtime checks (e.g. `prompt_len + max_new_tokens`
+  exceeding `context_length`, which Pydantic can't know without asking the
+  loaded model) are caught as `ValueError` and reported as `400` — a
+  client error, distinct from `422` because the *shape* of the request was
+  fine, but it's invalid given *this specific* loaded model.
+- Anything else unexpected is caught and returned as `500` with a short
+  message — a raw Python traceback is never sent to a client.
+- `GET /health` reports `model_loaded`, the checkpoint path, and parameter
+  count; a request before startup finishes (or if it fails) gets
+  `{"status": "loading", "model_loaded": false}` / a clear `RuntimeError`
+  at process start (missing env vars) rather than a server that silently
+  serves broken responses.
+
+### How inference differs from training
+
+| | Training (`ashugpt/training/trainer.py`) | Inference (this server) |
+|---|---|---|
+| Gradients | Computed and applied every step | Never — `model.eval()` + `torch.no_grad()` throughout `generate()` |
+| Input | A batch of `(input_ids, labels)` windows from a dataset | One prompt at a time, no labels, no loss |
+| Optimizer / scheduler | AdamW/SGD + warmup-cosine LR, both actively stepping | Not constructed at all — nothing to optimize |
+| Memory profile | Weights + gradients + optimizer state + activations (see the Memory Optimization section) | Weights only, plus a small KV cache — no gradient/optimizer memory whatsoever |
+| Output | A scalar loss | Sampled token ids, decoded to text |
+| Determinism | Depends on data shuffling + (if sampling) RNG | `temperature=0.0` is fully deterministic; otherwise depends only on the sampling RNG, seeded per-request if desired |
+
+The API server never imports anything from `ashugpt.training` — it has no
+optimizer, no gradient computation, no dataset. `InferenceService.load()`
+calls `model.eval()` once at startup, and every `generate()` call runs
+inside that mode for the life of the process.
+
+### How KV caching improves generation here
+
+Every `/generate` call runs `ashugpt.inference.generate.generate()` with
+`use_cache=True` (the default since Milestone 7) — the prompt is
+processed once, and each subsequent token only requires running the
+*newest* token through the model, attending back through the cached
+keys/values from every earlier position, instead of re-running the whole
+growing sequence from scratch at every step. See the KV Cache section
+above for the full mechanism and the measured 1.5-1.7x speedup at `tiny`
+scale; in this server, that's the direct reason `tokens_per_second`
+climbing with `max_new_tokens` (up to a point) instead of falling is even
+possible — without caching, each additional token costs strictly more
+than the last (O(n) more attention work), which would show up as
+`tokens_per_second` *decreasing* over the course of a single long request.
+
+### Running locally
+
+```
+pip install -e .                     # now includes fastapi + uvicorn (pyproject.toml)
+pip install -r requirements.txt      # + httpx, for tests/unit/test_api.py's TestClient
+
+python scripts/serve.py --checkpoint <path-to-.pt> --tokenizer <path-to-tokenizer.json> \
+    [--host 0.0.0.0] [--port 8000]
+
+# or, container/env-var style, without the wrapper script:
+ASHUGPT_CHECKPOINT=<path> ASHUGPT_TOKENIZER=<path> uvicorn ashugpt.api.app:app --host 0.0.0.0 --port 8000
+```
+
+```
+python scripts/benchmark_server.py --url http://127.0.0.1:8000 --requests 10 --max-new-tokens 50
+```
+
+Tests (`tests/unit/test_api.py`) use FastAPI's `TestClient` — in-process,
+no real socket or subprocess needed — against a tiny fixture checkpoint
+built fresh per test session, so they run in the normal `pytest` suite
+without needing a server already running.
