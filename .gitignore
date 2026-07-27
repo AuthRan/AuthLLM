@@ -19,3 +19,8 @@ __pycache__/
 # there), never committed to this source repo. The Space code lives in space/.
 /space/model.pt
 /space/tokenizer.json
+
+# Env files / secrets -- never commit tokens
+.env
+.env.*
+*.env
