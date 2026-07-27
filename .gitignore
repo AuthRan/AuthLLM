@@ -8,3 +8,6 @@ __pycache__/
 /data/
 /learning/
 *.safetensors
+
+# Generated training artifacts (reproducible via scripts/train_tokenizer.py)
+/tokenizer.json
