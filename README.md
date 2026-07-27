@@ -28,13 +28,18 @@ itemized version of this table.
 
 ## Live Demo
 
-**[▶ Try it on Hugging Face Spaces](https://huggingface.co/spaces/AuthRan/AshGPT)** —
-type a prompt and watch a `small` (~14M-parameter) model, trained from
-scratch on TinyStories, complete a story token by token.
+<p align="center">
+  <a href="https://huggingface.co/spaces/AuthRan/AshGPT">
+    <img src="resources/demo.gif" alt="AshuGPT generating a TinyStories completion, live" width="760">
+  </a>
+</p>
 
-<!-- Record the live Space (or a local `python -m ashugpt.generate` run),
-     export to GIF, drop it at docs/demo.gif, and this will render it. -->
-![AshuGPT generating a story](docs/demo.gif)
+<p align="center">
+  <b><a href="https://huggingface.co/spaces/AuthRan/AshGPT">▶ Try it live on Hugging Face Spaces</a></b>
+</p>
+
+Type a prompt and watch a `small` (~14M-parameter) model, trained from scratch
+on TinyStories, complete a story token by token.
 
 The demo runs the exact code in this repo: the from-scratch BPE tokenizer
 ([§5](#5-tokenization)) feeding the from-scratch transformer
