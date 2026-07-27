@@ -1,7 +1,9 @@
 """Gradio demo for AshuGPT -- a from-scratch GPT-style LLM.
 
-Runs on a Hugging Face Space (CPU is fine for this ~14M model). Expects two
-files sitting next to it in the Space repo:
+Runs on a Hugging Face **ZeroGPU** Space (the only free hardware for Gradio
+Spaces). ZeroGPU attaches a GPU only for the duration of a function decorated
+with `@spaces.GPU`, so the model is loaded on CPU at startup and moved to CUDA
+inside the request handler. Expects two files next to this one in the Space:
     model.pt        -- a training checkpoint (rename your best step_N.pt to this)
     tokenizer.json  -- the from-scratch BPE tokenizer trained alongside it
 
@@ -14,8 +16,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import gradio as gr
+import spaces
+import torch
 
-from ashugpt.inference.generate import generate_text
+from ashugpt.inference.generate import generate
 from ashugpt.tokenizer import BPETokenizer
 from ashugpt.training.checkpoint import load_model_for_inference
 
@@ -23,25 +27,32 @@ HERE = Path(__file__).resolve().parent
 MODEL_PATH = HERE / "model.pt"
 TOKENIZER_PATH = HERE / "tokenizer.json"
 
-# Loaded once at startup, reused across every request.
+# Loaded once at startup, on CPU (ZeroGPU exposes CUDA only inside @spaces.GPU).
 tokenizer = BPETokenizer.load(TOKENIZER_PATH)
 model = load_model_for_inference(MODEL_PATH)
 model.eval()
 
 
+@spaces.GPU
 def run(prompt: str, max_new_tokens: int, temperature: float, top_k: int, top_p: float) -> str:
     prompt = prompt.strip()
     if not prompt:
         return "Type a prompt to get started."
-    return generate_text(
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+
+    input_ids = torch.tensor([tokenizer.encode(prompt, add_bos=True)], device=device)
+    output_ids = generate(
         model,
-        tokenizer,
-        prompt,
+        input_ids,
         max_new_tokens=int(max_new_tokens),
         temperature=float(temperature),
         top_k=int(top_k) if top_k > 0 else None,
         top_p=float(top_p) if 0.0 < top_p < 1.0 else None,
+        eos_id=tokenizer.eos_id,
     )
+    return tokenizer.decode(output_ids[0].tolist())
 
 
 demo = gr.Interface(
@@ -65,6 +76,7 @@ demo = gr.Interface(
         ["The little robot", 120, 0.8, 50, 1.0],
         ["One day, a girl named Lily", 120, 0.8, 50, 1.0],
     ],
+    cache_examples=False,
 )
 
 if __name__ == "__main__":
