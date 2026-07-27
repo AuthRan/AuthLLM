@@ -16,7 +16,7 @@ Live demo of a decoder-only transformer and byte-level BPE tokenizer, both
 implemented from scratch in PyTorch (RoPE, RMSNorm, SwiGLU, causal attention
 with a KV cache) and trained on the TinyStories corpus.
 
-Source: https://github.com/YOUR_GITHUB_USERNAME/authLLM
+Source: https://github.com/AuthRan/authLLM
 
 ## Files this Space needs
 

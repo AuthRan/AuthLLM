@@ -3,5 +3,5 @@
 torch
 gradio>=4.0
 # Installs the ashugpt package (model + tokenizer code) straight from GitHub.
-# Replace YOUR_GITHUB_USERNAME with your handle after you push the repo public.
-git+https://github.com/YOUR_GITHUB_USERNAME/authLLM.git
+# Installed straight from your public GitHub repo.
+git+https://github.com/AuthRan/authLLM.git
