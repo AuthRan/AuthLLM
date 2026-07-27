@@ -28,7 +28,7 @@ itemized version of this table.
 
 ## Live Demo
 
-**[▶ Try it on Hugging Face Spaces](https://huggingface.co/spaces/YOUR_HF_USERNAME/ashugpt)** —
+**[▶ Try it on Hugging Face Spaces](https://huggingface.co/spaces/AuthRan/AshGPT)** —
 type a prompt and watch a `small` (~14M-parameter) model, trained from
 scratch on TinyStories, complete a story token by token.
 
