@@ -24,6 +24,22 @@ def test_load_and_tokenize_matches_direct_encode(tokenizer: BPETokenizer) -> Non
     assert token_ids.tolist() == expected
 
 
+def test_token_cache_roundtrips_and_is_reused(tokenizer: BPETokenizer, tmp_path: Path) -> None:
+    cache = tmp_path / "tokens.npy"
+    expected = tokenizer.encode(CORPUS_PATH.read_text(encoding="utf-8"))
+
+    first = load_and_tokenize(CORPUS_PATH, tokenizer, cache_path=cache)  # writes cache
+    assert cache.exists()
+    assert first.dtype == torch.long
+    assert first.tolist() == expected
+
+    # Second call must read the cache (not the text): point --input at a
+    # missing file so it can only succeed via the cache.
+    second = load_and_tokenize(tmp_path / "nonexistent.txt", tokenizer, cache_path=cache)
+    assert second.dtype == torch.long
+    assert second.tolist() == expected
+
+
 # ---- TokenizedDataset: chunking + shift ----
 
 

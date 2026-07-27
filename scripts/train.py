@@ -37,6 +37,12 @@ def main() -> None:
     parser.add_argument("--train", type=Path, required=True, help="Path to a configs/train/*.yaml preset")
     parser.add_argument("--tokenizer", type=Path, required=True, help="Path to a trained tokenizer JSON file")
     parser.add_argument("--input", type=Path, required=True, help="Text corpus to train on")
+    parser.add_argument(
+        "--token-cache",
+        type=Path,
+        default=None,
+        help="Optional .npy path to cache the tokenized corpus (skips re-tokenizing on later runs)",
+    )
     parser.add_argument("--val-fraction", type=float, default=0.1)
     parser.add_argument("--checkpoint-dir", type=Path, default=None)
     parser.add_argument("--resume-from", type=Path, default=None)
@@ -49,7 +55,7 @@ def main() -> None:
         model_config = dataclasses.replace(model_config, vocab_size=tokenizer.vocab_size)
     train_config = load_train_config(args.train)
 
-    token_ids = load_and_tokenize(args.input, tokenizer)
+    token_ids = load_and_tokenize(args.input, tokenizer, cache_path=args.token_cache)
     train_ids, val_ids = split_train_val(token_ids, val_fraction=args.val_fraction)
     train_dataset = TokenizedDataset(train_ids, seq_len=train_config.seq_len)
     val_dataset = TokenizedDataset(val_ids, seq_len=train_config.seq_len)

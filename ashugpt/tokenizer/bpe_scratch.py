@@ -69,6 +69,11 @@ class BPETokenizer:
         self.vocab = vocab  # id -> raw bytes, for every non-special id
         self.pad_id, self.bos_id, self.eos_id, self.unk_id = range(NUM_SPECIAL_TOKENS)
         self._special_ids = set(range(NUM_SPECIAL_TOKENS))
+        # Natural text repeats the same chunks ("the", " and", ...) constantly,
+        # and a chunk's merge result depends only on the chunk. Memoizing per
+        # unique chunk turns encoding a large corpus from re-encoding every
+        # occurrence into one encode per distinct chunk -- hours -> seconds.
+        self._chunk_cache: dict[str, list[int]] = {}
 
     @property
     def vocab_size(self) -> int:
@@ -120,8 +125,12 @@ class BPETokenizer:
     def encode(self, text: str, add_bos: bool = False, add_eos: bool = False) -> list[int]:
         ids: list[int] = [self.bos_id] if add_bos else []
         for chunk in _PRETOKEN_PATTERN.findall(text):
-            chunk_ids = [BYTE_OFFSET + b for b in chunk.encode("utf-8")]
-            ids.extend(self._apply_merges(chunk_ids))
+            cached = self._chunk_cache.get(chunk)
+            if cached is None:
+                chunk_ids = [BYTE_OFFSET + b for b in chunk.encode("utf-8")]
+                cached = self._apply_merges(chunk_ids)
+                self._chunk_cache[chunk] = cached
+            ids.extend(cached)
         if add_eos:
             ids.append(self.eos_id)
         return ids

@@ -12,17 +12,39 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 
 from ashugpt.tokenizer import BPETokenizer
 
 
-def load_and_tokenize(path: str | Path, tokenizer: BPETokenizer) -> torch.Tensor:
+def load_and_tokenize(
+    path: str | Path, tokenizer: BPETokenizer, cache_path: str | Path | None = None
+) -> torch.Tensor:
     """Read a UTF-8 text file and tokenize it into one flat 1D LongTensor
-    of token ids -- the "dataset loading" step for pretraining."""
+    of token ids -- the "dataset loading" step for pretraining.
+
+    Tokenizing a multi-hundred-MB corpus is the slow part of a run, and on
+    ephemeral machines (Kaggle/Colab sessions restart) it would otherwise be
+    re-paid every session. If `cache_path` is given, the token stream is
+    saved there as a uint16 .npy array on first run (vocab_size < 65536, so
+    uint16 holds every id at 1/4 the memory of int64) and memory-mapped back
+    on later runs, skipping tokenization entirely."""
+    if cache_path is not None and Path(cache_path).exists():
+        ids = np.load(cache_path, mmap_mode="r")
+        return torch.from_numpy(np.asarray(ids, dtype=np.int64))
+
     text = Path(path).read_text(encoding="utf-8")
     ids = tokenizer.encode(text)
+
+    if cache_path is not None:
+        if tokenizer.vocab_size > np.iinfo(np.uint16).max + 1:
+            raise ValueError(
+                f"vocab_size ({tokenizer.vocab_size}) exceeds uint16 range; widen the cache dtype"
+            )
+        np.save(cache_path, np.asarray(ids, dtype=np.uint16))
+
     return torch.tensor(ids, dtype=torch.long)
 
 
