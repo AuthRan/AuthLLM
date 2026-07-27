@@ -11,3 +11,11 @@ __pycache__/
 
 # Generated training artifacts (reproducible via scripts/train_tokenizer.py)
 /tokenizer.json
+
+# Staging area for checkpoints/tokenizers downloaded off Kaggle (large binaries)
+/required_downloads/
+
+# Runtime artifacts for the HF Space -- uploaded to the Space directly (git-LFS
+# there), never committed to this source repo. The Space code lives in space/.
+/space/model.pt
+/space/tokenizer.json

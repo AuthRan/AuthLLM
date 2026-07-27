@@ -26,6 +26,25 @@ itemized version of this table.
 
 ---
 
+## Live Demo
+
+**[▶ Try it on Hugging Face Spaces](https://huggingface.co/spaces/YOUR_HF_USERNAME/ashugpt)** —
+type a prompt and watch a `small` (~14M-parameter) model, trained from
+scratch on TinyStories, complete a story token by token.
+
+<!-- Record the live Space (or a local `python -m ashugpt.generate` run),
+     export to GIF, drop it at docs/demo.gif, and this will render it. -->
+![AshuGPT generating a story](docs/demo.gif)
+
+The demo runs the exact code in this repo: the from-scratch BPE tokenizer
+([§5](#5-tokenization)) feeding the from-scratch transformer
+([§3](#3-architecture-overview)), with KV-cached autoregressive decoding
+([§10](#10-inference)). The served weights are the `small` preset at training
+step 4000 (validation perplexity ≈ 11). The Gradio app and deployment notes
+live in [`space/`](space/).
+
+---
+
 ## Table of Contents
 
 1. [Motivation](#1-motivation)
