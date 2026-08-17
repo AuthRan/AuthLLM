@@ -430,3 +430,17 @@ step  14421 | train_loss 3.2634 | lr 1.61e-04
 step  14422 | train_loss 3.2582 | lr 1.61e-04
 step  14423 | train_loss 3.2710 | lr 1.61e-04
 step  14424 | train_loss 3.2158 | lr 1.61e-04
+step  14425 | train_loss 3.2954 | lr 1.61e-04
+step  14426 | train_loss 3.2858 | lr 1.61e-04
+step  14427 | train_loss 3.2610 | lr 1.61e-04
+step  14428 | train_loss 3.2185 | lr 1.61e-04
+step  14429 | train_loss 3.2316 | lr 1.61e-04
+step  14430 | train_loss 3.2466 | lr 1.61e-04
+step  14431 | train_loss 3.2198 | lr 1.61e-04
+step  14432 | train_loss 3.1987 | lr 1.61e-04
+step  14433 | train_loss 3.2128 | lr 1.61e-04
+step  14434 | train_loss 3.2374 | lr 1.61e-04
+step  14435 | train_loss 3.2649 | lr 1.61e-04
+step  14436 | train_loss 3.2699 | lr 1.60e-04
+step  14437 | train_loss 3.2284 | lr 1.60e-04
+step  14438 | train_loss 3.2215 | lr 1.60e-04
