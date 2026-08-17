@@ -100,11 +100,34 @@ class TrainConfig:
     use_efficient_attention: bool = False
     optimizer: str = "adamw"  # "adamw" | "sgd"
 
+    # Data windowing. None means "let the dataset decide" -- TokenizedDataset
+    # defaults to 1 (every start position, maximally overlapping) and
+    # ShardedTokenDataset to seq_len (disjoint). Set explicitly to override;
+    # a real pretraining run wants stride == seq_len so one pass over the
+    # dataset is one pass over the corpus.
+    stride: int | None = None
+
+    # Input pipeline. Irrelevant on CPU, where the model step dominates;
+    # decisive on GPU, where a single-threaded loader will starve the
+    # accelerator. num_workers=0 keeps loading in the training process
+    # (the historical behavior).
+    num_workers: int = 0
+    pin_memory: bool = True
+
+    # torch.compile the model before training. Off by default: it costs a
+    # one-time graph compile of a minute or two, which is pure overhead for
+    # the short runs the tests and demos do.
+    compile_model: bool = False
+
     def __post_init__(self) -> None:
         if self.batch_size <= 0 or self.seq_len <= 0 or self.max_steps <= 0:
             raise ValueError("batch_size, seq_len, and max_steps must all be positive")
         if self.grad_accum_steps <= 0:
             raise ValueError("grad_accum_steps must be positive")
+        if self.stride is not None and self.stride <= 0:
+            raise ValueError(f"stride must be positive when set, got {self.stride}")
+        if self.num_workers < 0:
+            raise ValueError(f"num_workers must be >= 0, got {self.num_workers}")
         if self.warmup_steps > self.max_steps:
             raise ValueError(f"warmup_steps ({self.warmup_steps}) must be <= max_steps ({self.max_steps})")
         if self.optimizer not in ("adamw", "sgd"):

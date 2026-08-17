@@ -59,20 +59,24 @@ class CausalSelfAttention(nn.Module):
         super().__init__()
         if d_model % n_heads != 0:
             raise ValueError(f"d_model ({d_model}) must be divisible by n_heads ({n_heads})")
-        if n_kv_heads != n_heads:
-            # ModelConfig already carries n_kv_heads for a future grouped-query
-            # attention (GQA) extension, but SPEC.md defers actually building
-            # it until it's needed -- fail loudly rather than silently ignore it.
-            raise NotImplementedError(
-                "Grouped-query attention (n_kv_heads < n_heads) is not implemented yet -- see SPEC.md open questions"
+        if n_heads % n_kv_heads != 0:
+            raise ValueError(
+                f"n_heads ({n_heads}) must be divisible by n_kv_heads ({n_kv_heads}) -- "
+                f"every key/value head must serve the same number of query heads"
             )
 
         self.n_heads = n_heads
+        self.n_kv_heads = n_kv_heads
+        self.n_groups = n_heads // n_kv_heads  # query heads sharing one K/V head
         self.head_dim = d_model // n_heads
 
+        # Q keeps one head per query head; K/V shrink to n_kv_heads. With
+        # n_kv_heads == n_heads (the default) this is exactly the original
+        # square projection, so nothing changes for existing configs.
+        kv_dim = n_kv_heads * self.head_dim
         self.q_proj = nn.Linear(d_model, d_model, bias=False)
-        self.k_proj = nn.Linear(d_model, d_model, bias=False)
-        self.v_proj = nn.Linear(d_model, d_model, bias=False)
+        self.k_proj = nn.Linear(d_model, kv_dim, bias=False)
+        self.v_proj = nn.Linear(d_model, kv_dim, bias=False)
         self.o_proj = nn.Linear(d_model, d_model, bias=False)
 
         self.rope = RotaryEmbedding(self.head_dim, max_seq_len, theta=rope_theta)
@@ -111,9 +115,10 @@ class CausalSelfAttention(nn.Module):
         v = self.v_proj(x)
 
         # (batch, seq_len, d_model) -> (batch, seq_len, n_heads, head_dim) -> (batch, n_heads, seq_len, head_dim)
+        # K/V use n_kv_heads instead, which equals n_heads unless GQA is on.
         q = q.view(batch, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
-        k = k.view(batch, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
-        v = v.view(batch, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
+        k = k.view(batch, seq_len, self.n_kv_heads, self.head_dim).transpose(1, 2)
+        v = v.view(batch, seq_len, self.n_kv_heads, self.head_dim).transpose(1, 2)
 
         cos, sin = self.rope(seq_len=seq_len, offset=position_offset)
         q = apply_rotary_pos_emb(q, cos, sin)
@@ -121,9 +126,23 @@ class CausalSelfAttention(nn.Module):
 
         if kv_cache is not None:
             past_k, past_v = kv_cache
-            k = torch.cat([past_k, k], dim=2)  # (batch, n_heads, past_len + seq_len, head_dim)
+            k = torch.cat([past_k, k], dim=2)  # (batch, n_kv_heads, past_len + seq_len, head_dim)
             v = torch.cat([past_v, v], dim=2)
+
+        # The cache stores the UNexpanded K/V -- n_kv_heads, not n_heads. That
+        # is the entire point of GQA: cache size scales with n_kv_heads, so
+        # halving the K/V heads halves the memory a long generation holds. If
+        # the expansion below happened before this line, GQA would still cut
+        # parameters but would save nothing at inference time, which is the
+        # saving it exists for.
         present_kv = (k, v)
+
+        if self.n_groups > 1:
+            # Each K/V head serves n_groups query heads. repeat_interleave (not
+            # repeat) is required: query head i must map to K/V head
+            # i // n_groups, so the copies of one K/V head have to be adjacent.
+            k = k.repeat_interleave(self.n_groups, dim=1)
+            v = v.repeat_interleave(self.n_groups, dim=1)
 
         mask = causal_mask(seq_len_q=seq_len, seq_len_k=k.shape[2], offset=position_offset, device=x.device)
 

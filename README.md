@@ -420,9 +420,39 @@ CPU-only dev hardware (no native bf16 instructions), bf16 autocast was
 for one forward+backward at scale) — the sharpest lesson in this whole
 project: mixed precision's benefit is *hardware-dependent*. Peak memory
 did drop 21.3% (bf16 tensors genuinely are smaller), just at a steep time
-cost on hardware without the compute support to back it up. On a GPU with
-tensor cores, or a CPU with AVX512-BF16, both memory *and* speed would
-improve — check your actual hardware, not the general claim.
+cost on hardware without the compute support to back it up.
+
+That paragraph used to end by predicting that "on a GPU with tensor cores
+… both memory *and* speed would improve." **A GPU arrived (2× RTX 2080 Ti,
+2026-08-16) and that prediction was half wrong**, which is worth more than
+if it had been right. Measured on the new hardware, 4096×4096 matmul:
+
+| dtype | TFLOP/s | vs fp32 |
+|---|---:|---:|
+| fp16 | **57.3** | 4.5× |
+| fp32 | 12.6 | — |
+| TF32 | 13.0 | ~none — Turing has no TF32 |
+| **bf16** | **7.7** | **0.6× — slower than fp32** |
+
+The tensor cores are real and fp16 does deliver 4.5×. But these cards are
+Turing (sm_75), which has **no native bf16**: bf16 is emulated, 7.4×
+slower than fp16 and slower even than plain fp32. So the CPU finding
+("bf16 is slow without hardware support") did not go away on a GPU with
+tensor cores — it followed the *specific dtype's* hardware support, which
+is the sharper version of the lesson.
+
+The trap is that nothing warns you. `torch.cuda.is_bf16_supported()`
+returns `True` on these cards, because recent PyTorch counts emulation as
+support. Every training preset in this repo defaulted to
+`amp_dtype: bfloat16` — correct on CPU and on Ampere+, and silently
+several times slower here while looking like an enabled optimization.
+`ashugpt/training/amp.py` now checks compute capability directly (native
+bf16 starts at 8.0) and warns rather than trusting that flag. The
+GPU-ready presets use `amp_dtype: float16` with the `GradScaler` the AMP
+module already builds.
+
+Check your actual hardware, not the general claim — and not the
+framework's answer to "is this supported?" either.
 
 ### 8.2 Gradient Accumulation
 
@@ -967,7 +997,31 @@ behind the specific number quoted.
 
 See [SPEC.md](SPEC.md) for the full milestone-by-milestone log, including
 honest notes on where an original plan changed after something was
-actually measured. Not yet built: an on-disk/streaming data pipeline for a
-real large corpus (current pipeline is in-memory, adequate at the scales
-actually trained here), FSDP/model parallelism, and a browser frontend for
-the inference API.
+actually measured.
+
+Still not built: **FSDP/model parallelism** (and so `xl_1b` remains a
+shape-verified config — 1.23B parameters need ~20GB for
+weights+gradients+AdamW state against 22.6GB across two 11.3GB cards with
+no NVLink, which is not a real training run), and a **browser frontend**
+for the inference API.
+
+Built on 2026-08-16, when GPUs replaced the CPU-only constraint:
+
+- **On-disk streaming data pipeline** — `scripts/prepare_data.py` streams a
+  corpus, tokenizes it across processes, and writes uint16 shards;
+  `ShardedTokenDataset` memory-maps them. uint16 is what makes it fit: a
+  50259-entry vocabulary costs 2 bytes/token instead of int64's 8, so 5B
+  tokens is 10GB on disk rather than 40GB, and resident memory stays flat
+  regardless of corpus size.
+- **Production tokenizer** — `TiktokenBPETokenizer`, the last unbuilt piece
+  of SPEC's "hybrid tokenizer" plan. The from-scratch BPE remains the
+  tested pedagogical path; it just cannot train a 50k-merge vocab over a
+  multi-GB corpus in reasonable time.
+- **Grouped-query attention** — `n_kv_heads < n_heads` now works instead of
+  raising `NotImplementedError`. The KV *cache* stores the unexpanded
+  heads, which is the saving GQA exists for: cache memory scales with
+  `n_kv_heads`, so halving K/V heads halves what a long generation holds.
+- **Window striding** — datasets took every starting position, so
+  consecutive training examples shared `seq_len - 1` of `seq_len` tokens
+  and one "epoch" revisited the same text `seq_len` times. Sharded
+  datasets now default to disjoint windows.

@@ -1,0 +1,36 @@
+[supervisor] 2026-08-16T22:55:35+05:30 waiting for data preparation to finish...
+[supervisor] 2026-08-16T22:55:35+05:30 data ready: 5000186213 tokens
+[supervisor] 2026-08-16T22:55:35+05:30 attempt 1: starting from scratch
+[supervisor] launching on CUDA_VISIBLE_DEVICES=0 with nproc_per_node=1
+Model vocab_size 50304 > tokenizer vocab_size 50259 (45 unused padding rows, kept for tensor-core alignment)
+Data: 4,900,186,213 train tokens / 100,000,000 val tokens (9,570,651 windows at stride 512)
+Model: medium (123,587,328 parameters)
+step     20 | train_loss 9.5142 | lr 3.00e-05
+step     40 | train_loss 8.5603 | lr 6.00e-05
+step     60 | train_loss 7.6384 | lr 9.00e-05
+step     80 | train_loss 7.1016 | lr 1.20e-04
+step    100 | train_loss 6.7090 | lr 1.50e-04
+step    120 | train_loss 6.4537 | lr 1.80e-04
+step    140 | train_loss 6.2415 | lr 2.10e-04
+step    160 | train_loss 6.0615 | lr 2.40e-04
+step    180 | train_loss 5.9751 | lr 2.70e-04
+step    200 | train_loss 5.7827 | lr 3.00e-04
+step    220 | train_loss 5.6005 | lr 3.30e-04
+step    240 | train_loss 5.5264 | lr 3.60e-04
+step    260 | train_loss 5.4440 | lr 3.90e-04
+step    280 | train_loss 5.3516 | lr 4.20e-04
+step    300 | train_loss 5.2831 | lr 4.50e-04
+step    320 | train_loss 5.1539 | lr 4.80e-04
+step    340 | train_loss 5.1340 | lr 5.10e-04
+step    360 | train_loss 5.0649 | lr 5.40e-04
+step    380 | train_loss 4.9695 | lr 5.70e-04
+step    400 | train_loss 4.9044 | lr 6.00e-04
+step    420 | train_loss 4.8993 | lr 6.00e-04
+step    440 | train_loss 4.8011 | lr 6.00e-04
+step    460 | train_loss 4.8016 | lr 6.00e-04
+step    480 | train_loss 4.7054 | lr 6.00e-04
+step    500 | train_loss 4.6486 | lr 6.00e-04
+step    500 | val_loss 4.6724 | val_ppl 106.96
+Saved checkpoint to checkpoints/medium/step_500.pt
+step    520 | train_loss 4.6631 | lr 6.00e-04
+step    540 | train_loss 4.5859 | lr 6.00e-04

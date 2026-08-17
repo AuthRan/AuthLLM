@@ -25,9 +25,112 @@ def test_rejects_d_model_not_divisible_by_n_heads() -> None:
         CausalSelfAttention(d_model=10, n_heads=3, n_kv_heads=3, max_seq_len=16)
 
 
-def test_gqa_not_implemented_yet() -> None:
-    with pytest.raises(NotImplementedError):
-        CausalSelfAttention(d_model=32, n_heads=4, n_kv_heads=2, max_seq_len=16)
+def test_rejects_n_heads_not_divisible_by_n_kv_heads() -> None:
+    with pytest.raises(ValueError, match="must be divisible by n_kv_heads"):
+        CausalSelfAttention(d_model=32, n_heads=4, n_kv_heads=3, max_seq_len=16)
+
+
+# ---- grouped-query attention (n_kv_heads < n_heads) ----
+
+
+def make_gqa(d_model: int = 32, n_heads: int = 4, n_kv_heads: int = 2, max_seq_len: int = 16):
+    torch.manual_seed(0)
+    return CausalSelfAttention(d_model=d_model, n_heads=n_heads, n_kv_heads=n_kv_heads, max_seq_len=max_seq_len)
+
+
+def test_gqa_shrinks_kv_projections_and_cache() -> None:
+    """The saving GQA exists for: K/V projections and, crucially, the cache
+    scale with n_kv_heads rather than n_heads."""
+    attn = make_gqa(d_model=32, n_heads=4, n_kv_heads=2)
+    assert attn.k_proj.weight.shape == (16, 32)  # 2 kv heads x head_dim 8
+    assert attn.v_proj.weight.shape == (16, 32)
+    assert attn.q_proj.weight.shape == (32, 32)  # queries keep every head
+
+    x = torch.randn(2, 10, 32)
+    out, (k, v) = attn(x)
+    assert out.shape == (2, 10, 32), "output shape must not change"
+    # The cache holds UNexpanded K/V -- half the heads, so half the memory.
+    assert k.shape == (2, 2, 10, 8)
+    assert v.shape == (2, 2, 10, 8)
+
+
+def test_gqa_with_equal_heads_is_the_original_module() -> None:
+    """n_kv_heads == n_heads must remain exactly plain multi-head attention --
+    every existing config and checkpoint depends on it."""
+    attn = make_gqa(d_model=32, n_heads=4, n_kv_heads=4)
+    assert attn.n_groups == 1
+    x = torch.randn(2, 10, 32)
+    out, (k, v) = attn(x)
+    assert out.shape == (2, 10, 32)
+    assert k.shape == (2, 4, 10, 8)
+
+
+def test_gqa_query_heads_map_to_the_right_kv_head() -> None:
+    """The grouping must be interleaved, not blocked: query head i attends to
+    K/V head i // n_groups. A plain repeat() instead of repeat_interleave()
+    would silently pair the wrong heads and still produce correct *shapes*, so
+    this checks the mapping directly against a manual reference.
+    """
+    torch.manual_seed(0)
+    n_heads, n_kv_heads, head_dim, d_model = 4, 2, 8, 32
+    attn = make_gqa(d_model=d_model, n_heads=n_heads, n_kv_heads=n_kv_heads)
+    x = torch.randn(1, 6, d_model)
+
+    out, (k_cache, v_cache) = attn(x)
+
+    # Rebuild attention by hand, expanding K/V per query head explicitly.
+    q = attn.q_proj(x).view(1, 6, n_heads, head_dim).transpose(1, 2)
+    from ashugpt.model.rope import apply_rotary_pos_emb
+
+    cos, sin = attn.rope(seq_len=6, offset=0)
+    q = apply_rotary_pos_emb(q, cos, sin)
+
+    mask = causal_mask(seq_len_q=6, seq_len_k=6, offset=0, device=x.device)
+    heads = []
+    for head in range(n_heads):
+        kv_head = head // (n_heads // n_kv_heads)  # the mapping under test
+        k_h = k_cache[:, kv_head]
+        v_h = v_cache[:, kv_head]
+        scores = (q[:, head] @ k_h.transpose(-2, -1)) / (head_dim**0.5)
+        scores = scores.masked_fill(mask, float("-inf"))
+        heads.append(torch.softmax(scores, dim=-1) @ v_h)
+
+    manual = torch.stack(heads, dim=1).transpose(1, 2).reshape(1, 6, d_model)
+    assert torch.allclose(out, attn.o_proj(manual), atol=1e-5)
+
+
+def test_gqa_efficient_attention_matches_manual_path() -> None:
+    """The fused SDPA path must agree with the manual path under GQA too --
+    the expansion happens before either, but only one of them is the
+    pedagogical reference."""
+    attn = make_gqa(d_model=32, n_heads=8, n_kv_heads=2)
+    x = torch.randn(2, 12, 32)
+
+    attn.use_efficient_attention = False
+    manual, _ = attn(x)
+    attn.use_efficient_attention = True
+    fused, _ = attn(x)
+
+    assert torch.allclose(manual, fused, atol=1e-5)
+
+
+def test_gqa_cached_generation_matches_uncached() -> None:
+    """Feeding one token at a time through the cache must equal running the
+    whole sequence at once -- the property KV caching is only useful if it has,
+    now with fewer K/V heads in the cache."""
+    attn = make_gqa(d_model=32, n_heads=4, n_kv_heads=2, max_seq_len=16)
+    x = torch.randn(1, 6, 32)
+
+    full, _ = attn(x)
+
+    cache = None
+    outputs = []
+    for position in range(6):
+        step, cache = attn(x[:, position : position + 1], kv_cache=cache, position_offset=position)
+        outputs.append(step)
+    incremental = torch.cat(outputs, dim=1)
+
+    assert torch.allclose(full, incremental, atol=1e-5)
 
 
 # ---- causal masking ----

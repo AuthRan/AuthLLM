@@ -1,0 +1,79 @@
+# The `medium` (~124M) model on FineWeb-Edu, tuned for 2x RTX 2080 Ti (11GB
+# each), launched with:
+#
+#   torchrun --nproc_per_node=2 scripts/train.py \
+#       --model configs/model/medium.yaml --train configs/train/fineweb_2x2080ti.yaml \
+#       --tokenizer tokenizer_gpt2.json --data-manifest data/fineweb_edu_5B/manifest.json \
+#       --checkpoint-dir checkpoints/medium --log-path logs/medium.csv
+#
+# ---- Why float16 and not bfloat16 ----
+# These are Turing (sm_75) cards. They have fast fp16 tensor cores and NO
+# native bf16. Measured on this exact hardware, 4096x4096 matmul:
+#     fp16  57.3 TFLOP/s | fp32 12.6 TFLOP/s | bf16 7.7 TFLOP/s
+# bf16 is EMULATED here -- 7.4x slower than fp16 and slower than plain fp32 --
+# even though torch.cuda.is_bf16_supported() returns True. fp16 + GradScaler
+# is the correct choice on this hardware; ashugpt/training/amp.py warns if a
+# config gets this wrong.
+#
+# ---- Batch arithmetic ----
+# tokens/step = batch_size * grad_accum_steps * nproc_per_node * seq_len
+#             = 8 * 30 * 2 * 512 = 245,760 tokens/step (~0.25M, a sane
+# pretraining batch for a 124M model).
+# 20,000 steps * 245,760 = ~4.9B tokens, which is ~40x the parameter count --
+# comfortably past Chinchilla-optimal (20x) for a 124M model.
+#
+# ---- Memory: why batch_size is 8 and not 12 ----
+# batch_size 12 was measured at 8.09 GB peak on an idle card and looked like
+# it fit in 11.3 GB. It does not fit in the real run, and OOM'd rank 1:
+#   - The single-card measurement had no DDP gradient buckets (~0.5 GB).
+#   - GPU 1 also drives the display, so it starts ~325 MB down and has less
+#     usable VRAM than GPU 0. The two cards are NOT interchangeable here.
+#   - The failing allocation was 1,237,319,680 bytes -- exactly the fp32
+#     logits tensor, 12 * 512 * 50304 * 4. Logits, not activations, are the
+#     largest single tensor at this vocab size, and they scale with batch.
+# batch_size 8 measures at 6.01 GB peak (logits drop to 0.82 GB), leaving
+# ~5 GB of headroom on the display card. grad_accum_steps is raised 20 -> 30
+# to keep tokens/step exactly where it was.
+#
+# Gradient checkpointing stays OFF: it is not needed at this batch size, and
+# was measured at a ~9% throughput cost here (0.998 vs 0.915 s/step).
+#
+# ---- Expected throughput ----
+# 25,773 tok/s/GPU measured single-card at bs=8 (vs 27,355 at bs=12 -- only 6%
+# less), so ~48k tok/s across both after DDP all-reduce => ~4.9B tokens in
+# roughly 28-32h.
+batch_size: 8
+seq_len: 512
+grad_accum_steps: 30
+max_steps: 20000
+warmup_steps: 400
+max_lr: 6.0e-4
+min_lr: 6.0e-5
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+# Log every step. The per-step loss is already computed and synced to host
+# (accumulated_loss sums loss.item() over the accumulation window), so this
+# costs one CSV append per step and no extra GPU work. It does make stdout
+# 20x chattier -- supervisor.log gains ~1 line/step.
+log_interval: 1
+eval_interval: 500
+eval_steps: 40
+checkpoint_interval: 500
+amp_dtype: float16
+gradient_checkpointing: false
+use_efficient_attention: true
+
+# One pass over the corpus should be one pass over the corpus. The in-memory
+# dataset's default stride of 1 would make consecutive examples share 511 of
+# their 512 tokens.
+stride: 512
+
+# Per *rank*, not total: with --nproc_per_node=2 this is 2 x 3 = 6 loader
+# processes plus the 2 training processes on an 8-core box. Setting 6 here
+# would spawn 12 workers and oversubscribe the CPU, which slows the loader
+# it was meant to speed up.
+num_workers: 3
+pin_memory: true
+compile_model: false
+seed: 1337

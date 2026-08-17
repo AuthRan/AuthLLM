@@ -24,3 +24,6 @@ __pycache__/
 .env
 .env.*
 *.env
+
+# tiktoken marker file (regenerate: TiktokenBPETokenizer().save(...))
+/tokenizer_gpt2.json

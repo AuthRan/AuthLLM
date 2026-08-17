@@ -23,7 +23,12 @@ from torch.utils.data.distributed import DistributedSampler
 
 from ashugpt.config import ModelConfig, TrainConfig
 from ashugpt.eval.perplexity import evaluate
-from ashugpt.training.amp import autocast_context, build_grad_scaler, resolve_amp_dtype
+from ashugpt.training.amp import (
+    autocast_context,
+    build_grad_scaler,
+    resolve_amp_dtype,
+    warn_if_amp_dtype_is_slow,
+)
 from ashugpt.training.checkpoint import load_checkpoint, save_checkpoint
 from ashugpt.training.ddp import cleanup_distributed, setup_distributed, unwrap_model, wrap_model_for_ddp
 from ashugpt.training.optim import build_optimizer, get_lr
@@ -38,6 +43,51 @@ def _append_csv_row(path: Path, row: dict) -> None:
         if is_new:
             writer.writeheader()
         writer.writerow(row)
+
+
+def _truncate_csv_after(path: Path, start_step: int) -> int:
+    """Drop logged rows for steps the resume is about to replay.
+
+    Resuming rolls the model back to the last checkpoint, so any rows logged
+    between that checkpoint and the crash describe work that no longer
+    happened -- and the replayed steps log again under the same step numbers.
+    Left alone the CSV accumulates duplicate, conflicting rows per step (this
+    run already carries three rows for step 520 from two early restarts).
+    Harmless at log_interval=20; at log_interval=1 a single crash duplicates a
+    whole checkpoint interval. Rows *at* start_step are kept: they were logged
+    before the checkpoint was written, so the checkpoint includes them.
+
+    Returns the number of rows dropped.
+    """
+    if not path.exists():
+        return 0
+
+    with path.open(newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+
+    kept = []
+    for row in rows:
+        try:
+            row_step = int(row["step"])
+        except (KeyError, TypeError, ValueError):
+            kept.append(row)  # unparseable: keep rather than silently discard
+            continue
+        if row_step <= start_step:
+            kept.append(row)
+
+    dropped = len(rows) - len(kept)
+    if dropped == 0:
+        return 0
+
+    # Write via a temp file + atomic replace: a crash mid-rewrite must not
+    # leave a half-written history behind.
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with tmp_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=_CSV_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(kept)
+    tmp_path.replace(path)
+    return dropped
 
 
 def train(
@@ -76,14 +126,42 @@ def train(
             efficient_attention=config.use_efficient_attention,
         )
 
+        # Compile last, and keep `raw_model` pointing at the original module
+        # captured above. torch.compile returns an OptimizedModule whose
+        # state_dict keys are prefixed with "_orig_mod." -- checkpointing
+        # through it would write files that plain inference cannot load. Every
+        # checkpoint/eval path below already goes through raw_model, so
+        # compiling only the object the training loop calls keeps the on-disk
+        # format identical whether or not compilation was enabled.
+        if config.compile_model:
+            if info.is_main_process:
+                print("Compiling model (one-time cost, typically 1-2 min)...")
+            model = torch.compile(model)
+
+        # pin_memory only means anything when copying to a GPU: it stages
+        # batches in page-locked host memory so the H2D copy can be async
+        # (the non_blocking=True below). On CPU it is wasted work.
+        use_pinned = config.pin_memory and info.device.type == "cuda"
+        loader_kwargs = {
+            "batch_size": config.batch_size,
+            "num_workers": config.num_workers,
+            "pin_memory": use_pinned,
+            # Workers are forked once and kept, rather than respawned every
+            # epoch. This matters here because each worker re-opens the
+            # dataset's memmaps on startup, and the training loop restarts the
+            # iterator every time it exhausts the loader.
+            "persistent_workers": config.num_workers > 0,
+            "prefetch_factor": 4 if config.num_workers > 0 else None,
+        }
+
         if info.is_distributed:
             train_sampler = DistributedSampler(
                 train_dataset, num_replicas=info.world_size, rank=info.rank, shuffle=True, seed=config.seed
             )
-            train_loader = DataLoader(train_dataset, batch_size=config.batch_size, sampler=train_sampler)
+            train_loader = DataLoader(train_dataset, sampler=train_sampler, **loader_kwargs)
         else:
             train_sampler = None
-            train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+            train_loader = DataLoader(train_dataset, shuffle=True, **loader_kwargs)
 
         # Validation stays single-process (rank 0 only, over the whole
         # val_dataset, un-sharded) -- simpler than all-reducing a
@@ -91,12 +169,24 @@ def train(
         # it doesn't need to be split across ranks.
         val_loader = None
         if val_dataset is not None and info.is_main_process:
-            val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=config.batch_size,
+                shuffle=False,
+                num_workers=config.num_workers,
+                pin_memory=use_pinned,
+                persistent_workers=config.num_workers > 0,
+                prefetch_factor=4 if config.num_workers > 0 else None,
+            )
 
         optimizer = build_optimizer(
             model, lr=config.max_lr, weight_decay=config.weight_decay, betas=config.betas, optimizer=config.optimizer
         )
         amp_dtype = resolve_amp_dtype(config.amp_dtype)
+        if info.is_main_process:
+            amp_warning = warn_if_amp_dtype_is_slow(info.device.type, amp_dtype)
+            if amp_warning is not None:
+                print(f"WARNING: {amp_warning}")
         scaler = build_grad_scaler(info.device.type, amp_dtype)
 
         start_step = 0
@@ -114,6 +204,13 @@ def train(
 
         checkpoint_dir = Path(checkpoint_dir) if checkpoint_dir is not None else None
         log_path = Path(log_path) if log_path is not None else None
+
+        # Discard log rows for steps this resume is about to replay, so the CSV
+        # stays one row per step per metric. Rank 0 only -- it owns the log.
+        if log_path is not None and resume_from is not None and info.is_main_process:
+            dropped = _truncate_csv_after(log_path, start_step)
+            if dropped:
+                print(f"Dropped {dropped} log row(s) after step {start_step} from {log_path}")
 
         history: list[dict] = []
         epoch = 0
@@ -141,7 +238,12 @@ def train(
                         train_sampler.set_epoch(epoch)  # reshuffle differently each epoch, same way on every rank
                     train_iter = iter(train_loader)
                     input_ids, labels = next(train_iter)
-                input_ids, labels = input_ids.to(info.device), labels.to(info.device)
+                # non_blocking pairs with the loader's pinned memory: the H2D
+                # copy is queued and the CPU runs ahead to enqueue the forward
+                # pass instead of blocking on the transfer. It is a no-op
+                # without pinned source memory, so it is safe unconditionally.
+                input_ids = input_ids.to(info.device, non_blocking=use_pinned)
+                labels = labels.to(info.device, non_blocking=use_pinned)
 
                 # DDP all-reduces gradients on every backward() by default --
                 # correct but wasteful mid-accumulation-window, since only the

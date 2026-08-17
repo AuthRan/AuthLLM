@@ -29,15 +29,43 @@ on current hardware.
 
 ## Constraints (from clarification)
 
-- **Compute: CPU only, no GPU currently.** Real training happens at
-  tiny/small scale. Mixed precision, gradient checkpointing, and DDP are
-  implemented for real and tested for correctness on CPU (bf16 autocast works
-  on CPU; DDP is testable via multi-process `gloo` backend), but are not
-  exercised at large scale until GPU access exists. 1B+ configs must be
-  correct and shape-tested, not necessarily trainable today.
+- **Compute: originally CPU only; as of 2026-08-16, 2x NVIDIA RTX 2080 Ti.**
+
+  The original constraint below drove most of this document's decisions and
+  is kept for that reason:
+
+  > *CPU only, no GPU currently. Real training happens at tiny/small scale.
+  > Mixed precision, gradient checkpointing, and DDP are implemented for real
+  > and tested for correctness on CPU (bf16 autocast works on CPU; DDP is
+  > testable via multi-process `gloo` backend), but are not exercised at large
+  > scale until GPU access exists. 1B+ configs must be correct and
+  > shape-tested, not necessarily trainable today.*
+
+  What the new hardware changes: 2x RTX 2080 Ti (11.3GB each, Turing sm_75),
+  8-core Xeon Gold 5222, 125GB RAM. NCCL DDP across both cards now runs for
+  real (it had only ever run as 2-process gloo on CPU). `medium` (~124M) is
+  genuinely trainable -- measured 27,355 tok/s/GPU at batch 12 x seq 512 with
+  fp16 and fused attention, 8.09GB peak of 11.3GB.
+
+  What it does *not* change: `xl_1b` is still not trainable here. 1.23B
+  parameters need ~20GB for weights+gradients+AdamW state alone, against
+  22.6GB total across two cards with no NVLink. It stays a shape-verified
+  config, or an FSDP/CPU-offload mechanics demo, not a real run.
+
+  **Turing has no native bf16.** Every training preset defaulted to
+  `amp_dtype: bfloat16`, which is correct on CPU and on Ampere+ and actively
+  harmful here. Measured on this hardware (4096x4096 matmul): fp16 57.3
+  TFLOP/s, fp32 12.6 TFLOP/s, bf16 **7.7** TFLOP/s -- bf16 is emulated, 7.4x
+  slower than fp16 and slower than fp32. `torch.cuda.is_bf16_supported()`
+  returns `True` anyway, because it counts emulation. `ashugpt/training/amp.py`
+  now warns when a config walks into this.
 - **Tokenizer: hybrid.** From-scratch BPE trainer/encoder implemented for
   learning and tested, but `tiktoken`'s GPT-2 BPE is the tokenizer actually
-  used for real training runs.
+  used for real training runs. **Built 2026-08-16** in
+  `ashugpt/tokenizer/tiktoken_bpe.py` -- this was the last unbuilt piece of the
+  hybrid plan. The from-scratch trainer is O(vocab_size x corpus) with a full
+  re-scan per merge, which is fine for the 1k-vocab fixture corpora and not
+  survivable for a 50k-merge vocab over a multi-GB corpus.
 - **Dataset: TinyStories-style corpus** for early milestones — small, simple
   text where even a few-million-parameter model produces coherent output
   quickly, which validates the pipeline works end-to-end before scaling up.

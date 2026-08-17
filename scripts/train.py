@@ -23,9 +23,9 @@ from pathlib import Path
 import torch
 
 from ashugpt.config import load_model_config, load_train_config
-from ashugpt.data import TokenizedDataset, load_and_tokenize, split_train_val
+from ashugpt.data import ShardedTokenDataset, TokenizedDataset, load_and_tokenize, split_train_val
 from ashugpt.model import AshuGPT
-from ashugpt.tokenizer import BPETokenizer
+from ashugpt.tokenizer import load_tokenizer
 from ashugpt.training import train
 
 _IS_MAIN_PROCESS = int(os.environ.get("RANK", "0")) == 0  # cheap pre-check, before train() sets up torch.distributed
@@ -36,7 +36,14 @@ def main() -> None:
     parser.add_argument("--model", type=Path, required=True, help="Path to a configs/model/*.yaml preset")
     parser.add_argument("--train", type=Path, required=True, help="Path to a configs/train/*.yaml preset")
     parser.add_argument("--tokenizer", type=Path, required=True, help="Path to a trained tokenizer JSON file")
-    parser.add_argument("--input", type=Path, required=True, help="Text corpus to train on")
+    parser.add_argument("--input", type=Path, help="Text corpus to train on (in-memory path; small corpora)")
+    parser.add_argument(
+        "--data-manifest",
+        type=Path,
+        default=None,
+        help="manifest.json from scripts/prepare_data.py (memory-mapped shard path; large corpora). "
+        "Mutually exclusive with --input, and takes precedence over it.",
+    )
     parser.add_argument(
         "--token-cache",
         type=Path,
@@ -48,17 +55,46 @@ def main() -> None:
     parser.add_argument("--resume-from", type=Path, default=None)
     parser.add_argument("--log-path", type=Path, default=None)
     args = parser.parse_args()
+    if args.data_manifest is None and args.input is None:
+        parser.error("one of --input (small corpus) or --data-manifest (sharded corpus) is required")
 
-    tokenizer = BPETokenizer.load(args.tokenizer)
+    tokenizer = load_tokenizer(args.tokenizer)
     model_config = load_model_config(args.model)
-    if model_config.vocab_size != tokenizer.vocab_size:
+    if model_config.vocab_size < tokenizer.vocab_size:
+        # Too small is a real error -- the tokenizer can emit ids the embedding
+        # table has no row for.
         model_config = dataclasses.replace(model_config, vocab_size=tokenizer.vocab_size)
+    elif model_config.vocab_size > tokenizer.vocab_size and _IS_MAIN_PROCESS:
+        # Too large is fine, and deliberate. The presets use 50304 = 50259
+        # rounded up to a multiple of 64, because GPU tensor cores want
+        # matrix dimensions that are multiples of 8/64; the extra rows are
+        # unreachable ids that simply never receive gradient. Shrinking the
+        # config to fit the tokenizer exactly would cost throughput for
+        # nothing, so the padding is kept.
+        print(
+            f"Model vocab_size {model_config.vocab_size} > tokenizer vocab_size {tokenizer.vocab_size} "
+            f"({model_config.vocab_size - tokenizer.vocab_size} unused padding rows, kept for tensor-core alignment)"
+        )
     train_config = load_train_config(args.train)
 
-    token_ids = load_and_tokenize(args.input, tokenizer, cache_path=args.token_cache)
-    train_ids, val_ids = split_train_val(token_ids, val_fraction=args.val_fraction)
-    train_dataset = TokenizedDataset(train_ids, seq_len=train_config.seq_len)
-    val_dataset = TokenizedDataset(val_ids, seq_len=train_config.seq_len)
+    if args.data_manifest is not None:
+        train_dataset = ShardedTokenDataset.from_manifest(
+            args.data_manifest, seq_len=train_config.seq_len, split="train", stride=train_config.stride
+        )
+        val_dataset = ShardedTokenDataset.from_manifest(
+            args.data_manifest, seq_len=train_config.seq_len, split="val", stride=train_config.stride
+        )
+        if _IS_MAIN_PROCESS:
+            print(
+                f"Data: {train_dataset.total_tokens:,} train tokens / {val_dataset.total_tokens:,} val tokens "
+                f"({len(train_dataset):,} windows at stride {train_dataset.stride})"
+            )
+    else:
+        token_ids = load_and_tokenize(args.input, tokenizer, cache_path=args.token_cache)
+        train_ids, val_ids = split_train_val(token_ids, val_fraction=args.val_fraction)
+        stride = train_config.stride if train_config.stride is not None else 1
+        train_dataset = TokenizedDataset(train_ids, seq_len=train_config.seq_len, stride=stride)
+        val_dataset = TokenizedDataset(val_ids, seq_len=train_config.seq_len, stride=stride)
 
     # Every rank constructs its own model instance identically (same seed);
     # DDP wrapping inside train() broadcasts rank 0's weights to every

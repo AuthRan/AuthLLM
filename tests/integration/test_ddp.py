@@ -98,7 +98,10 @@ def _run_single_process_baseline() -> dict[str, torch.Tensor]:
     model = AshuGPT(_ddp_worker.MODEL_CONFIG)
     train_config = _ddp_worker.build_train_config(batch_size=_ddp_worker.NUM_EXAMPLES, checkpoint_interval=10**9)
     train(model, _ddp_worker.build_dataset(), val_dataset=None, config=train_config, model_config=_ddp_worker.MODEL_CONFIG)
-    return {name: p.detach().clone() for name, p in model.named_parameters()}
+    # .cpu() matters: train() puts the model on CUDA when a GPU is present,
+    # while _ddp_worker saves its weights on CPU -- without this the
+    # comparison below mixes devices and raises instead of comparing.
+    return {name: p.detach().cpu().clone() for name, p in model.named_parameters()}
 
 
 def test_ddp_two_process_training_matches_single_process_baseline(tmp_path: Path) -> None:

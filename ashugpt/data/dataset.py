@@ -71,19 +71,34 @@ class TokenizedDataset(Dataset):
 
     See ashugpt/model/gpt.py's docstring for why this shift is exactly the
     next-token-prediction target the model expects.
+
+    `stride` controls how far apart consecutive windows start. The default of
+    1 is the original behavior (every starting position is its own example),
+    which is what the small-corpus CPU runs used and what the tests assume.
+    It is also enormously redundant at scale: with stride=1 two consecutive
+    examples share seq_len-1 of their seq_len tokens, so one "epoch" revisits
+    essentially the same text seq_len times over. Setting stride=seq_len gives
+    disjoint windows -- one pass really is one pass over the corpus -- which is
+    what a real pretraining run wants. See TrainConfig.stride.
     """
 
-    def __init__(self, token_ids: torch.Tensor, seq_len: int) -> None:
+    def __init__(self, token_ids: torch.Tensor, seq_len: int, stride: int = 1) -> None:
         if token_ids.numel() < seq_len + 1:
             raise ValueError(
                 f"Need at least {seq_len + 1} tokens to form one training example, got {token_ids.numel()}"
             )
+        if stride <= 0:
+            raise ValueError(f"stride must be positive, got {stride}")
         self.token_ids = token_ids
         self.seq_len = seq_len
+        self.stride = stride
 
     def __len__(self) -> int:
-        return self.token_ids.numel() - self.seq_len
+        # Last valid window start is numel - seq_len - 1 (a window needs
+        # seq_len + 1 tokens: seq_len inputs plus the final label).
+        return (self.token_ids.numel() - self.seq_len - 1) // self.stride + 1
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        chunk = self.token_ids[idx : idx + self.seq_len + 1]  # one slice, length seq_len + 1
+        start = idx * self.stride
+        chunk = self.token_ids[start : start + self.seq_len + 1]  # one slice, length seq_len + 1
         return chunk[:-1], chunk[1:]  # input_ids, labels

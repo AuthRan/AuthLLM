@@ -1,0 +1,15 @@
+[supervisor] 2026-08-16T20:53:26+05:30 waiting for data preparation to finish...
+[supervisor] 2026-08-16T21:08:48+05:30 data ready: 5000186213 tokens
+[supervisor] 2026-08-16T21:08:48+05:30 running CUDA memory benchmark (quiet machine) -> logs/benchmark_cuda.log
+[supervisor] 2026-08-16T21:09:52+05:30 benchmark finished (status 0)
+[supervisor] 2026-08-16T21:09:52+05:30 attempt 1: starting from scratch
+W0816 21:09:54.179000 278826 torch/distributed/run.py:874] 
+W0816 21:09:54.179000 278826 torch/distributed/run.py:874] *****************************************
+W0816 21:09:54.179000 278826 torch/distributed/run.py:874] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+W0816 21:09:54.179000 278826 torch/distributed/run.py:874] *****************************************
+Model vocab_size 50304 > tokenizer vocab_size 50259 (45 unused padding rows, kept for tensor-core alignment)
+Data: 4,900,186,213 train tokens / 100,000,000 val tokens (9,570,651 windows at stride 512)
+Model: medium (123,587,328 parameters)
+[rank1]:[W816 21:10:00.013146556 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1237319680 bytes (free: 1195311104, total: 11337531392).
+[rank1]:[W816 21:10:00.446641444 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1237319680 bytes (free: 578748416, total: 11337531392).
+[rank1]:[W816 21:10:00.499199571 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1237319680 bytes (free: 618594304, total: 11337531392).
