@@ -55,9 +55,7 @@ STEP=$(git show :README.md | grep -oP 'step \*\*\K[0-9,]+' | head -1)
 LOSS=$(git show :README.md | grep -oP '\*\*Training loss\*\* \| \K[0-9.]+' | head -1)
 MSG="Training progress: step ${STEP:-?} (loss ${LOSS:-?})"
 
-if ! git commit -q -m "$MSG" -m "Automated snapshot of the in-progress 124M run.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"; then
+if ! git commit -q -m "$MSG" -m "Automated snapshot of the in-progress 124M run."; then
     log "ERROR: commit failed"
     exit 1
 fi
