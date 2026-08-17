@@ -19,6 +19,12 @@ set -uo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$REPO" || exit 1
 
+# Serialize runs. Two syncers (say, a cron entry and a leftover watch loop)
+# staging and committing at the same time would collide on the git index.
+# Non-blocking: if another run holds the lock, this one is redundant anyway.
+exec 9>"$REPO/.git/sync_training_logs.lock"
+flock -n 9 || exit 0
+
 BRANCH=124-million-training
 PYTHON="$REPO/.venv/bin/python"
 SYNC_LOG="$REPO/logs/sync_status.log"
