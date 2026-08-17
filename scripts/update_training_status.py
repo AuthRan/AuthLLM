@@ -70,14 +70,47 @@ def checkpoints() -> list[tuple[int, float]]:
     return sorted(out)
 
 
+def run_start() -> float | None:
+    """Wall-clock start of the current training attempt, as an epoch time.
+
+    Taken from the supervisor's own launch line. Needed because checkpoint
+    mtimes alone cannot distinguish "500 steps took 43 minutes" from "500
+    steps took 43 minutes, then the machine was off for two hours".
+    """
+    if not SUPERVISOR_LOG.exists():
+        return None
+    stamps = re.findall(r"\[supervisor\] (\S+) attempt \d+:", SUPERVISOR_LOG.read_text())
+    if not stamps:
+        return None
+    try:
+        return datetime.fromisoformat(stamps[-1]).timestamp()
+    except ValueError:
+        return None
+
+
 def sec_per_step(ckpts: list[tuple[int, float]]) -> float | None:
-    """Throughput from the two newest checkpoints, or None if implausible."""
+    """Throughput from the two newest checkpoints of the *current* attempt.
+
+    Checkpoints written before the current attempt started are excluded: an
+    interval that straddles a crash, a reboot, or an idle gap measures
+    downtime, not throughput, and would understate progress badly enough to
+    publish a misleading ETA. A restart therefore reports no ETA until it has
+    saved two checkpoints of its own, which is the honest answer -- nothing
+    yet observed constrains the rate.
+    """
+    started = run_start()
+    if started is not None:
+        # Small tolerance: a checkpoint saved moments after launch belongs to
+        # this attempt even if the clocks disagree by a few seconds.
+        ckpts = [(step, mtime) for step, mtime in ckpts if mtime >= started - 60]
     if len(ckpts) < 2:
         return None
     (prev_step, prev_time), (last_step, last_time) = ckpts[-2], ckpts[-1]
     if last_step <= prev_step:
         return None
     rate = (last_time - prev_time) / (last_step - prev_step)
+    # Second line of defence, for anything the attempt filter cannot see
+    # (a long mid-attempt stall, a clock jump).
     return rate if MIN_SEC_PER_STEP <= rate <= MAX_SEC_PER_STEP else None
 
 
