@@ -17,22 +17,23 @@ complete LLM stack, following the trajectory of Sebastian Raschka's
 > run's own artifacts (metrics CSV, checkpoint timestamps, supervisor log) and
 > pushed on a schedule, so it reflects the run rather than a claim about it.
 
-**Status:** 🟢 **running** — step **14,510 / 20,000** (72.5%)
+**Status:** 🟢 **running** — step **16,067 / 20,000** (80.3%)
 
 ```
-█████████████████████████████░░░░░░░░░░░  72.5%
+████████████████████████████████░░░░░░░░  80.3%
 ```
 
 | | |
 |---|---|
 | **Model** | `medium` — 123,587,328 parameters |
 | **Corpus** | FineWeb-Edu, 5.0B tokens (4.9B train / 100M val) |
-| **Training loss** | 3.2748 (learning rate 1.58e-04) |
-| **Validation loss** | 3.2162 (perplexity 24.93) at step 14,500 |
-| **Tokens seen** | 1.78B (122,880 per step) |
+| **Training loss** | 3.1744 (learning rate 1.12e-04) |
+| **Validation loss** | 3.1907 (perplexity 24.30) at step 16,000 |
+| **Tokens seen** | 1.97B (122,880 per step) |
+| **Throughput** | 4.91 s/step (25,005 tokens/s) |
 | **Hardware** | 1x RTX 2080 Ti (11GB), fp16 + GradScaler |
-| **Estimated remaining** | — |
-| **Last updated** | 2026-08-17 23:10 IST |
+| **Estimated remaining** | ~5h 22m (≈ 2026-08-18 06:39 IST) |
+| **Last updated** | 2026-08-18 01:17 IST |
 
 Full loss curve: [`logs/medium_metrics.csv`](logs/medium_metrics.csv) ·
 Run log: [`logs/supervisor.log`](logs/supervisor.log)
