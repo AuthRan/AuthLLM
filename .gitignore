@@ -27,3 +27,6 @@ __pycache__/
 
 # tiktoken marker file (regenerate: TiktokenBPETokenizer().save(...))
 /tokenizer_gpt2.json
+
+# Operational log for the automated status sync (noise, not history)
+/logs/sync_status.log
