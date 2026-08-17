@@ -426,3 +426,4 @@ step  14417 | train_loss 3.2283 | lr 1.61e-04
 step  14418 | train_loss 3.2653 | lr 1.61e-04
 step  14419 | train_loss 3.2514 | lr 1.61e-04
 step  14420 | train_loss 3.2727 | lr 1.61e-04
+step  14421 | train_loss 3.2634 | lr 1.61e-04
