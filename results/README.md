@@ -1,5 +1,10 @@
 # What the 124M Model Actually Writes
 
+> **This page is about the base model.** It was later instruction-tuned on
+> Alpaca and Dolly, which changed its behaviour a great deal and its knowledge
+> not at all — [instruction-tuning.md](instruction-tuning.md) has that story,
+> with held-out measurements rather than impressions.
+
 The run finished. Perplexity 23.53. That number tells you almost nothing about
 what the thing sounds like, so I sat down and generated a pile of text from the
 step-20,000 checkpoint and read all of it.
@@ -163,6 +168,11 @@ The model is a base model in the truest sense. It continues text. It doesn't
 answer questions, follow instructions, or know when to stop, because nothing
 ever taught it to. If I want it to *respond* rather than *continue*, that's a
 fine-tune, not more pretraining.
+
+*(I did that next. It worked, in the narrow sense that it now answers and
+stops — 30% of generations terminated on their own before, 100% after — and
+did nothing whatsoever for the facts:*
+[instruction-tuning.md](instruction-tuning.md)*.)*
 
 And the facts aren't coming at this size. No amount of extra tokens fixes
 "World War I was caused by Hitler" at 124M parameters. That's a capacity
