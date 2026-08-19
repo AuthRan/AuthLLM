@@ -6,7 +6,6 @@ __pycache__/
 /checkpoints/
 /pretrained/
 /data/
-/learning/
 *.safetensors
 
 # Generated training artifacts (reproducible via scripts/train_tokenizer.py)
