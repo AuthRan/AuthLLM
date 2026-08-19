@@ -10,29 +10,43 @@
 # overfits an instruction set in a single pass. Dolly is 14,034 usable
 # examples (6.5% of the 15,011 exceed the 512-token window and are dropped,
 # against 0.1% for Alpaca -- Dolly's human-written context fields are long),
-# so an epoch is ~439 steps and a second pass would repeat a set a third the
-# size of the one that already overfit. 470 steps is one epoch plus a little.
+# and 2% of those are held out, so an epoch over the 13,756 training examples
+# is ~430 steps and a second pass would repeat a set a third the size of the
+# one that already overfit. 470 steps is one epoch plus a little.
 # Evals and checkpoints are more frequent than the Alpaca stage because the
 # whole run is now shorter than that stage's checkpoint interval.
 #
-# Starts from the Alpaca run's final checkpoint, on one RTX 2080 Ti. Launched by scripts/finetune.py, not scripts/train.py: the data
-# is prompt/response pairs with the prompt masked out of the loss, not a
-# continuous token stream.
+# ---- Which Alpaca checkpoint this starts from ----
+# checkpoints/sft_alpaca/step_1500.pt, not the end of that run. Two reasons.
+# Step 1,500 is where Alpaca's validation loss bottomed out (2.0793); every
+# later checkpoint is measurably further into memorizing Alpaca, and there is
+# no reason to hand this stage a worse starting point. And the true final
+# weights (step 4,875) do not exist: that run's max_steps was not a multiple
+# of its 500-step checkpoint interval, and the trainer only saved on the
+# interval, so the last file on disk is step_4500.pt. That is fixed now, but
+# not retroactively.
 #
-# ---- Why the learning rate is ~30x lower than pretraining ----
+# Runs on one RTX 2080 Ti, launched by scripts/finetune.py, not
+# scripts/train.py: the data is prompt/response pairs with the prompt masked
+# out of the loss, not a continuous token stream.
+#
+# ---- Why the learning rate is 1.0e-5 ----
 # Pretraining ran at max_lr 6.0e-4 from random initialization, where large
-# steps are what you want. This run starts from weights that already encode
-# English, and the goal is to change the model's *behaviour* (answer the
-# instruction, then stop) without dismantling what pretraining built. 2.0e-5
-# is the usual SFT range for a model this size; an order of magnitude higher
-# and the model forgets how to write while it learns the format.
+# steps are what you want; the Alpaca stage dropped to 2.0e-5, the usual SFT
+# range for a model this size, because it started from weights that already
+# encoded English and only needed to change behaviour. This stage halves that
+# again. It is not teaching the response format -- Alpaca already did, and
+# the model arrives here already producing it -- so the smallest step that
+# still moves answer quality is the right one. The risk being bought off is
+# that a third pass at full SFT strength over a 14k set drags the model into
+# Dolly's idiom without teaching it anything new.
 #
 # ---- Batch arithmetic ----
-# 8 * 4 * 1 * 512 = 16,384 tokens/step, ~32 examples per optimizer step.
-# Alpaca is 51,974 examples, so an epoch is ~1,625 steps and this is ~3
-# epochs, which is the standard Alpaca recipe. Note the *supervised* token
-# count is much lower than 16,384: prompts are masked, so only response
-# tokens produce gradient.
+# 8 * 4 * 1 * 512 = 16,384 tokens/step, ~32 examples per optimizer step --
+# identical to the Alpaca stage, so the two stages differ in data and
+# learning rate and nothing else. 13,756 usable training examples means an
+# epoch is ~430 steps. Note the *supervised* token count is much lower than
+# 16,384: prompts are masked, so only response tokens produce gradient.
 #
 # ---- Memory ----
 # Same batch_size as pretraining (8): the fp32 logits tensor is what bounds
