@@ -54,10 +54,10 @@ what fixed them.
 > | Claim | Means | True here for |
 > |---|---|---|
 > | **"I implemented this architecture"** | Code exists that can construct it; weights would be random | `tiny`, `small`, `medium`, `xl_1b` — all four presets |
-> | **"I trained this checkpoint"** | Real gradient descent ran, on real data, producing a real checkpoint file | `tiny` and `small` on the small demo corpora in `tests/fixtures/`; `medium` (124M) **trained to completion** on FineWeb-Edu — 20,000 steps, 2.46B tokens, final validation perplexity 23.53 — see the status block above |
-> | **"I loaded this pretrained checkpoint for inference"** | Someone else's trained weights, used without training or fine-tuning them here | **Not true of anything in this repo.** GPT-2's weights were compared against, never loaded successfully — see [§12](#12-pretrained-checkpoints-comparison-not-loading) — and never claimed as trained by this project |
+> | **"I trained this checkpoint"** | Real gradient descent ran, on real data, producing a real checkpoint file | `tiny` and `small` on the small demo corpora in `tests/fixtures/`; `medium` (124M) **trained to completion** on FineWeb-Edu — 20,000 steps, 2.46B tokens, final validation perplexity 23.53 — see the status block above, then **instruction-tuned** on Alpaca and Dolly ([§10](#10-instruction-tuning)) |
+> | **"I loaded this pretrained checkpoint for inference"** | Someone else's trained weights, used without training or fine-tuning them here | **Not true of anything in this repo.** GPT-2's weights were compared against, never loaded successfully — see [§13](#13-pretrained-checkpoints-comparison-not-loading) — and never claimed as trained by this project |
 
-See [§13](#13-provenance-trained--implemented--loaded) for the full,
+See [§14](#14-provenance-trained--implemented--loaded) for the full,
 itemized version of this table.
 
 ---
@@ -74,15 +74,23 @@ itemized version of this table.
   <b><a href="https://huggingface.co/spaces/AuthRan/AshGPT">▶ Try it live on Hugging Face Spaces</a></b>
 </p>
 
-Type a prompt and watch a `small` (~14M-parameter) model, trained from scratch
-on TinyStories, complete a story token by token.
+Type a prompt and watch the `medium` (124M-parameter) model, pretrained from
+random initialization on 2.46B tokens of FineWeb-Edu, continue it token by
+token.
 
-The demo runs the exact code in this repo: the from-scratch BPE tokenizer
-([§5](#5-tokenization)) feeding the from-scratch transformer
-([§3](#3-architecture-overview)), with KV-cached autoregressive decoding
-([§10](#10-inference)). The served weights are the `small` preset at training
-step 4000 (validation perplexity ≈ 11). The Gradio app and deployment notes
-live in [`space/`](space/).
+The demo runs the exact code in this repo: the GPT-2 tiktoken vocabulary the
+`medium` weights were fitted to ([§5](#5-tokenization)) feeding the
+from-scratch transformer ([§3](#3-architecture-overview)), with KV-cached
+autoregressive decoding ([§11](#11-inference)). The served weights are the
+step-20,000 checkpoint (validation perplexity 23.53), exported without
+optimizer state by `scripts/export_inference.py`. It is a **base** model: it
+continues text, it does not answer questions — see
+[§10](#10-instruction-tuning) for the fine-tune that changes that. The Gradio
+app and deployment notes live in [`space/`](space/).
+
+*(The GIF above was recorded in July, when the Space served the `small`
+TinyStories model, and has not been re-recorded since — the link goes to the
+live 124M demo, the animation shows its predecessor.)*
 
 ---
 
@@ -97,14 +105,15 @@ live in [`space/`](space/).
 7. [Next-Token Prediction & Training Objective](#7-next-token-prediction--training-objective)
 8. [Training Pipeline](#8-training-pipeline)
 9. [Distributed Training (DDP)](#9-distributed-training-ddp)
-10. [Inference](#10-inference)
-11. [Scaling to Billion-Parameter Architectures](#11-scaling-to-billion-parameter-architectures)
-12. [Pretrained Checkpoints: Comparison, Not Loading](#12-pretrained-checkpoints-comparison-not-loading)
-13. [Provenance: Trained / Implemented / Loaded](#13-provenance-trained--implemented--loaded)
-14. [Reproducibility & Commands](#14-reproducibility--commands)
-15. [Project Structure](#15-project-structure)
-16. [Testing](#16-testing)
-17. [What's Not Built](#17-whats-not-built)
+10. [Instruction Tuning](#10-instruction-tuning)
+11. [Inference](#11-inference)
+12. [Scaling to Billion-Parameter Architectures](#12-scaling-to-billion-parameter-architectures)
+13. [Pretrained Checkpoints: Comparison, Not Loading](#13-pretrained-checkpoints-comparison-not-loading)
+14. [Provenance: Trained / Implemented / Loaded](#14-provenance-trained--implemented--loaded)
+15. [Reproducibility & Commands](#15-reproducibility--commands)
+16. [Project Structure](#16-project-structure)
+17. [Testing](#17-testing)
+18. [What's Not Built](#18-whats-not-built)
 
 ---
 
@@ -125,7 +134,7 @@ received wisdom, questions like:
   17-44x *slowdown* was measured on CPU hardware without native bf16
   support, the opposite of the textbook claim.)
 - Can you just load GPT-2's weights into a differently-designed decoder?
-  (Measured answer, §12: **no**, and the reasons are specific, not vague.)
+  (Measured answer, §13: **no**, and the reasons are specific, not vague.)
 
 Every non-trivial claim in this document is either **measured** (a real
 number from a real run, reproducible via the command shown next to it) or
@@ -199,7 +208,7 @@ print(model.num_parameters())  # exact count
 | `tiny` | 4 | 128 | 4 | 50,304 | 256 | 7,292,032 | ✅ Yes — fast-iteration / demo scale |
 | `small` | 6 | 384 | 6 | 50,304 | 512 | 29,938,560 | ✅ Yes — the real "trained from scratch" target |
 | `medium` | 12 | 768 | 12 | 50,304 | 1,024 | 123,587,328 | ❌ No — shape/forward-pass tested only |
-| `xl_1b` | 22 | 2,048 | 32 | 50,304 | 2,048 | 1,233,479,680 | ❌ No — shape-tested only (see §11) |
+| `xl_1b` | 22 | 2,048 | 32 | 50,304 | 2,048 | 1,233,479,680 | ❌ No — shape-tested only (see §12) |
 
 Every row's parameter count is *exact*, not estimated: `AshuGPT.num_parameters()`
 on a real constructed model is tested to match `ModelConfig.approx_param_count()`
@@ -338,7 +347,7 @@ Query position `i` (absolute position `offset + i`, where `offset`
 accounts for any already-cached tokens) may attend to key position `j`
 iff `j <= offset + i`. With `offset=0` and equal query/key lengths this is
 the standard upper-triangular mask; with a nonzero offset (a new token
-attending back through a KV cache, §10.1) it correctly allows attending to
+attending back through a KV cache, §11.1) it correctly allows attending to
 every cached position plus itself. **Verified empirically, not just by
 inspecting the mask matrix**: changing a *later* token's input content and
 confirming every *earlier* token's output is bit-for-bit unchanged — the
@@ -641,9 +650,256 @@ relative to fixed communication cost (bigger models/batches, or NCCL/GPU).
 
 Not implementing FSDP or model parallelism.
 
-## 10. Inference
+## 10. Instruction Tuning
 
-### 10.1 KV Caching
+The 124M pretrained model continues text. Handed "Write a tribute to my high
+school swim coach" inside the instruction template below, it answered:
+
+> Describe some actions that would be easy to perform for the swim coach.
+> ### Refine:
+
+It did not write a bad tribute — it wrote *another instruction*. A document
+containing one instruction usually contains more of them, so more of them is
+the likeliest continuation, and nothing in 2.46B tokens of FineWeb-Edu ever
+taught it that an instruction is a thing to *answer* or that a response is a
+thing that *ends*.
+
+Instruction tuning teaches both, without changing the model, the loss
+function, or the optimizer. The objective is still next-token prediction.
+What changes is which tokens are targets.
+
+```mermaid
+flowchart LR
+    A["Pretrained weights\n(step 20,000)"] --> B["scripts/finetune.py\nweights only, fresh optimizer"]
+    C["Alpaca 52k\ninstruction/input/output"] --> D["InstructionDataset\ntemplate + EOS + prompt mask"]
+    D --> B
+    B --> E["Stage 1: Alpaca\n4,875 steps @ 2e-5"]
+    E --> F["Stage 2: Dolly\n@ 1e-5"]
+    G["Dolly 15k\nhuman-written"] --> D
+    F --> H["Answers instructions,\nstops on its own"]
+```
+
+### 10.1 Prompt Masking — the one idea that makes this work
+
+Every example becomes one document: a fixed template, the instruction, then
+the response, then `<|endoftext|>`.
+
+```
+Below is an instruction that describes a task. Write a response that
+appropriately completes the request.
+
+### Instruction:
+{instruction}
+
+### Response:
+{output}<|endoftext|>
+```
+
+Trained naively, next-token prediction over that document teaches the model
+to produce *all* of it — including the instruction. That is a real failure
+mode, not a theoretical one: a model trained to predict instruction tokens
+learns to invent plausible questions, which is precisely the behaviour a
+model meant to answer them must not have.
+
+The fix costs one line and no change to the model
+(`ashugpt/data/instruction.py`):
+
+```python
+labels[: n_prompt - 1] = IGNORE_INDEX   # -100
+```
+
+`F.cross_entropy` skips `ignore_index=-100` by default, so masked positions
+contribute no gradient at all. The prompt is still *read* — it is in
+`input_ids`, the attention sees every token of it — it is simply never a
+target. The model learns "given this instruction, produce this response",
+not "produce this instruction and then this response".
+
+The `- 1` is the subtle part, and it comes from the one-token shift this
+repo uses everywhere: `labels[t]` is the token that should follow
+`input_ids[t]`. The first position whose *target* is a response token is
+therefore `t = n_prompt - 1`, not `t = n_prompt`. Off by one in the safe
+direction and the first response token is never learned; off by one the
+other way and the model gets one token of the instruction as a target.
+
+Two smaller decisions in the same file:
+
+- **Every response ends with EOS.** This is what a stop button is made of.
+  The base model has no concept of finishing — it was trained on a stream
+  where documents were separated but never *terminated* as a thing to
+  predict. Supervising EOS at the end of every response is the entire
+  mechanism behind "the model stops on its own", and it is the change that
+  shows up most sharply in the measurements below.
+- **Over-length examples are dropped, not truncated.** A truncated example
+  ends mid-sentence with no EOS, which teaches the model to stop abruptly at
+  exactly 512 tokens. Dropping costs data — 0.1% of Alpaca, but 6.5% of
+  Dolly, whose human-written context fields are long — and that is the
+  cheaper mistake.
+
+### 10.2 Why `scripts/finetune.py` is not `scripts/train.py`
+
+Same trainer, same loop, three deliberate differences.
+
+**Weights only, from the checkpoint.** A fine-tune is a new run, not a
+resumption:
+
+```python
+checkpoint = torch.load(args.init_from, map_location="cpu", weights_only=True)
+model.load_state_dict(checkpoint["model_state_dict"])
+```
+
+Loading the optimizer state too would carry AdamW moment estimates fitted to
+6e-4-scale updates into a 2e-5 run, and the saved step count would drop this
+run at the tail of a cosine schedule it never took part in.
+
+**A learning rate ~30x lower.** Pretraining ran at 6e-4 from random
+initialization, where large steps are what you want. This stage starts from
+weights that already encode English and only needs to change behaviour;
+2e-5 is the standard SFT range at this size. An order of magnitude higher
+and the model forgets how to write while it learns the format.
+
+**Whole padded examples, not windows.** There is no stride and no sliding
+window: an instruction pair is an indivisible unit. Padding to a fixed 512
+keeps the tensor shape identical to pretraining, so the measured 6.01GB
+peak carries over unchanged.
+
+### 10.3 The two stages that ran
+
+| | Stage 1 | Stage 2 |
+|---|---|---|
+| Data | Alpaca 52k (machine-generated) | Dolly 15k (human-written) |
+| Usable after the 512-token filter | 51,906 (0.1% dropped) | 14,034 (6.5% dropped) |
+| Starts from | `checkpoints/medium/step_20000.pt` | Alpaca's best checkpoint, step 1,500 |
+| Steps | 4,875 (~3 epochs) | 940 (~2 epochs, chosen by sweep) |
+| Max LR | 2.0e-5 | 1.0e-5 |
+| Tokens/step | 16,384 (8 x 4 accum x 512) | 16,384 |
+| Supervised tokens | 9.0M | 2.0M |
+| Wall clock, 1x 2080 Ti | 55 min | 11 min |
+| Config | [`configs/train/sft_alpaca.yaml`](configs/train/sft_alpaca.yaml) | [`configs/train/sft_dolly.yaml`](configs/train/sft_dolly.yaml) |
+
+Note the gap between "tokens/step" and "supervised tokens". Padding every
+example to a fixed 512 keeps the tensor shape identical to pretraining — which
+is why the 6.01GB memory measurement carried over untouched — but Alpaca
+examples average 113 tokens, of which 58 are response. Per optimizer step,
+about 22% of the 16,384 positions are real tokens and about 11% produce
+gradient. Roughly 89% of the compute in this stage is padding and masked
+prompt. Sequence packing is the obvious next optimization and is not
+implemented; see [§18](#18-whats-not-built).
+
+Throughput is 1.47 optimizer steps/s, or ~24,100 token-positions/s — within
+4% of the 25,002 tok/s the pretraining run measured at the same batch shape,
+which is the expected result given the forward/backward cost is set by tensor
+shapes that did not change.
+
+**Both stages ran on one card, not two.** GPU 1 on this machine is thermally
+throttled, and DDP runs at the slower card's pace ([§9](#9-distributed-training-ddp)).
+
+### 10.4 What it changed, measured
+
+`scripts/eval_instruction_following.py` scores checkpoints on 300 held-out
+Dolly examples — reconstructed from the fine-tune's own seed and split, so
+they are examples no stage of training ever saw. Held-out loss is computed
+with the prompt masked, exactly as in training, so it scores prediction of
+the *response* only. The behavioural columns come from 40 real sampled
+generations per checkpoint (temperature 0.8, top-k 50, 200-token cap).
+
+| checkpoint | held-out loss | ppl | stop rate | mean tokens | loop rate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `base` — pretrained, step 20,000 | 3.0580 | 21.28 | 30% | 179 | 80% |
+| `alpaca` step 500 | **2.9049** | 18.26 | 98% | 58 | 15% |
+| `alpaca` step 1,500 | 2.9506 | 19.12 | 100% | 50 | 10% |
+| `alpaca` step 4,500 | 3.0844 | 21.85 | 100% | 51 | 0% |
+| `dolly` 1 epoch | 2.8183 | 16.75 | 98% | 44 | 12% |
+| `dolly` 2 epochs (shipped) | 2.7988 | 16.42 | 100% | 52 | 15% |
+| `dolly` 3 epochs | **2.7921** | **16.31** | 100% | 52 | 18% |
+
+**Stopping is learned almost immediately.** 30% → 98% in the first 500 steps,
+with mean answer length dropping from 179 tokens (i.e. running to the cap) to
+58. It is the easiest thing in the dataset to fit: every example ends with
+`<|endoftext|>` in the same position after the same template. The base
+model's 30% is not intent — FineWeb-Edu separates documents with that token,
+so it emits one whenever it decides its hallucinated document is over, which
+is why that 30% comes paired with an 80% loop rate.
+
+**The behavioural metrics and the loss disagree, and the loss is right.** By
+stop rate and loop rate, `alpaca` step 4,500 is the best model in the table:
+always stops, never loops. By held-out loss it is *worse than the base model
+it started from* (3.0844 vs 3.0580). Three epochs of Alpaca bought a model
+that reproduces the shape of an Alpaca answer perfectly and generalizes to
+another instruction set worse than the raw pretrained weights do. Tracking
+only the metrics that look like they measure instruction following would have
+selected exactly the wrong checkpoint. The full write-up, with the
+generations behind every row, is in
+[`results/instruction-tuning.md`](results/instruction-tuning.md).
+
+**Stage 2 does not make the model better — it moves where it is good.** The
+same checkpoints, scored the same way on *Alpaca's* held-out split as well:
+
+| checkpoint | Dolly held-out | Alpaca held-out | mean |
+|---|---:|---:|---:|
+| `base` | 3.0580 | 2.5338 | 2.7959 |
+| `alpaca` step 1,500 | 2.9506 | **2.0568** | 2.5037 |
+| `alpaca` step 4,500 | 3.0844 | 2.0752 | 2.5798 |
+| `dolly` 1 epoch | 2.8183 | 2.1211 | 2.4697 |
+| `dolly` 2 epochs | 2.7988 | 2.1311 | **2.4650** |
+| `dolly` 3 epochs | **2.7921** | 2.1427 | 2.4674 |
+
+Read across the Dolly rows: each extra epoch improves Dolly held-out loss by
+a little and degrades Alpaca held-out loss by almost exactly as much. One
+epoch to three moves Dolly -0.026 and Alpaca +0.022. That is not a model
+getting better at following instructions, it is a model sliding from one
+instruction distribution toward another, and only a second held-out set makes
+it visible at all. `sft_dolly.yaml` ships 940 steps because that is where the
+mean of the two bottoms out — the least arbitrary stopping point available
+once you accept the trade is real.
+
+(The base model's two columns differ by half a nat in the other direction —
+2.53 on Alpaca against 3.06 on Dolly — because Alpaca's machine-generated
+responses are far more formulaic than Dolly's human-written ones. Held-out
+loss numbers from different instruction sets are not comparable to each
+other; only down a column.)
+
+**The one-epoch prediction for stage 2 was wrong, and the sweep says so.**
+The original `sft_dolly.yaml` argued from the Alpaca stage — which overfit
+inside a single pass — that a second pass over a set a third the size would
+overfit harder. Dolly's validation loss instead fell at every single eval.
+Three runs, each a complete cosine cycle down to `min_lr` so their endpoints
+are comparable:
+
+| schedule | steps | best val loss | at step | wall clock |
+|---|---:|---:|---:|---:|
+| 1 epoch | 470 | 2.8237 | 470 (still falling) | 5 min |
+| 2 epochs | 940 | 2.8038 | 900 | 11 min |
+| 3 epochs | 1,410 | **2.7969** | 1,300 | 16 min |
+
+The curve finally flattens in the third epoch — 1,300 to 1,410 moves it by
++0.0002, the first increase anywhere in the sweep — so three epochs is where
+this stage stops paying. But the returns collapse well before that: epoch two
+buys 0.0199 nats, epoch three buys 0.0069. At half the learning rate of stage
+1, on a set a quarter the size, this model simply does not overfit Dolly the
+way it overfits Alpaca, and the reasoning that predicted it would was an
+analogy, not a measurement.
+
+### 10.5 What instruction tuning did not do
+
+It taught the model to answer. It did not teach it to know anything.
+
+> **What are brambles?** — *dolly, 2 epochs*
+> Brambles, also known as plasticizers, are chemical compounds that are added
+> to a mixture of water and water particles to create a slurry.
+
+Right length, right register, right confident encyclopaedic cadence,
+completely invented. That is the same limit [§13](#13-pretrained-checkpoints-comparison-not-loading)
+and [`results/`](results/) describe for the base model, and 11M supervised
+tokens does not move it: facts live in the pretrained weights, and fine-tuning
+changes how they come out, not how many there are.
+
+Also not built: no RLHF, no DPO, no reward model, no multi-turn chat format,
+and no model-judged evaluation. The numbers above are the ones that can be
+computed exactly from a held-out split; nothing here scores helpfulness.
+
+## 11. Inference
+
+### 11.1 KV Caching
 
 Without caching, generating token *t* re-runs attention over all *t*
 earlier tokens *again* — wasted work, since their keys/values never
@@ -670,7 +926,7 @@ difference (ordinary float32 op-order noise, not a correctness gap). Real
 speedup measured: **1.5-1.7x by 150 generated tokens** at `tiny` scale,
 growing with length — exactly the O(n) redundant recomputation removed.
 
-### 10.2 Sampling Methods
+### 11.2 Sampling Methods
 
 ```python
 for _ in range(max_new_tokens):
@@ -713,7 +969,7 @@ python -m ashugpt.generate --checkpoint checkpoints/demo/step_150.pt \
 python -m ashugpt.generate --checkpoint ... --tokenizer ... --prompt "..." --temperature 0.0   # greedy
 ```
 
-### 10.3 Inference API (FastAPI)
+### 11.3 Inference API (FastAPI)
 
 ```
 python scripts/serve.py --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json
@@ -760,12 +1016,12 @@ model) → catch-all (`500`, never a raw traceback to the client).
 | Memory | Weights + gradients + optimizer state + activations | Weights + a small KV cache only |
 | Output | A scalar loss | Sampled token ids, decoded to text |
 
-Every `/generate` call uses `use_cache=True` (§10.1) — the direct reason
+Every `/generate` call uses `use_cache=True` (§11.1) — the direct reason
 `tokens_per_second` stays roughly flat across `max_new_tokens` instead of
 degrading; without caching, each additional token costs strictly more
 than the last.
 
-## 11. Scaling to Billion-Parameter Architectures
+## 12. Scaling to Billion-Parameter Architectures
 
 **This project has never trained anything at `medium` or `xl_1b` scale.**
 What it *can* do, instantly and without building anything, is report
@@ -810,7 +1066,7 @@ Every preset reports in under a second — `estimate_memory()` only calls
 `ModelConfig.approx_param_count()` (pure arithmetic); nothing here
 constructs an `nn.Module`.
 
-## 12. Pretrained Checkpoints: Comparison, Not Loading
+## 13. Pretrained Checkpoints: Comparison, Not Loading
 
 **AshuGPT cannot load GPT-2's public pretrained weights and produce a
 working model.** Not "hasn't been tried" — determined, tested, and
@@ -869,7 +1125,7 @@ buffer GPT-2 stores as `h.{i}.attn.bias`). `load_gpt2_checkpoint(strict=True)`
 — the default — **raises `IncompatibleArchitectureError`** rather than
 returning a model that looks loaded but silently produces wrong output.
 
-## 13. Provenance: Trained / Implemented / Loaded
+## 14. Provenance: Trained / Implemented / Loaded
 
 The full version of the table at the top of this document:
 
@@ -884,15 +1140,19 @@ The full version of the table at the top of this document:
    — as of this branch — at `medium` (124M) scale on FineWeb-Edu: a
    completed 20,000-step run on a single RTX 2080 Ti, which consumed 2.46B
    of the prepared 5B-token corpus and ended at validation loss 3.1583
-   (perplexity 23.53). That run is what §11's measured constraints were
+   (perplexity 23.53). That run is what §12's measured constraints were
    working toward; the status block at the top of this document is
-   generated from its own metrics, not asserted by hand. Still **never
-   true of GPT-2's weights**, and still not true at `xl_1b` scale.
+   generated from its own metrics, not asserted by hand. Also true of the
+   instruction-tuned checkpoints ([§10](#10-instruction-tuning)): the same
+   trainer, the same gradient descent, started from this project's own
+   pretrained weights rather than anyone else's, on the public Alpaca and
+   Dolly instruction sets. Still **never true of GPT-2's weights**, and still
+   not true at `xl_1b` scale.
 3. **"I loaded this publicly available pretrained checkpoint for
    inference."** Would be true if a checkpoint's *own* architecture were
    reimplemented and its weights genuinely loaded for inference-only use
    (a `pretrained/` directory, kept separate from self-trained
-   `checkpoints/`). **Not true of anything in this repo** — §12 showed
+   `checkpoints/`). **Not true of anything in this repo** — §13 showed
    that scope needs GPT-2's *own* architecture reimplemented alongside
    AshuGPT's, not a conversion into AshuGPT's, since conversion is
    provably impossible. `ashugpt/model/` and
@@ -902,7 +1162,7 @@ The full version of the table at the top of this document:
    `transformers.GPT2LMHeadModel` or any other library's model class —
    only raw `config.json`/safetensors-header metadata, fetched by hand.
 
-## 14. Reproducibility & Commands
+## 15. Reproducibility & Commands
 
 **Setup**
 
@@ -954,11 +1214,42 @@ python scripts/train.py --model configs/model/tiny.yaml --train configs/train/sy
     --tokenizer tokenizer.json --input tests/fixtures/synthetic_corpus.txt --checkpoint-dir checkpoints/demo
 ```
 
+**Instruction fine-tune** (see [§10](#10-instruction-tuning))
+
+```
+python scripts/prepare_instruction_data.py --dataset alpaca --output data/sft/alpaca.jsonl
+python scripts/prepare_instruction_data.py --dataset dolly  --output data/sft/dolly.jsonl
+
+# Stage 1 -- from the pretrained base model:
+python scripts/finetune.py --model configs/model/medium.yaml --train configs/train/sft_alpaca.yaml \
+    --init-from checkpoints/medium/step_20000.pt --data data/sft/alpaca.jsonl \
+    --checkpoint-dir checkpoints/sft_alpaca --log-path logs/sft_alpaca.csv
+
+# Stage 2 -- from stage 1's best-validation checkpoint:
+python scripts/finetune.py --model configs/model/medium.yaml --train configs/train/sft_dolly.yaml \
+    --init-from checkpoints/sft_alpaca/step_1500.pt --data data/sft/dolly.jsonl \
+    --checkpoint-dir checkpoints/sft_dolly --log-path logs/sft_dolly.csv
+```
+
+An instruction-tuned checkpoint must be prompted through the same template it
+was trained on, which `scripts/sample.py --instruct` does:
+
+```
+python scripts/sample.py --instruct --checkpoint checkpoints/sft_dolly/step_940.pt \
+    "Explain why the sky is blue"
+```
+
 **Evaluate**
 
 ```
 python scripts/evaluate.py --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json \
     --input <corpus.txt> --seq-len 64
+
+# Instruction following: held-out loss, stop rate, answer length, loop rate
+python scripts/eval_instruction_following.py --data data/sft/dolly.jsonl \
+    --checkpoint base=checkpoints/medium/step_20000.pt \
+    --checkpoint tuned=checkpoints/sft_dolly/step_940.pt \
+    --output results/instruction_eval_dolly.md
 ```
 
 **Generate**
@@ -988,7 +1279,7 @@ python scripts/demo_pretrained_loading.py
 python scripts/benchmark_memory.py
 ```
 
-## 15. Project Structure
+## 16. Project Structure
 
 ```
 authLLM/
@@ -998,27 +1289,31 @@ authLLM/
 ├── requirements.txt           # + pytest, psutil, httpx (dev/test only)
 ├── configs/
 │   ├── model/                 # tiny / small / medium / xl_1b presets (§4)
-│   └── train/                 # tiny_cpu.yaml (real corpus), synthetic_demo.yaml (fast sanity check)
-├── scripts/                   # CLI entry points (train_tokenizer, train, evaluate, serve, benchmark_*, demo_pretrained_loading)
+│   └── train/                 # pretraining presets + sft_alpaca / sft_dolly fine-tuning presets (§10)
+├── scripts/                   # CLI entry points (train_tokenizer, train, finetune, evaluate, eval_instruction_following, sample, serve, benchmark_*, demo_pretrained_loading)
+├── logs/                      # metrics CSVs and run logs for every real training run
+├── results/                   # unedited samples + what the model did and didn't learn
+├── learning/                  # the build diary: what broke, what fixed it
+├── space/                     # the Hugging Face Space (Gradio app + deployment notes)
 ├── ashugpt/                   # the installable package
 │   ├── generate.py             # CLI: python -m ashugpt.generate
 │   ├── inspect_model.py        # CLI: python -m ashugpt.inspect_model
 │   ├── config.py                # ModelConfig + TrainConfig
-│   ├── api/                     # FastAPI server (§10.3) — separate from model code
+│   ├── api/                     # FastAPI server (§11.3) — separate from model code
 │   ├── model/                   # architecture: norm, rope, attention, feedforward, block, gpt (§6)
 │   ├── tokenizer/                # from-scratch BPE (§5)
-│   ├── data/                     # tokenized-dataset loading/chunking (§7)
+│   ├── data/                     # tokenized-dataset loading/chunking (§7), instruction.py (§10.1)
 │   ├── training/                 # optim, amp, checkpoint, ddp, trainer (§8-9)
 │   ├── eval/                     # perplexity (§8)
-│   ├── inference/                # generate.py (§10), pretrained_loader.py (§12)
-│   └── utils/                    # memory.py, the memory estimator (§11)
+│   ├── inference/                # generate.py (§11), pretrained_loader.py (§13)
+│   └── utils/                    # memory.py, the memory estimator (§12)
 └── tests/
     ├── fixtures/                 # tiny_corpus.txt, synthetic_corpus.txt
     ├── unit/                     # one file per component
     └── integration/              # test_train_step.py, test_ddp.py — slower, real end-to-end proofs
 ```
 
-## 16. Testing
+## 17. Testing
 
 ```
 pytest                    # everything (210 tests)
@@ -1034,7 +1329,7 @@ blocks future tokens), or exact expected memory multipliers. Every memory
 or speed claim in this document has a `scripts/benchmark_*.py` or test
 behind the specific number quoted.
 
-## 17. What's Not Built
+## 18. What's Not Built
 
 See [SPEC.md](SPEC.md) for the full milestone-by-milestone log, including
 honest notes on where an original plan changed after something was
@@ -1045,6 +1340,24 @@ shape-verified config — 1.23B parameters need ~20GB for
 weights+gradients+AdamW state against 22.6GB across two 11.3GB cards with
 no NVLink, which is not a real training run), and a **browser frontend**
 for the inference API.
+
+Not built on the fine-tuning side ([§10](#10-instruction-tuning)):
+
+- **Sequence packing.** Every instruction example is padded to a fixed 512
+  tokens, so ~78% of each optimizer step is padding and another ~11% is
+  masked prompt. Packing several short examples per window, with attention
+  masked at the boundaries so they cannot see each other, is worth roughly
+  4-5x on this stage and is the single biggest piece of compute left on the
+  table anywhere in the repo.
+- **Preference tuning** — no RLHF, no DPO, no reward model. The model is
+  supervised-fine-tuned only, so it has been shown what a good answer looks
+  like but never told which of two answers is better.
+- **Multi-turn chat.** The template is single-turn instruction/response;
+  there is no conversation history, no system prompt, and no role tokens.
+- **Model-judged evaluation.** Everything reported in §10 is computable
+  exactly from a held-out split — loss, stop rate, answer length, loop rate.
+  Nothing here scores helpfulness or correctness, and the samples make it
+  very clear that fluent format and correct content are separate axes.
 
 Built on 2026-08-16, when GPUs replaced the CPU-only constraint:
 
