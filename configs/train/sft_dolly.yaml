@@ -1,0 +1,56 @@
+# Second-stage fine-tune: a short pass over Dolly 15k after the Alpaca run.
+#
+# Dolly is human-written where Alpaca is machine-generated, so this stage is
+# about answer *quality* rather than teaching the response format -- Alpaca
+# already did that. It runs at half the learning rate for ~2 epochs (15,011
+# examples / 32 per step = ~469 steps/epoch), because the risk here is
+# overfitting a set a third the size of the one before it.
+#
+# Starts from the Alpaca run's final checkpoint, on one RTX 2080 Ti. Launched by scripts/finetune.py, not scripts/train.py: the data
+# is prompt/response pairs with the prompt masked out of the loss, not a
+# continuous token stream.
+#
+# ---- Why the learning rate is ~30x lower than pretraining ----
+# Pretraining ran at max_lr 6.0e-4 from random initialization, where large
+# steps are what you want. This run starts from weights that already encode
+# English, and the goal is to change the model's *behaviour* (answer the
+# instruction, then stop) without dismantling what pretraining built. 2.0e-5
+# is the usual SFT range for a model this size; an order of magnitude higher
+# and the model forgets how to write while it learns the format.
+#
+# ---- Batch arithmetic ----
+# 8 * 4 * 1 * 512 = 16,384 tokens/step, ~32 examples per optimizer step.
+# Alpaca is 51,974 examples, so an epoch is ~1,625 steps and this is ~3
+# epochs, which is the standard Alpaca recipe. Note the *supervised* token
+# count is much lower than 16,384: prompts are masked, so only response
+# tokens produce gradient.
+#
+# ---- Memory ----
+# Same batch_size as pretraining (8): the fp32 logits tensor is what bounds
+# this on 11GB and it is unchanged at 8 * 512 * 50304 * 4 = 0.82GB. Padding
+# to a fixed 512 keeps the shape identical to the pretraining run, so the
+# measured 6.01GB peak carries over.
+batch_size: 8
+seq_len: 512
+grad_accum_steps: 4
+max_steps: 940
+warmup_steps: 50
+max_lr: 1.0e-5
+min_lr: 1.0e-6
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+log_interval: 1
+eval_interval: 250
+eval_steps: 40
+checkpoint_interval: 500
+amp_dtype: float16
+gradient_checkpointing: false
+use_efficient_attention: true
+# Irrelevant here -- InstructionDataset emits whole examples, not windows over
+# a stream -- but TrainConfig requires the field to be explicit or None.
+stride: null
+num_workers: 3
+pin_memory: true
+compile_model: false
+seed: 1337
