@@ -73,8 +73,13 @@ def main() -> None:
             )
         elapsed = time.time() - start
 
+        # Actual tokens produced, not max_new_tokens: an instruction-tuned model
+        # stops at EOS, and dividing the cap by the elapsed time would report a
+        # rate several times the real one precisely when the model behaves best.
+        generated = output_ids.shape[1] - input_ids.shape[1]
+
         print("=" * 78)
-        print(f"PROMPT: {prompt!r}   [{args.max_new_tokens / elapsed:.0f} tok/s]")
+        print(f"PROMPT: {prompt!r}   [{generated} tokens, {generated / elapsed:.0f} tok/s]")
         print("-" * 78)
         decoded = tokenizer.decode(output_ids[0].tolist())
         if args.instruct:
