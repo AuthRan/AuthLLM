@@ -1,7 +1,9 @@
-# CPU torch is plenty for ~14M-param inference on a free HF Space.
---extra-index-url https://download.pytorch.org/whl/cpu
+# ZeroGPU attaches a real CUDA device inside @spaces.GPU, so this needs the
+# default (CUDA) torch wheels -- the CPU-only index that served the 14M model
+# would leave the GPU unused and generation crawling.
 torch
 gradio>=4.0
+# The 124M model was trained on the GPT-2 tiktoken vocabulary.
+tiktoken
 # Installs the ashugpt package (model + tokenizer code) straight from GitHub.
-# Installed straight from your public GitHub repo.
 git+https://github.com/AuthRan/authLLM.git
