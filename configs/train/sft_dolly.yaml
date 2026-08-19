@@ -2,9 +2,18 @@
 #
 # Dolly is human-written where Alpaca is machine-generated, so this stage is
 # about answer *quality* rather than teaching the response format -- Alpaca
-# already did that. It runs at half the learning rate for ~2 epochs (15,011
-# examples / 32 per step = ~469 steps/epoch), because the risk here is
-# overfitting a set a third the size of the one before it.
+# already did that. It runs at half the learning rate.
+#
+# ---- Why one epoch, not the ~3 the Alpaca recipe uses ----
+# The Alpaca stage put its validation minimum at step 1,500 against an epoch
+# length of 1,590, and val loss rose on every eval after it: this model
+# overfits an instruction set in a single pass. Dolly is 14,034 usable
+# examples (6.5% of the 15,011 exceed the 512-token window and are dropped,
+# against 0.1% for Alpaca -- Dolly's human-written context fields are long),
+# so an epoch is ~439 steps and a second pass would repeat a set a third the
+# size of the one that already overfit. 470 steps is one epoch plus a little.
+# Evals and checkpoints are more frequent than the Alpaca stage because the
+# whole run is now shorter than that stage's checkpoint interval.
 #
 # Starts from the Alpaca run's final checkpoint, on one RTX 2080 Ti. Launched by scripts/finetune.py, not scripts/train.py: the data
 # is prompt/response pairs with the prompt masked out of the loss, not a
@@ -33,7 +42,7 @@
 batch_size: 8
 seq_len: 512
 grad_accum_steps: 4
-max_steps: 940
+max_steps: 470
 warmup_steps: 50
 max_lr: 1.0e-5
 min_lr: 1.0e-6
@@ -41,9 +50,9 @@ weight_decay: 0.1
 betas: [0.9, 0.95]
 grad_clip: 1.0
 log_interval: 1
-eval_interval: 250
+eval_interval: 100
 eval_steps: 40
-checkpoint_interval: 500
+checkpoint_interval: 150
 amp_dtype: float16
 gradient_checkpointing: false
 use_efficient_attention: true
