@@ -296,7 +296,16 @@ def train(
                     _append_csv_row(log_path, val_row)
 
             # ---- checkpoint saving (rank 0 only, always the unwrapped/plain model) ----
-            if info.is_main_process and checkpoint_dir is not None and step % config.checkpoint_interval == 0:
+            # The `or step == config.max_steps` clause matters whenever
+            # max_steps is not a multiple of checkpoint_interval: without it a
+            # run logs a final loss and a final validation and then throws away
+            # the weights that produced them. The Alpaca fine-tune (max_steps
+            # 4,875, checkpoint_interval 500) lost its final model exactly that
+            # way -- the newest file on disk was step_4500.pt. Logging and
+            # validation already special-case the last step; saving now does too.
+            if info.is_main_process and checkpoint_dir is not None and (
+                step % config.checkpoint_interval == 0 or step == config.max_steps
+            ):
                 ckpt_path = checkpoint_dir / f"step_{step}.pt"
                 save_checkpoint(ckpt_path, raw_model, optimizer, step, model_config, config)
                 print(f"Saved checkpoint to {ckpt_path}")
