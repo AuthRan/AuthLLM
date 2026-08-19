@@ -5,12 +5,14 @@
 | checkpoint | held-out loss | ppl | stop rate | mean tokens | loop rate |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `base` | 3.0580 | 21.28 | 30% | 179 | 80% |
-| `alpaca-500` | 2.9049 | 18.26 | 98% | 58 | 15% |
-| `alpaca-1500` | 2.9506 | 19.12 | 100% | 50 | 10% |
-| `alpaca-4500` | 3.0844 | 21.85 | 100% | 51 | 0% |
-| `dolly-1ep` | 2.8183 | 16.75 | 98% | 44 | 12% |
-| `dolly-2ep` | 2.7988 | 16.42 | 100% | 52 | 15% |
-| `dolly-3ep` | 2.7921 | 16.31 | 100% | 52 | 18% |
+| `alpacaL-500` | 2.9049 | 18.26 | 98% | 58 | 15% |
+| `alpacaL-1500` | 2.9506 | 19.12 | 100% | 50 | 10% |
+| `alpacaL-4500` | 3.0844 | 21.85 | 100% | 51 | 0% |
+| `alpacaS-1600` | 2.9145 | 18.44 | 100% | 47 | 15% |
+| `dollyL-1ep` | 2.8183 | 16.75 | 98% | 44 | 12% |
+| `dollyL-2ep` | 2.7988 | 16.42 | 100% | 52 | 15% |
+| `dollyL-3ep` | 2.7921 | 16.31 | 100% | 52 | 18% |
+| `dollyS-2ep` | 2.7707 | 15.97 | 98% | 52 | 15% |
 
 ## base
 
@@ -767,7 +769,7 @@ https://en.wikipedia.org/wiki/Kidney_transplantation
 > Cauliflower is a soft, tender, hard-to-cook rice that is suitable for use in the kitchen.
 > ### Response:
 
-## alpaca-500
+## alpacaL-500
 
 ### What are brambles?
 
@@ -1119,7 +1121,7 @@ https://en.wikipedia.org/wiki/Kidney_transplantation
 
 > Yes, cauliflower rice is a delicious and delicious way to add a bit of flavor to your meal. You can add a little bit of flavor to your rice, such as a little roasted garlic, a bit of Parmesan cheese, or some marinara sauce. You can also add a little of a touch of flavor to your rice, like a little garlic or onion.
 
-## alpaca-1500
+## alpacaL-1500
 
 ### What are brambles?
 
@@ -1442,7 +1444,7 @@ https://en.wikipedia.org/wiki/Kidney_transplantation
 
 > Yes, cauliflower rice is a delicious and delicious way to add a delicious, savory taste to a meal.
 
-## alpaca-4500
+## alpacaL-4500
 
 ### What are brambles?
 
@@ -1744,7 +1746,323 @@ https://en.wikipedia.org/wiki/Kidney_transplantation
 
 > Cauliflower rice is not that easy to cook than cauliflower rice in its raw forms. It should be cooked in a large pot with cold water to ensure it's cooked in an airy, yet flavorful container. In a separate bowl, add vegetable broth and cook for 2 minutes, stirring occasionally. Serve cauliflower rice with some vegetables and pepper to increase the crunch and flavor.
 
-## dolly-1ep
+## alpacaS-1600
+
+### What are brambles?
+
+`71 tokens, stopped`
+
+> Brambles are small objects that have a shape made out of a material that is used in a machine. Depending on the type of object, the materials can vary, but common materials include plastics, metal, and glass. Bricks can also be used to support or support an object, such as wooden blocks, wood block, or other metal objects.
+
+### Make a pro and con list for two different options for a first date: dinner and a movie, or a trip to a bowling alley. Give at least 3 pros and cons for each option
+
+`35 tokens, stopped`
+
+> - Eating an evening dinner 
+> - Eating dinner for a movie 
+> - Eating a trip to a bowling alley 
+> - Having a meal with an ice-cream party
+
+### Who set the first Guinness World Record for swimming under ice?
+
+*Input:* Swimming under ice. On 16 March 2000, Hof set the Guinness World Record for farthest swim under ice on his second attempt, with a distance of 57.5 metres (188.6 feet). Hof's first attempt the day before failed when he began his swim without goggles and his corneas froze solid and blinded him. A rescue diver pulled him to the surface after he passed out. The record has been broken several times since and is 265 feet (81 m) as of 2022."
+
+`80 tokens, stopped`
+
+> Swimming under ice is a record created by the Guinness World Record for the longest and lowest swims. Hof set the Guinness World Record for farthest swims on his first attempt and has been broken twice. Hof's first attempt the day before failed, but did not finish before the last swim. Hof's successful rescue diver set the Guinness World Record for farthest swims on his first attempt.
+
+### How do I get to Juneau, Alaska?
+
+`73 tokens, stopped`
+
+> We can get to Juneau, Alaska by taking a boat route to the shore and walking through the park. Depending on your available time, you can take a boat boat or a boat boat. We recommend that you do it on the shore and then walk through the park on the shore. We will give you a ride and we will be ready to help you.
+
+### Who is Luke Skywalker's parents?
+
+`43 tokens, stopped`
+
+> Luke Skywalker's parents are Luke Skywalker's nephews, Luke Skywalker's half-brothers, Luke Skywalker's half-brothers, Luke Skywalker's half-brothers, Luke Skywalker's half-brothers.
+
+### Write a tribute to my high school swim coach.
+
+`31 tokens, stopped`
+
+> I am so thankful for your services to me. Every so often I want to take a bite out of you. Thanks for taking the time to help!
+
+### Provide a list of names for an inspiring exotic dancer
+
+`102 tokens, stopped`
+
+> - Lina,
+> - Bina, 
+> - Efra, 
+> - Gare, 
+> - Gertrude, 
+> - Gabor, 
+> - Gare Dancer, 
+> - Gabor, 
+> - Gabor,
+> - Gabor, 
+> - Gabor, 
+> - Gabor, 
+> - Gabor, 
+> - Gabor, 
+> - Gabor, 
+> - Gabor,
+> - Gabor,
+
+### What are your 5 favourite museums in London?
+
+`57 tokens, stopped`
+
+> London has some of the most famous museums in the world, including the World War II Museum in London, the Great Exhibition of London in 1881, the British Museum, the British Museum’s own Museum of London, and the British Museum’s own Museum of London.
+
+### I am looking into buying a new monitor, how do I know which one I should buy?
+
+`19 tokens, stopped`
+
+> I am looking to purchase a new monitor, how do I know which one I should buy?
+
+### What is Humanism?
+
+`20 tokens, stopped`
+
+> Humanism is the study of human interactions and behavior within the context of the world and its cultures.
+
+### How many players participate in an ultimate frisbee game?
+
+`17 tokens, stopped`
+
+> The total number of players participating in the ultimate frisbee game is around 28.
+
+### Classify each of the following as an "Indoor Activity" or an "Outdoor Activity": Hiking, Watching TV, Cooking, Surfing, Gardening
+
+`24 tokens, stopped`
+
+> Indoor Activity: hiking 
+> Misure Activity: Cooking 
+> 
+> Indoor Activity: Gardening: Gardening
+
+### How can I treat a cough without medication?
+
+`95 tokens, stopped`
+
+> Treating a cough without medication is easy and pain-free. You should cough and exfoliate, and take a warm shower and clean your face to help reduce the inflammation. Make sure to avoid over-the-counter remedies, such as ibuprofen or acetaminophen, that can mask symptoms of a cold or flu. Other measures include avoiding tight clothing, avoiding caffeine or alcohol, using a humidifier, and avoiding any contact with the mucous membranes.
+
+### What is the name of the dog that looks like a mop?
+
+`15 tokens, stopped`
+
+> The dog that looks like a mop is the Labrador Retriever.
+
+### Which episode did Daenerys Targaryen lose her dragon, Viserion, to a White Walker's spear?
+
+`28 tokens, stopped`
+
+> Viserion, Viserion's daughter, was so consumed with her battle that she refused to let her dragon fly through her face.
+
+### Who is using Spark in production?
+
+`13 tokens, stopped`
+
+> This is an automatic-powered solution created by Spark for production.
+
+### Name a Christopher Nolan movie that was remade into an Indian movie.
+
+`13 tokens, stopped`
+
+> The Christopher Nolan movie is a fusion of Indian and modern film.
+
+### What is an offside in football/soccer?
+
+`123 tokens, stopped`
+
+> An offside in football/soccer is an offensive move in a game that is used in a specific way. It is used to move the ball to another court, or to an opponent. For example, the ball must be thrown into the opponent’s airfield before it can be returned to the opponent. The game could also be played as a catch or as a game between the opposing team. The offense can be seen with a goal or with a penalty. For example, if the opponent is out in the field and the ball is thrown in the airfield, they can be declared a winner.
+
+### From the passage list down the areas for which Dar es Salaam is Tanzania's most prominent city. List the results in comma separated format.
+
+*Input:* Dar es Salaam (/ˌdɑːr ɛs səˈlɑːm/; from Arabic: دَار السَّلَام, romanized: Dâr es-Selâm, lit. 'Abode of Peace') or commonly known as Dar, is the largest city and financial hub of Tanzania. It is also the capital of Dar es Salaam Region. With a population of over six million people, Dar is the largest city in East Africa and the seventh-largest in Africa. Located on the Swahili coast, Dar es Salaam is an important economic centre and is one of the fastest-growing cities in the world.
+
+The town was founded by Majid bin Said, the first Sultan of Zanzibar, in 1865 or 1866. It was the main administrative and commercial center of German East Africa, Tanganyika, and Tanzania. The decision was made in 1974 to move the capital to Dodoma and was officially completed in 1996.
+
+Dar es Salaam is Tanzania's most prominent city for arts, fashion, media, film, television, and finance. It is the capital of the co-extensive Dar es Salaam Region, one of Tanzania's 31 administrative regions, and consists of five districts: Kinondoni in the north; Ilala in the centre; Ubungo and Temeke in the south; and Kigamboni in the east across the Kurasini estuary.
+
+`45 tokens, stopped`
+
+> Dar es Salaam is a city located in East Africa. Its population was estimated at less than 3 million people in 1980. The population of Dar es Salaam was estimated to be about 2.7 million people.
+
+### Why should I cheer for the Sacramento Kings in this year's NBA playoffs?
+
+`93 tokens, stopped`
+
+> This year's NBA playoffs is a great opportunity for cheer for the Sacramento Kings in the NBA. The team has a strong overall morale and a sense of accomplishment, giving the players something to look forward to. Additionally, the players are always looking ahead and excited about the upcoming season, offering an opportunity to meet and bond with the other players. The team's win is impressive, and the team is looking ahead to a long and happy summer with a lot of fun.
+
+### What are five popular songs by Jack Harlow?
+
+`74 tokens, stopped`
+
+> - The Beatles: From the 1950s to the 1980s 
+> - The Beatles' Unforgettable Show: From the 1950s to the present 
+> - The Rolling Stones: From the 1950s to the present 
+> - The Rolling Stones: From the 1950s to the present 
+> - The Little Red Riding Hood: From the 1950s to the present
+
+### Classify the following as indoor, outdoor, activities or both: basketball, hiking, soccer, rock climbing, mountaineering, swimming.
+
+`11 tokens, stopped`
+
+> Exercise: All-American Basketball (USAT).
+
+### What are some must-see places in Romania?
+
+`116 tokens, stopped`
+
+> Some must-see places in Romania have become popular for a variety of reasons. Some are popular tourist destinations such as the city of Kvartov Palace, the beautiful ruins of an ancient Roman city, or the tourist destination of the ancient city of Piave. Other places, such as the city of Kvartov, are popular tourist destinations such as the ruins of the ancient city of Kvartov, a large Roman town, or the ruins of a ancient Roman city. Many localities have started to bring their own unique cultures and attractions to the city.
+
+### Why are protein waffles so dry?
+
+`57 tokens, stopped`
+
+> Protein waffles are like a sponge, allowing for the quick movement of fluid and excess water around. Additionally, protein waffles can help to reduce the amount of water lost, which can help to reduce pressure. They are also a great way to stay hydrated throughout the day.
+
+### How many times did Barton switch parties?
+
+*Input:* Barton switched parties three times in his political life. He was first elected as a Democratic-Republican; he then switched to an Adams Democrat for his re-election in 1825. When he ran for the Senate again in 1830 he switched to being an Anti-Jacksonian candidate. In the Senate, he served as chairman of the committee on public lands. He was a member of the Missouri State Senate in 1834–1835.
+
+`16 tokens, stopped`
+
+> Barton's political life lasted from 1835 until his death in 1837.
+
+### What are four universities in the state of Florida?
+
+`19 tokens, stopped`
+
+> - Florida Institute of Technology 
+> - Arizona State University
+> - University of California, Los Angeles
+
+### Extract the different ways of dealing with underfitting mentioned in the text
+
+*Input:* Resolving underfitting
+There are multiple ways to deal with underfitting:
+
+1) Increase the complexity of the model: If the model is too simple, it may be necessary to increase its complexity by adding more features, increasing the number of parameters, or using a more flexible model. However, this should be done carefully to avoid overfitting.
+2) Use a different algorithm: If the current algorithm is not able to capture the patterns in the data, it may be necessary to try a different one. For example, a neural network may be more effective than a linear regression model for some types of data.
+3) Increase the amount of training data: If the model is underfitting due to lack of data, increasing the amount of training data may help. This will allow the model to better capture the underlying patterns in the data.
+4) Regularization: Regularization is a technique used to prevent overfitting by adding a penalty term to the loss function that discourages large parameter values. It can also be used to prevent underfitting by controlling the complexity of the model.
+5) Ensemble Methods: Ensemble methods combine multiple models to create a more accurate prediction. This can help to reduce underfitting by allowing multiple models to work together to capture the underlying patterns in the data.
+6) Feature engineering: Feature engineering involves creating new model features from the existing ones that may be more relevant to the problem at hand. This can help to improve the accuracy of the model and prevent underfitting.
+
+`10 tokens, stopped`
+
+> This text requires the use of a different algorithm.
+
+### Which of the following are cities in the PNW in the US: Seattle, Portland, Hillsboro, Eugene, Tacoma, Vancouver, Surrey, Richmond.
+
+`9 tokens, stopped`
+
+> Seattle is an urban area in the US.
+
+### How do the definitions of "first-degree relative" and "nuclear family" differ?
+
+*Input:* A first-degree relative (FDR) is a person's parent (father or mother), full sibling (brother or sister) or child. It constitutes a category of family members that largely overlaps with the term nuclear family, but without spouses.
+
+`61 tokens, stopped`
+
+> A first-degree relative (FDR) is a person's parent, full sibling (father or mother) or child. It is not a family member, but a family asset and member of the nuclear family. They are not related to the nuclear family, but are not related to the nuclear family.
+
+### Which is the oldest dynasty still ruling?
+
+`10 tokens, stopped`
+
+> The oldest dynasty still ruling is the Qin Dynasty.
+
+### Who are the top tennis players right now?
+
+`27 tokens, stopped`
+
+> The top tennis players are the National Tennis Club, the Tennis Association, the Tennis Association of America, and the Tennis Club of America.
+
+### Heres a summary of Gioia Del Colle, a town in Italy that I will be traveling to, how should I pack?
+
+*Input:* Gioia del Colle (pronounced [ˈdʒɔːja del ˈkɔlle]; Barese: Sciò) is a town and comune of the Metropolitan City of Bari, Apulia, southern Italy. The town is located on the Murge plateau at 360 metres (1,180 ft) above sea level, between the Adriatic and Ionian Seas.
+
+Physical geography
+Territory
+Gioia del Colle is on the top of a hill at 360 m a.s.l. It is located in the southern part of the Murge, in the "Sella di Gioia del Colle". It is between the North-West Murge and the South-West Murge and the Adriatic Sea and the Ionian Sea. The municipal area has an area of 206.48 km² and it reaches a maximum altitude of 435 m a.s.l. and a minimum of 296 m a.s.l. Its area borders to the North-West with Acquaviva delle Fonti, to the North with Sammichele di Bari, to the North-East with Turi, to the East with Putignano and Noci, to the South-East with Mottola, to the South with Castellaneta, to the South-West with Laterza and to the West with Santeramo in Colle.
+
+Gioia del Colle's orography
+The landscape is characterized by large wooded areas, in which the Macedonian oaks dominate, more than the downy oak. In particular the Bosco Romanazzi and Serra Capece constitute the most conspicuous part of the wooded area of Gioia del Colle and they extend from Mount Sannace archaeological area to the provincial road that leads to Noci.
+
+The western part of the area is part of the North-West Murge, with isoipse that exceed 400 m a.s.l. towards Santeramo and Laterza, while the Eastern one is part of the South-East Murge, with isoipse over 400 m a.s.l. towards Noci. In the middle, on the contrary, there is a depression (saddle) with an average altitude of 340 m a.s.l., interrupted only by the 360-meter hill on which the city lies.
+
+Climate
+Gioia del Colle's climate is mediterranean (Köppen Csa), but it has peaks of continentality due to the altitude and the distance from the sea. Temperature varies between −2 e +12 °C in winter, while it varies between +18 e +35 °C with a high percentage of humidity in summer. Annual rainfall is around 600 mm. It often snows, about once a year, especially if there is cold air of Balkan origin.
+
+`41 tokens, stopped`
+
+> Describe Gioia's climate in the following way so that its weather for Gioia del Colle weather station, or EIliadio, La Plates, and p.s.
+
+### How can I drive from South Bay to San Francisco?
+
+`13 tokens, stopped`
+
+> Drive from South Bay to San Francisco through the Golden Gate Bridge.
+
+### Which one is more popular? Soccer vs Basketball?
+
+`43 tokens, stopped`
+
+> Soccer and basketball are both popular sports, but they are both sports that are much more popular than both. Soccer is more popular in North America than basketball, and basketball is often seen as more popular than either.
+
+### How to evaluate an equation with multiple operations?
+
+`96 tokens, stopped`
+
+> An equation with multiple operations can be evaluated using multiple equations. For example, for a complex equation with multiple operations, one equation may be evaluated under multiple variables, such as the equation of the line, the equation of the line, the equation of the line, and the equation of the line. For example, if a complex equation has multiple variables, one equation can be evaluated under different variables, such as the equation of the line or the equation of the equation of the line.
+
+### Identify which animal species is alive or extinct: Opabinia, Dugong
+
+`67 tokens, stopped`
+
+> Opabinia is a large, herbivorous mammal found in parts of the Pacific Ocean. Its diet consists of seeds, leaves, bark, leaves and flowers, as well as fruits, roots, leaves, and nuts. It is found in many tropical and subtropical regions, but its presence is very low in the wild.
+
+### Classify the below states based on east or west coast.
+Rhode Island, South Carolina, Vermont, Alaska, Hawaii
+
+`8 tokens, stopped`
+
+> South Carolina, Rhode Island, Hawaii.
+
+### Please list the main dog predators according to the passage
+
+*Input:* Although dogs are the most abundant and widely distributed terrestrial carnivores, feral and free-ranging dogs' potential to compete with other large carnivores is limited by their strong association with humans. For example, a review of the studies in dogs' competitive effects on sympatric carnivores did not mention any research on competition between dogs and wolves. Although wolves are known to kill dogs, they tend to live in pairs or in small packs in areas where they are highly persecuted, giving them a disadvantage facing large dog groups.
+
+Wolves kill dogs wherever they are found together. In some instances, wolves have displayed an uncharacteristic fearlessness of humans and buildings when attacking dogs to the extent that they have to be beaten off or killed. Although the numbers of dogs killed each year are relatively low, it induces a fear of wolves entering villages and farmyards to take dogs and losses of dogs to wolves have led to demands for more liberal wolf hunting regulations.
+
+Coyotes and big cats have also been known to attack dogs. In particular, leopards are known to have a preference for dogs and have been recorded to kill and consume them, no matter what their size. Siberian tigers in the Amur River region have killed dogs in the middle of villages. This indicates that the dogs were targeted. Amur tigers will not tolerate wolves as competitors within their territories, and the tigers could be considering dogs in the same way. Striped hyenas are known to kill dogs in their range.
+
+`79 tokens, stopped`
+
+> This passage discusses the potential for dogs to compete with other large carnivores in the wild. Dogs are often the most abundant and widespread carnivores in the wild, and the presence of dogs has been shown to have a negative impact on the survival of wild dogs. In addition, dogs should be kept in large and low-cost environments, with the potential for dogs to become extinct in the wild.
+
+### Based on this paragraph, give me a summary of what a kidney donor chain is.
+
+*Input:* Exchanges and chains are a novel approach to expand the living donor pool. In February 2012, this novel approach to expand the living donor pool resulted in the largest chain in the world, involving 60 participants organized by the National Kidney Registry. In 2014 the record for the largest chain was broken again by a swap involving 70 participants. The acceptance of altruistic donors has enabled chains of transplants to form. Kidney chains are initiated when an altruistic donor donates a kidney to a patient who has a willing but incompatible donor. This incompatible donor then 'pays it forward' and passes on the generosity to another recipient who also had a willing but incompatible donor. Michael Rees from the University of Toledo developed the concept of open-ended chains. This was a variation of a concept developed at Johns Hopkins University. On 30 July 2008, an altruistic donor kidney was shipped via commercial airline from Cornell to UCLA, thus triggering a chain of transplants. The shipment of living donor kidneys, computer-matching software algorithms, and cooperation between transplant centers has enabled long-elaborate chains to be formed.
+https://en.wikipedia.org/wiki/Kidney_transplantation
+
+`98 tokens, stopped`
+
+> Kidney Transplantation is a medical and surgical procedure that is designed to improve and expand the living donor pool. It is used to enable people with an individual kidney to be able to live independently, and can be used for more complex procedures like dialysis or kidney transplantation. The process is often successful and successful in certain circumstances, but there are some drawbacks. On the other hand, it is often very successful in certain circumstances and is becoming increasingly popular with individuals considering a kidney donation.
+
+### Cauliflower rice is not that fun to eat in its bland form. Is there anything interesting and tasty I can cook with cauliflower rice?
+
+`23 tokens, stopped`
+
+> Yes, cauliflower rice is a delicious and delicious way to add a delicious, savory taste to a dish.
+
+## dollyL-1ep
 
 ### What are brambles?
 
@@ -2070,7 +2388,7 @@ https://en.wikipedia.org/wiki/Kidney_transplantation
 
 > Cauliflower rice is a delicious and easy cooked rice so if you want it to taste sweet, then you better try cauliflower rice!
 
-## dolly-2ep
+## dollyL-2ep
 
 ### What are brambles?
 
@@ -2426,7 +2744,7 @@ https://en.wikipedia.org/wiki/Kidney_transplantation
 
 > Cauliflower rice is a delicious and easy cooked rice.  Its texture is mild and sweet.
 
-## dolly-3ep
+## dollyL-3ep
 
 ### What are brambles?
 
@@ -2795,3 +3113,363 @@ https://en.wikipedia.org/wiki/Kidney_transplantation
 > -    Add a bit of salt and pepper to taste
 > 
 > To add cauliflower rice in your next meal, add some rice vinegar or other vinegar.
+
+## dollyS-2ep
+
+### What are brambles?
+
+`57 tokens, stopped`
+
+> Brambles, also known as plasticizers, are chemical compounds that are added to a mixture of non-cemented polymers. They are also an essential part of a good manufacturing process. Some popular bramble manufacturers include the Netherlands Green and the United States Government of Massachusetts.
+
+### Make a pro and con list for two different options for a first date: dinner and a movie, or a trip to a bowling alley. Give at least 3 pros and cons for each option
+
+`27 tokens, stopped`
+
+> - Eating an evening
+> - Getting a movie
+> - Cooking
+> - Eating for dinner
+> - Eating a movie
+> - Eating a movie
+
+### Who set the first Guinness World Record for swimming under ice?
+
+*Input:* Swimming under ice. On 16 March 2000, Hof set the Guinness World Record for farthest swim under ice on his second attempt, with a distance of 57.5 metres (188.6 feet). Hof's first attempt the day before failed when he began his swim without goggles and his corneas froze solid and blinded him. A rescue diver pulled him to the surface after he passed out. The record has been broken several times since and is 265 feet (81 m) as of 2022."
+
+`10 tokens, stopped`
+
+> Swimming under ice is a form of swimming.
+
+### How do I get to Juneau, Alaska?
+
+`34 tokens, stopped`
+
+> - Take an East Coast helicopter
+> - Go outside for a swim
+> - Go to a friend's house
+> - Go on a vacation
+> - Go to a sports team
+
+### Who is Luke Skywalker's parents?
+
+`21 tokens, stopped`
+
+> Luke Skywalker's parents are Luke Skywalker and Luke Skywalker. Luke is a member of the Star Wars team.
+
+### Write a tribute to my high school swim coach.
+
+`115 tokens, stopped`
+
+> Hi! I'm doing a great job and am finally here to help you with your studies. I am a very passionate swim coach and I have a lot to teach you. I have been writing this for several years and I am always looking to have more confidence in you in order to help you stay organized and successful. I am very impressed by the coaching and coaching she is doing and the work she does for you. I'm always looking for the right approach to help you succeed on your next swim. Thanks for visiting my school and I'm excited to see you there.
+
+### Provide a list of names for an inspiring exotic dancer
+
+`200 tokens, hit the 200-token cap`
+
+> - Léon de Saint-Roch 
+> - Jean-Baptiste Brueggemann 
+> - Jean-Jacques-le-Duc 
+> - Jean-Maximilien-Allemagne
+> - Jean-Louis Dauphin
+> - Jean-Louis XVI
+> - Jean-Philippe-François Dauphin
+> - André Lide
+> - André Géraldre
+> - Marie Curie
+> - Anne-Lise de Lausanne
+> - Marie-Josélise Cocteau
+> - Marie-Anne-Louis
+> - Marie-Marie Savary
+> - Marie-Médard de la Rochefoucauld
+> - Marie-Étienne-Émile Blondel
+> - Marie-Marie-Fernando Reina
+> - Marie-Maurice Clemenceau
+> - Marie-Mary-le-Aloisot
+> - Marie-Anne-Louis
+
+### What are your 5 favourite museums in London?
+
+`88 tokens, stopped`
+
+> London has some of the most famous museums in the world so if you want to go around and take a look at one of them, here are the five most popular museums in London:
+> 
+> - The Metropolitan Museum of Art
+> - The London Fine Arts Museum
+> - The Metropolitan Museum of Art
+> - The Metropolitan Museum of Art
+> - The Metropolitan Museum of Fine Arts
+> - The Metropolitan Museum of Art
+> - The Metropolitan Museum of Art
+
+### I am looking into buying a new monitor, how do I know which one I should buy?
+
+`19 tokens, stopped`
+
+> We sell some models but I'm in the process of buying a new monitor for $25.
+
+### What is Humanism?
+
+`134 tokens, stopped`
+
+> Humanity is the study of human existence and behavior. It is a social-ecological theory which provides a basis for understanding human behavior and development. Humanism is a theory created by Charles Darwin in 1859. The principles of humanism are: respect for individual human rights, individual responsibility, human dignity and power. Humanism is a system of values and values that seek to develop the individual human soul into a higher being. Humanism is the study of human culture. Humanism does not mean an individual's complete understanding of reality. It is an approach to understanding human behavior and development. Humanism is used by a wide range of people, groups and societies.
+
+### How many players participate in an ultimate frisbee game?
+
+`96 tokens, stopped`
+
+> The answer to the question is 3 players.     
+> - The winner of the final frisbee game is the player who has the most points. 
+> - The last frisbee game that players play is the game of the moon. 
+> - The game is played between two teams. 
+> - The winner of the game is the player who has the most points. 
+> - The game is played between the teams with the most points.
+
+### Classify each of the following as an "Indoor Activity" or an "Outdoor Activity": Hiking, Watching TV, Cooking, Surfing, Gardening
+
+`37 tokens, stopped`
+
+> Indoor Activity: Outdoor Activity
+> Home exploration: Outdoor activities
+> Home exploration: Outdoor activities
+> Home exploration: Outdoor activities
+> Surfing: Outdoor activities
+> Gardening: Outdoor activities
+
+### How can I treat a cough without medication?
+
+`19 tokens, stopped`
+
+> - Take some pain-relief medication
+> - Do so if you want to prevent a cold
+
+### What is the name of the dog that looks like a mop?
+
+`15 tokens, stopped`
+
+> The dog that looks like a mop is the Labrador Retriever.
+
+### Which episode did Daenerys Targaryen lose her dragon, Viserion, to a White Walker's spear?
+
+`28 tokens, stopped`
+
+> Viserion, Viserion's daughter, was the last of the two women who lost their dragon to a White Walker's spear.
+
+### Who is using Spark in production?
+
+`63 tokens, stopped`
+
+> Spark is an open-source, easy to use, high-performance, multi-sourced general purpose microprocessor processor.  Spark is widely used by many companies, including Walmart and Google.  It can be used for more complex tasks like video analytics, analytics for applications, data analysis, and data analysis.
+
+### Name a Christopher Nolan movie that was remade into an Indian movie.
+
+`18 tokens, stopped`
+
+> The Indian movie, "Manchuram", was remade into an Indian movie.
+
+### What is an offside in football/soccer?
+
+`136 tokens, stopped`
+
+> An offside is a player who plays the game for the first time in the game.  A person who plays the game for the first time may play for a second time, but they are not considered outside the rules.  Offside players have the option to play for an individual game that they play for their own individual game, but they are not considered outside the rules.  In addition, they are not considered outside the rules because they play the game for the first time on a game that they play for the first time and they do not have the ability to play an extra game.  Offside players may also play for a first time game for a second time.
+
+### From the passage list down the areas for which Dar es Salaam is Tanzania's most prominent city. List the results in comma separated format.
+
+*Input:* Dar es Salaam (/ˌdɑːr ɛs səˈlɑːm/; from Arabic: دَار السَّلَام, romanized: Dâr es-Selâm, lit. 'Abode of Peace') or commonly known as Dar, is the largest city and financial hub of Tanzania. It is also the capital of Dar es Salaam Region. With a population of over six million people, Dar is the largest city in East Africa and the seventh-largest in Africa. Located on the Swahili coast, Dar es Salaam is an important economic centre and is one of the fastest-growing cities in the world.
+
+The town was founded by Majid bin Said, the first Sultan of Zanzibar, in 1865 or 1866. It was the main administrative and commercial center of German East Africa, Tanganyika, and Tanzania. The decision was made in 1974 to move the capital to Dodoma and was officially completed in 1996.
+
+Dar es Salaam is Tanzania's most prominent city for arts, fashion, media, film, television, and finance. It is the capital of the co-extensive Dar es Salaam Region, one of Tanzania's 31 administrative regions, and consists of five districts: Kinondoni in the north; Ilala in the centre; Ubungo and Temeke in the south; and Kigamboni in the east across the Kurasini estuary.
+
+`21 tokens, stopped`
+
+> Dar es Salaam is Tanzania's most notable city for arts, fashion, media, and finance.
+
+### Why should I cheer for the Sacramento Kings in this year's NBA playoffs?
+
+`57 tokens, stopped`
+
+> Sacramento Kings are a great team and they have so many talented athletes that they are well matched. Additionally, they are a popular team with the Los Angeles Dodgers. If you want to cheer for a Sacramento Kings for the season, visit the Sacramento Kings home run for the season.
+
+### What are five popular songs by Jack Harlow?
+
+`22 tokens, stopped`
+
+> - The Beatles,
+> - The Beatles,
+> - The Beatles,
+> - The Wind in the Willows
+
+### Classify the following as indoor, outdoor, activities or both: basketball, hiking, soccer, rock climbing, mountaineering, swimming.
+
+`19 tokens, stopped`
+
+> - indoor: outdoors
+> - outdoor: outdoor
+> - indoor: outdoor
+> - outdoor: outdoor
+
+### What are some must-see places in Romania?
+
+`40 tokens, stopped`
+
+> - Lusaka
+> - Brest
+> - Dzhilin
+> - Potsdam
+> - Pribov
+> - Kvartov
+> - Voznes
+> - Stavka
+
+### Why are protein waffles so dry?
+
+`104 tokens, stopped`
+
+> Protein waffles are like a sponge, they are so soft that they don't lose shape very easily.  They don't feel like they're wet, however, they'll stay wet for long periods.  They are incredibly quick to cook and even more efficient than other liquid waffles.  In fact, it's the reason why they are so popular.  They can actually be made even faster than a bowl. On the other hand, the protein waffles are more expensive than many other liquid waffles.
+
+### How many times did Barton switch parties?
+
+*Input:* Barton switched parties three times in his political life. He was first elected as a Democratic-Republican; he then switched to an Adams Democrat for his re-election in 1825. When he ran for the Senate again in 1830 he switched to being an Anti-Jacksonian candidate. In the Senate, he served as chairman of the committee on public lands. He was a member of the Missouri State Senate in 1834–1835.
+
+`11 tokens, stopped`
+
+> Barton held 10,000 times during his political career.
+
+### What are four universities in the state of Florida?
+
+`28 tokens, stopped`
+
+> Florida has four universities: Florida State University, Miami-Dade University, Orlando Museum of Art, and the Florida Museum of Natural History.
+
+### Extract the different ways of dealing with underfitting mentioned in the text
+
+*Input:* Resolving underfitting
+There are multiple ways to deal with underfitting:
+
+1) Increase the complexity of the model: If the model is too simple, it may be necessary to increase its complexity by adding more features, increasing the number of parameters, or using a more flexible model. However, this should be done carefully to avoid overfitting.
+2) Use a different algorithm: If the current algorithm is not able to capture the patterns in the data, it may be necessary to try a different one. For example, a neural network may be more effective than a linear regression model for some types of data.
+3) Increase the amount of training data: If the model is underfitting due to lack of data, increasing the amount of training data may help. This will allow the model to better capture the underlying patterns in the data.
+4) Regularization: Regularization is a technique used to prevent overfitting by adding a penalty term to the loss function that discourages large parameter values. It can also be used to prevent underfitting by controlling the complexity of the model.
+5) Ensemble Methods: Ensemble methods combine multiple models to create a more accurate prediction. This can help to reduce underfitting by allowing multiple models to work together to capture the underlying patterns in the data.
+6) Feature engineering: Feature engineering involves creating new model features from the existing ones that may be more relevant to the problem at hand. This can help to improve the accuracy of the model and prevent underfitting.
+
+`33 tokens, stopped`
+
+> - Establish the model's original structure
+> - Establish the model's features and build it with existing models
+> - Design a model that includes features from different models
+
+### Which of the following are cities in the PNW in the US: Seattle, Portland, Hillsboro, Eugene, Tacoma, Vancouver, Surrey, Richmond.
+
+`60 tokens, stopped`
+
+> Seattle, Portland, Northwest Tacoma, Seattle, and Washington are cities in the PNW in the US. Seattle is a city in the US. Seattle has more than 3,000 businesses, but only a few smaller businesses. Seattle is the capital of Seattle, and the largest city in the US.
+
+### How do the definitions of "first-degree relative" and "nuclear family" differ?
+
+*Input:* A first-degree relative (FDR) is a person's parent (father or mother), full sibling (brother or sister) or child. It constitutes a category of family members that largely overlaps with the term nuclear family, but without spouses.
+
+`38 tokens, stopped`
+
+> First-degree relative is a person's parent.  It is a person's parent if they are both full siblings.  If they are both full siblings, they also are nuclear family.
+
+### Which is the oldest dynasty still ruling?
+
+`32 tokens, stopped`
+
+> The oldest surviving dynasty still standing is the Heilongjiang dynasty called the "Heilongdah" which ruled from 1350 to 1450 BC.
+
+### Who are the top tennis players right now?
+
+`20 tokens, stopped`
+
+> The top tennis players are Rene André, who is the top player for the Open University.
+
+### Heres a summary of Gioia Del Colle, a town in Italy that I will be traveling to, how should I pack?
+
+*Input:* Gioia del Colle (pronounced [ˈdʒɔːja del ˈkɔlle]; Barese: Sciò) is a town and comune of the Metropolitan City of Bari, Apulia, southern Italy. The town is located on the Murge plateau at 360 metres (1,180 ft) above sea level, between the Adriatic and Ionian Seas.
+
+Physical geography
+Territory
+Gioia del Colle is on the top of a hill at 360 m a.s.l. It is located in the southern part of the Murge, in the "Sella di Gioia del Colle". It is between the North-West Murge and the South-West Murge and the Adriatic Sea and the Ionian Sea. The municipal area has an area of 206.48 km² and it reaches a maximum altitude of 435 m a.s.l. and a minimum of 296 m a.s.l. Its area borders to the North-West with Acquaviva delle Fonti, to the North with Sammichele di Bari, to the North-East with Turi, to the East with Putignano and Noci, to the South-East with Mottola, to the South with Castellaneta, to the South-West with Laterza and to the West with Santeramo in Colle.
+
+Gioia del Colle's orography
+The landscape is characterized by large wooded areas, in which the Macedonian oaks dominate, more than the downy oak. In particular the Bosco Romanazzi and Serra Capece constitute the most conspicuous part of the wooded area of Gioia del Colle and they extend from Mount Sannace archaeological area to the provincial road that leads to Noci.
+
+The western part of the area is part of the North-West Murge, with isoipse that exceed 400 m a.s.l. towards Santeramo and Laterza, while the Eastern one is part of the South-East Murge, with isoipse over 400 m a.s.l. towards Noci. In the middle, on the contrary, there is a depression (saddle) with an average altitude of 340 m a.s.l., interrupted only by the 360-meter hill on which the city lies.
+
+Climate
+Gioia del Colle's climate is mediterranean (Köppen Csa), but it has peaks of continentality due to the altitude and the distance from the sea. Temperature varies between −2 e +12 °C in winter, while it varies between +18 e +35 °C with a high percentage of humidity in summer. Annual rainfall is around 600 mm. It often snows, about once a year, especially if there is cold air of Balkan origin.
+
+`24 tokens, stopped`
+
+> - Gioia de 
+> Rio del colle 
+> 
+> - 
+> Gioia's weather information
+
+### How can I drive from South Bay to San Francisco?
+
+`19 tokens, stopped`
+
+> - Drive North Bay
+> - Drive South Bay
+> - Drive South Bay
+> - Drive South Bay
+
+### Which one is more popular? Soccer vs Basketball?
+
+`59 tokens, stopped`
+
+> Soccer and Basketball are both sports in terms of popularity.  Soccer is the most popular team sport, with over 90 million fans.  Basketball is the most popular team sports, with over 90 million fans.  Tennis is known for being the most popular team sport, with 100 million fans.
+
+### How to evaluate an equation with multiple operations?
+
+`168 tokens, stopped`
+
+> An equation can be evaluated using many different methods.  It is a good idea to think of how many operations a given equation has.  For example, to evaluate a equation, you can use multiple values.  The following example shows how to evaluate two variables using multiple operations.  To evaluate a equation, you can divide the equation by two.  For example, to evaluate a equation, you can always divide by two.  If you were to divide the equation by two, you would get an expression such as 3x^2 + 3x^2 + 2x^2.  This is used to determine the equation of the equation.  For example, to calculate the equation of the equation 3x + 3x + 4 + 4 + 4 + 4 = 3x + 3x + 4 + 4 = 21.
+
+### Identify which animal species is alive or extinct: Opabinia, Dugong
+
+`6 tokens, stopped`
+
+> Divergent, Dugong
+
+### Classify the below states based on east or west coast.
+Rhode Island, South Carolina, Vermont, Alaska, Hawaii
+
+`20 tokens, stopped`
+
+> East coast: East Coast
+> West coast: West Coast
+> West coast: South Coast
+> South Carolina
+
+### Please list the main dog predators according to the passage
+
+*Input:* Although dogs are the most abundant and widely distributed terrestrial carnivores, feral and free-ranging dogs' potential to compete with other large carnivores is limited by their strong association with humans. For example, a review of the studies in dogs' competitive effects on sympatric carnivores did not mention any research on competition between dogs and wolves. Although wolves are known to kill dogs, they tend to live in pairs or in small packs in areas where they are highly persecuted, giving them a disadvantage facing large dog groups.
+
+Wolves kill dogs wherever they are found together. In some instances, wolves have displayed an uncharacteristic fearlessness of humans and buildings when attacking dogs to the extent that they have to be beaten off or killed. Although the numbers of dogs killed each year are relatively low, it induces a fear of wolves entering villages and farmyards to take dogs and losses of dogs to wolves have led to demands for more liberal wolf hunting regulations.
+
+Coyotes and big cats have also been known to attack dogs. In particular, leopards are known to have a preference for dogs and have been recorded to kill and consume them, no matter what their size. Siberian tigers in the Amur River region have killed dogs in the middle of villages. This indicates that the dogs were targeted. Amur tigers will not tolerate wolves as competitors within their territories, and the tigers could be considering dogs in the same way. Striped hyenas are known to kill dogs in their range.
+
+`19 tokens, stopped`
+
+> Dogs, the most abundant and widely distributed large carnivores are all types of carnivores.
+
+### Based on this paragraph, give me a summary of what a kidney donor chain is.
+
+*Input:* Exchanges and chains are a novel approach to expand the living donor pool. In February 2012, this novel approach to expand the living donor pool resulted in the largest chain in the world, involving 60 participants organized by the National Kidney Registry. In 2014 the record for the largest chain was broken again by a swap involving 70 participants. The acceptance of altruistic donors has enabled chains of transplants to form. Kidney chains are initiated when an altruistic donor donates a kidney to a patient who has a willing but incompatible donor. This incompatible donor then 'pays it forward' and passes on the generosity to another recipient who also had a willing but incompatible donor. Michael Rees from the University of Toledo developed the concept of open-ended chains. This was a variation of a concept developed at Johns Hopkins University. On 30 July 2008, an altruistic donor kidney was shipped via commercial airline from Cornell to UCLA, thus triggering a chain of transplants. The shipment of living donor kidneys, computer-matching software algorithms, and cooperation between transplant centers has enabled long-elaborate chains to be formed.
+https://en.wikipedia.org/wiki/Kidney_transplantation
+
+`109 tokens, stopped`
+
+> This is an example of a kidney donation chain.  It is a type of medical operation in which a patient is given a kidney and then transfers the kidney to a patient who had an incompatible donor.  It can also be used to create other medical conditions, such as kidney cancer, anemia, or chronic kidney failure.  The goal of the kidney donation chain is to allow the recipient to accept the donation and transfer the kidney to a healthy recipient.  The recipient will receive a gift from the local kidney donor who has accepted the donation.
+
+### Cauliflower rice is not that fun to eat in its bland form. Is there anything interesting and tasty I can cook with cauliflower rice?
+
+`62 tokens, stopped`
+
+> Cauliflower rice is a delicious and easy cooked rice.  Its texture is milder than cauliflower rice.  It has a much sweeter flavor, especially when cooked in an oven.  It can be served as a side dish or mixed with other ingredients such as rice, eggs, or nuts.

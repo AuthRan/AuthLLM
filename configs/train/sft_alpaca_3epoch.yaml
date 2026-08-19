@@ -1,0 +1,64 @@
+# SUPERSEDED by configs/train/sft_alpaca.yaml, which runs one epoch. Kept
+# because this is the run that produced the evidence against itself.
+#
+# Outcome: validation bottomed out at step 1,500 (2.0793) -- one epoch is
+# ~1,590 steps -- and rose at every eval afterwards, ending at 2.1008. Worse,
+# the step-4,500 checkpoint scores 3.0844 on held-out *Dolly* data against the
+# base model's 3.0580: three epochs of Alpaca leaves the model generalizing to
+# another instruction set worse than the pretrained weights it started from,
+# while its stop rate and loop rate look perfect. See README.md section 10.
+#
+# The replacement is not simply this run stopped at step 1,500. A 1,600-step
+# run with its own complete cosine schedule ends at 2.0745, below this run's
+# best-ever checkpoint, because step 1,500 here sits mid-schedule at lr
+# ~1.7e-5 with none of the annealing that does the last of the work.
+#
+# Instruction fine-tuning the pretrained 124M `medium` checkpoint, on one
+# RTX 2080 Ti. Launched by scripts/finetune.py, not scripts/train.py: the data
+# is prompt/response pairs with the prompt masked out of the loss, not a
+# continuous token stream.
+#
+# ---- Why the learning rate is ~30x lower than pretraining ----
+# Pretraining ran at max_lr 6.0e-4 from random initialization, where large
+# steps are what you want. This run starts from weights that already encode
+# English, and the goal is to change the model's *behaviour* (answer the
+# instruction, then stop) without dismantling what pretraining built. 2.0e-5
+# is the usual SFT range for a model this size; an order of magnitude higher
+# and the model forgets how to write while it learns the format.
+#
+# ---- Batch arithmetic ----
+# 8 * 4 * 1 * 512 = 16,384 tokens/step, ~32 examples per optimizer step.
+# Alpaca is 51,974 examples, so an epoch is ~1,625 steps and this is ~3
+# epochs, which is the standard Alpaca recipe. Note the *supervised* token
+# count is much lower than 16,384: prompts are masked, so only response
+# tokens produce gradient.
+#
+# ---- Memory ----
+# Same batch_size as pretraining (8): the fp32 logits tensor is what bounds
+# this on 11GB and it is unchanged at 8 * 512 * 50304 * 4 = 0.82GB. Padding
+# to a fixed 512 keeps the shape identical to the pretraining run, so the
+# measured 6.01GB peak carries over.
+batch_size: 8
+seq_len: 512
+grad_accum_steps: 4
+max_steps: 4875
+warmup_steps: 100
+max_lr: 2.0e-5
+min_lr: 2.0e-6
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+log_interval: 1
+eval_interval: 250
+eval_steps: 40
+checkpoint_interval: 500
+amp_dtype: float16
+gradient_checkpointing: false
+use_efficient_attention: true
+# Irrelevant here -- InstructionDataset emits whole examples, not windows over
+# a stream -- but TrainConfig requires the field to be explicit or None.
+stride: null
+num_workers: 3
+pin_memory: true
+compile_model: false
+seed: 1337

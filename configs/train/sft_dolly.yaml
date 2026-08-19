@@ -28,18 +28,17 @@
 # configs/train/sft_dolly_1epoch.yaml and sft_dolly_3epoch.yaml.
 #
 # ---- Which Alpaca checkpoint this starts from ----
-# checkpoints/sft_alpaca/step_1500.pt, not the end of that run. Two reasons.
-# Step 1,500 is where Alpaca's validation loss bottomed out (2.0793); every
-# later checkpoint is measurably further into memorizing Alpaca, and there is
-# no reason to hand this stage a worse starting point. And the true final
-# weights (step 4,875) do not exist: that run's max_steps was not a multiple
-# of its 500-step checkpoint interval, and the trainer only saved on the
-# interval, so the last file on disk is step_4500.pt. That is fixed now, but
-# not retroactively.
+# checkpoints/sft_alpaca/step_1600.pt -- the end of the one-epoch stage-1
+# run. It is the best stage-1 checkpoint on Alpaca's held-out split (2.0512),
+# second best on Dolly's (2.9145, behind the long run's step 500 at 2.9049),
+# and the best of them by the mean of the two. Starting here rather than from
+# the 3-epoch run's best checkpoint is worth 0.028 nats at the end of this
+# stage: 2.7707 against 2.7988, for the same 940 steps.
 #
-# Runs on one RTX 2080 Ti, launched by scripts/finetune.py, not
-# scripts/train.py: the data is prompt/response pairs with the prompt masked
-# out of the loss, not a continuous token stream.
+# The schedule sweep above was run on the older stage-1 lineage, before that
+# was known. Its conclusion carried over unchanged -- the curve on this
+# lineage has the same shape and the same minimum, bottoming at step 900
+# (2.7759) and ticking up by 940 -- so it was not re-run.
 #
 # ---- Why the learning rate is 1.0e-5 ----
 # Pretraining ran at max_lr 6.0e-4 from random initialization, where large

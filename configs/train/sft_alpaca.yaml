@@ -1,7 +1,22 @@
-# Instruction fine-tuning the pretrained 124M `medium` checkpoint, on one
-# RTX 2080 Ti. Launched by scripts/finetune.py, not scripts/train.py: the data
-# is prompt/response pairs with the prompt masked out of the loss, not a
-# continuous token stream.
+# Stage 1 of instruction tuning: the pretrained 124M checkpoint on Alpaca 52k,
+# one epoch, on one RTX 2080 Ti. Launched by scripts/finetune.py, not
+# scripts/train.py: the data is prompt/response pairs with the prompt masked
+# out of the loss, not a continuous token stream.
+#
+# ---- Why one epoch, not the ~3 the standard Alpaca recipe uses ----
+# Measured. The 3-epoch version of this config ran first
+# (configs/train/sft_alpaca_3epoch.yaml) and its validation loss bottomed out
+# at step 1,500 -- about one epoch -- then rose at every eval for the
+# remaining two. By step 4,500 it also scored *worse than the base model* on
+# held-out Dolly data (3.0844 against 3.0580) while its stop rate and loop
+# rate looked perfect: it had memorized the shape of an Alpaca answer at the
+# cost of generalizing to anyone else's instructions.
+#
+# This config is not that run stopped early. One epoch over the 50,868 usable
+# training examples is 1,590 steps, and 1,600 of them with their own complete
+# cosine schedule end at 2.0745 -- below the long run's best-ever checkpoint
+# (2.0793). A checkpoint pulled from the middle of a longer schedule never
+# gets the annealing that does the last of the work.
 #
 # ---- Why the learning rate is ~30x lower than pretraining ----
 # Pretraining ran at max_lr 6.0e-4 from random initialization, where large
@@ -13,10 +28,10 @@
 #
 # ---- Batch arithmetic ----
 # 8 * 4 * 1 * 512 = 16,384 tokens/step, ~32 examples per optimizer step.
-# Alpaca is 51,974 examples, so an epoch is ~1,625 steps and this is ~3
-# epochs, which is the standard Alpaca recipe. Note the *supervised* token
-# count is much lower than 16,384: prompts are masked, so only response
-# tokens produce gradient.
+# 50,868 usable training examples means an epoch is ~1,590 steps. Note the
+# *supervised* token count is far lower than 16,384: prompts are masked and
+# examples are padded to 512, so only ~11% of each step's positions produce
+# gradient -- 3.0M supervised tokens over the whole run.
 #
 # ---- Memory ----
 # Same batch_size as pretraining (8): the fp32 logits tensor is what bounds
@@ -26,7 +41,7 @@
 batch_size: 8
 seq_len: 512
 grad_accum_steps: 4
-max_steps: 4875
+max_steps: 1600
 warmup_steps: 100
 max_lr: 2.0e-5
 min_lr: 2.0e-6
@@ -36,7 +51,7 @@ grad_clip: 1.0
 log_interval: 1
 eval_interval: 250
 eval_steps: 40
-checkpoint_interval: 500
+checkpoint_interval: 400
 amp_dtype: float16
 gradient_checkpointing: false
 use_efficient_attention: true

@@ -768,20 +768,27 @@ peak carries over unchanged.
 |---|---|---|
 | Data | Alpaca 52k (machine-generated) | Dolly 15k (human-written) |
 | Usable after the 512-token filter | 51,906 (0.1% dropped) | 14,034 (6.5% dropped) |
-| Starts from | `checkpoints/medium/step_20000.pt` | Alpaca's best checkpoint, step 1,500 |
-| Steps | 4,875 (~3 epochs) | 940 (~2 epochs, chosen by sweep) |
+| Starts from | `checkpoints/medium/step_20000.pt` | stage 1's final checkpoint, step 1,600 |
+| Steps | 1,600 (~1 epoch, chosen by sweep) | 940 (~2 epochs, chosen by sweep) |
 | Max LR | 2.0e-5 | 1.0e-5 |
 | Tokens/step | 16,384 (8 x 4 accum x 512) | 16,384 |
-| Supervised tokens | 9.0M | 2.0M |
-| Wall clock, 1x 2080 Ti | 55 min | 11 min |
+| Supervised tokens | 3.0M | 2.0M |
+| Wall clock, 1x 2080 Ti | 18 min | 11 min |
 | Config | [`configs/train/sft_alpaca.yaml`](configs/train/sft_alpaca.yaml) | [`configs/train/sft_dolly.yaml`](configs/train/sft_dolly.yaml) |
+
+Both step counts were measured rather than chosen: the first versions of these
+configs ran 4,875 and 470 steps, and both were wrong in opposite directions.
+The runs behind those numbers are kept in `configs/train/sft_alpaca_3epoch.yaml`,
+`sft_dolly_1epoch.yaml` and `sft_dolly_3epoch.yaml` with their logs, because
+the arguments that produced them are more useful sitting next to the curves
+that refuted them than deleted.
 
 Note the gap between "tokens/step" and "supervised tokens". Padding every
 example to a fixed 512 keeps the tensor shape identical to pretraining — which
 is why the 6.01GB memory measurement carried over untouched — but Alpaca
 examples average 113 tokens, of which 58 are response. Per optimizer step,
 about 22% of the 16,384 positions are real tokens and about 11% produce
-gradient. Roughly 89% of the compute in this stage is padding and masked
+gradient. Roughly 89% of the compute in these stages is padding and masked
 prompt. Sequence packing is the obvious next optimization and is not
 implemented; see [§18](#18-whats-not-built).
 
@@ -795,72 +802,78 @@ throttled, and DDP runs at the slower card's pace ([§9](#9-distributed-training
 
 ### 10.4 What it changed, measured
 
-`scripts/eval_instruction_following.py` scores checkpoints on 300 held-out
-Dolly examples — reconstructed from the fine-tune's own seed and split, so
-they are examples no stage of training ever saw. Held-out loss is computed
-with the prompt masked, exactly as in training, so it scores prediction of
-the *response* only. The behavioural columns come from 40 real sampled
+`scripts/eval_instruction_following.py` scores checkpoints on held-out
+instruction data — 300 Dolly examples and 1,039 Alpaca ones, reconstructed
+from each fine-tune's own seed and split rather than stored, so they are
+examples no stage of training ever saw. Held-out loss is computed with the
+prompt masked exactly as in training, so it scores prediction of the
+*response* only. The behavioural columns come from 40 real sampled
 generations per checkpoint (temperature 0.8, top-k 50, 200-token cap).
 
-| checkpoint | held-out loss | ppl | stop rate | mean tokens | loop rate |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `base` — pretrained, step 20,000 | 3.0580 | 21.28 | 30% | 179 | 80% |
-| `alpaca` step 500 | **2.9049** | 18.26 | 98% | 58 | 15% |
-| `alpaca` step 1,500 | 2.9506 | 19.12 | 100% | 50 | 10% |
-| `alpaca` step 4,500 | 3.0844 | 21.85 | 100% | 51 | 0% |
-| `dolly` 1 epoch | 2.8183 | 16.75 | 98% | 44 | 12% |
-| `dolly` 2 epochs (shipped) | 2.7988 | 16.42 | 100% | 52 | 15% |
-| `dolly` 3 epochs | **2.7921** | **16.31** | 100% | 52 | 18% |
+Every checkpoint that ran, scored the same way:
 
-**Stopping is learned almost immediately.** 30% → 98% in the first 500 steps,
-with mean answer length dropping from 179 tokens (i.e. running to the cap) to
-58. It is the easiest thing in the dataset to fit: every example ends with
-`<|endoftext|>` in the same position after the same template. The base
-model's 30% is not intent — FineWeb-Edu separates documents with that token,
-so it emits one whenever it decides its hallucinated document is over, which
-is why that 30% comes paired with an 80% loop rate.
+| checkpoint | Dolly loss | Alpaca loss | mean | stop rate | mean tokens | loop rate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `base` — pretrained, step 20,000 | 3.0580 | 2.5338 | 2.7959 | 30% | 179 | 80% |
+| 3-epoch Alpaca, step 500 | 2.9049 | 2.0973 | 2.5011 | 98% | 58 | 15% |
+| 3-epoch Alpaca, step 1,500 | 2.9506 | 2.0568 | 2.5037 | 100% | 50 | 10% |
+| 3-epoch Alpaca, step 4,500 | 3.0844 | 2.0752 | 2.5798 | 100% | 51 | 0% |
+| **stage 1** — 1-epoch Alpaca, step 1,600 | 2.9145 | **2.0512** | 2.4829 | 100% | 47 | 15% |
+| Dolly 1 epoch, off step 1,500 | 2.8183 | 2.1211 | 2.4697 | 98% | 44 | 12% |
+| Dolly 2 epochs, off step 1,500 | 2.7988 | 2.1311 | 2.4650 | 100% | 52 | 15% |
+| Dolly 3 epochs, off step 1,500 | 2.7921 | 2.1427 | 2.4674 | 100% | 52 | 18% |
+| **stage 2** — Dolly 2 epochs, off step 1,600 | **2.7707** | 2.1365 | **2.4536** | 98% | 52 | 15% |
+
+Loss columns are comparable *down* a column, never across: Alpaca's
+machine-generated responses are far more predictable than Dolly's
+human-written ones, which is why the base model scores half a nat better on
+one than the other before any tuning happens at all.
+
+**Stopping is learned almost immediately.** 30% → 98% within the first 500
+optimizer steps, with mean answer length dropping from 179 tokens (i.e.
+running to the cap) to 58. It is the easiest thing in the data to fit: every
+example ends with `<|endoftext|>` in the same position after the same
+template. The base model's 30% is not intent — FineWeb-Edu separates
+documents with that token, so it emits one whenever it decides its
+hallucinated document is over, which is why that 30% comes paired with an 80%
+loop rate.
 
 **The behavioural metrics and the loss disagree, and the loss is right.** By
-stop rate and loop rate, `alpaca` step 4,500 is the best model in the table:
-always stops, never loops. By held-out loss it is *worse than the base model
-it started from* (3.0844 vs 3.0580). Three epochs of Alpaca bought a model
-that reproduces the shape of an Alpaca answer perfectly and generalizes to
-another instruction set worse than the raw pretrained weights do. Tracking
-only the metrics that look like they measure instruction following would have
-selected exactly the wrong checkpoint. The full write-up, with the
-generations behind every row, is in
-[`results/instruction-tuning.md`](results/instruction-tuning.md).
+stop rate and loop rate, the 3-epoch Alpaca run's step 4,500 is the best model
+in the table: always stops, never loops, the only 0% loop rate anywhere. By
+held-out loss it is *worse than the base model it started from* on Dolly
+(3.0844 vs 3.0580). Three epochs bought a model that reproduces the shape of
+an Alpaca answer perfectly and generalizes to another instruction set worse
+than the raw pretrained weights do. Selecting on the metrics that look like
+they measure instruction following would have picked exactly the wrong
+checkpoint.
 
-**Stage 2 does not make the model better — it moves where it is good.** The
-same checkpoints, scored the same way on *Alpaca's* held-out split as well:
+**A short schedule beats the same step of a long one.** The 3-epoch run's best
+checkpoint is step 1,500 — one epoch, near enough. Re-running the stage as a
+1,600-step schedule that actually finishes gives a *better* model than that
+checkpoint on both held-out sets (2.0512 vs 2.0568, 2.9145 vs 2.9506), for a
+third of the compute. Step 1,500 of the long run sits mid-cosine at lr
+~1.7e-5 and never receives the annealing that does the last of the work.
+"Train long, keep the best checkpoint" and "train exactly as long as you
+need" are not the same experiment, and the second one won here.
 
-| checkpoint | Dolly held-out | Alpaca held-out | mean |
-|---|---:|---:|---:|
-| `base` | 3.0580 | 2.5338 | 2.7959 |
-| `alpaca` step 1,500 | 2.9506 | **2.0568** | 2.5037 |
-| `alpaca` step 4,500 | 3.0844 | 2.0752 | 2.5798 |
-| `dolly` 1 epoch | 2.8183 | 2.1211 | 2.4697 |
-| `dolly` 2 epochs | 2.7988 | 2.1311 | **2.4650** |
-| `dolly` 3 epochs | **2.7921** | 2.1427 | 2.4674 |
+That difference compounds: running stage 2 from the 1,600-step checkpoint
+instead of the long run's step 1,500 is worth 0.028 nats at the end of stage
+2 (2.7707 vs 2.7988) for identical stage-2 settings.
 
-Read across the Dolly rows: each extra epoch improves Dolly held-out loss by
-a little and degrades Alpaca held-out loss by almost exactly as much. One
-epoch to three moves Dolly -0.026 and Alpaca +0.022. That is not a model
-getting better at following instructions, it is a model sliding from one
-instruction distribution toward another, and only a second held-out set makes
-it visible at all. `sft_dolly.yaml` ships 940 steps because that is where the
-mean of the two bottoms out — the least arbitrary stopping point available
-once you accept the trade is real.
-
-(The base model's two columns differ by half a nat in the other direction —
-2.53 on Alpaca against 3.06 on Dolly — because Alpaca's machine-generated
-responses are far more formulaic than Dolly's human-written ones. Held-out
-loss numbers from different instruction sets are not comparable to each
-other; only down a column.)
+**Stage 2 does not make the model better — it moves where it is good.** Read
+the three "off step 1,500" Dolly rows in order. Each extra epoch improves
+Dolly held-out loss by a little and degrades Alpaca held-out loss by almost
+exactly as much: one epoch to three is −0.026 on Dolly and +0.022 on Alpaca.
+That is not a model getting better at following instructions, it is a model
+sliding from one instruction distribution toward another, and a single
+held-out set cannot show it. `sft_dolly.yaml` ships 940 steps because that is
+where the mean of the two bottoms out — the least arbitrary stopping point
+available once the trade is visible.
 
 **The one-epoch prediction for stage 2 was wrong, and the sweep says so.**
 The original `sft_dolly.yaml` argued from the Alpaca stage — which overfit
-inside a single pass — that a second pass over a set a third the size would
+inside a single pass — that a second pass over a set a quarter the size would
 overfit harder. Dolly's validation loss instead fell at every single eval.
 Three runs, each a complete cosine cycle down to `min_lr` so their endpoints
 are comparable:
@@ -883,13 +896,14 @@ analogy, not a measurement.
 
 It taught the model to answer. It did not teach it to know anything.
 
-> **What are brambles?** — *dolly, 2 epochs*
+> **What are brambles?** — *the shipped stage-2 model*
 > Brambles, also known as plasticizers, are chemical compounds that are added
-> to a mixture of water and water particles to create a slurry.
+> to a mixture of non-cemented polymers. They are also an essential part of a
+> good manufacturing process.
 
 Right length, right register, right confident encyclopaedic cadence,
 completely invented. That is the same limit [§13](#13-pretrained-checkpoints-comparison-not-loading)
-and [`results/`](results/) describe for the base model, and 11M supervised
+and [`results/`](results/) describe for the base model, and 5.0M supervised
 tokens does not move it: facts live in the pretrained weights, and fine-tuning
 changes how they come out, not how many there are.
 
