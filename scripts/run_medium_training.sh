@@ -40,6 +40,18 @@ MAX_ATTEMPTS=20
 
 mkdir -p "$CKPT_DIR" "$LOG_DIR"
 
+# Hold a lock for the lifetime of the run. The pgrep check below catches
+# training started by other means, but a lock is what an unattended caller can
+# test reliably: scripts/resume_on_boot.sh must decide "is a run already live?"
+# at boot, and matching on command lines answers that question wrong whenever
+# some unrelated process merely mentions the script's name. The lock is held on
+# fd 8 until this shell exits, so a crashed supervisor releases it for free.
+exec 8>"$LOG_DIR/.training.lock"
+if ! flock -n 8; then
+    echo "[supervisor] FATAL: another supervisor holds $LOG_DIR/.training.lock. Refusing to start a second run."
+    exit 1
+fi
+
 # Refuse to start if training is already running. Two concurrent runs fit in
 # VRAM and both make progress, so nothing crashes -- they just time-slice the
 # same two GPUs and each reports roughly a third of the expected throughput,

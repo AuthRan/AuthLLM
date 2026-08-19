@@ -29,3 +29,7 @@ __pycache__/
 
 # Operational log for the automated status sync (noise, not history)
 /logs/sync_status.log
+
+# Same for the boot-resume log, and the supervisor's run lock
+/logs/resume_on_boot.log
+/logs/.training.lock
