@@ -33,3 +33,7 @@ __pycache__/
 # Same for the boot-resume log, and the supervisor's run lock
 /logs/resume_on_boot.log
 /logs/.training.lock
+
+# Console output of scripts/eval_instruction_following.py -- the same tables are
+# committed in results/instruction_eval_*.md, with every generation behind them
+/logs/instruction_eval_*.log

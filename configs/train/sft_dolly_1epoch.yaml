@@ -1,31 +1,27 @@
-# Second-stage fine-tune: a pass over Dolly 15k after the Alpaca stage.
+# SUPERSEDED by configs/train/sft_dolly.yaml. Kept because this is the run
+# whose prediction was wrong, and the reasoning below is the wrong reasoning,
+# preserved verbatim: it argued for one epoch by analogy with the Alpaca
+# stage, and Dolly's validation loss fell at every eval of this run and was
+# still falling at step 470 (2.8237). Two and three-epoch runs went lower.
+# The measurements are in logs/sft_dolly_1epoch.csv and README.md section 10.
+#
+# Second-stage fine-tune: a short pass over Dolly 15k after the Alpaca run.
 #
 # Dolly is human-written where Alpaca is machine-generated, so this stage is
 # about answer *quality* rather than teaching the response format -- Alpaca
-# already did that.
+# already did that. It runs at half the learning rate.
 #
-# ---- Why 940 steps (~2 epochs) ----
-# Measured, not assumed, and the first guess was wrong. The original version
-# of this config ran 470 steps (~1 epoch), reasoning by analogy: the Alpaca
-# stage overfit inside a single pass, so a second pass over a set a quarter
-# the size should overfit harder. Dolly's validation loss instead fell at
-# every single eval of that run and was still falling when it ended. Three
-# lengths were then run, each a complete cosine cycle down to min_lr so that
-# their endpoints compare fairly:
-#
-#     470 steps   (1 epoch)   best val 2.8237  (still falling at the end)
-#     940 steps   (2 epochs)  best val 2.8038  at step 900
-#     1,410 steps (3 epochs)  best val 2.7969  at step 1,300
-#
-# Longer is monotonically better on Dolly -- but Dolly validation loss is not
-# the only thing moving. Scored on *Alpaca's* held-out split, those same three
-# checkpoints go 2.1211 -> 2.1311 -> 2.1427: every Dolly epoch buys Dolly loss
-# and pays for it in Alpaca loss at close to 1:1. This stage is not making the
-# model better, it is moving where the model is good. 940 steps is the minimum
-# of the average of the two held-out losses, which is the least arbitrary
-# place to stop given that trade. See README.md section 10 and
-# results/instruction-tuning.md; the two losing runs are kept in
-# configs/train/sft_dolly_1epoch.yaml and sft_dolly_3epoch.yaml.
+# ---- Why one epoch, not the ~3 the Alpaca recipe uses ----
+# The Alpaca stage put its validation minimum at step 1,500 against an epoch
+# length of 1,590, and val loss rose on every eval after it: this model
+# overfits an instruction set in a single pass. Dolly is 14,034 usable
+# examples (6.5% of the 15,011 exceed the 512-token window and are dropped,
+# against 0.1% for Alpaca -- Dolly's human-written context fields are long),
+# and 2% of those are held out, so an epoch over the 13,756 training examples
+# is ~430 steps and a second pass would repeat a set a third the size of the
+# one that already overfit. 470 steps is one epoch plus a little.
+# Evals and checkpoints are more frequent than the Alpaca stage because the
+# whole run is now shorter than that stage's checkpoint interval.
 #
 # ---- Which Alpaca checkpoint this starts from ----
 # checkpoints/sft_alpaca/step_1500.pt, not the end of that run. Two reasons.
@@ -56,9 +52,8 @@
 # 8 * 4 * 1 * 512 = 16,384 tokens/step, ~32 examples per optimizer step --
 # identical to the Alpaca stage, so the two stages differ in data and
 # learning rate and nothing else. 13,756 usable training examples means an
-# epoch is ~430 steps, so this config is ~2.2 of them. Note the *supervised*
-# token count is much lower than 16,384: prompts are masked, so only response
-# tokens produce gradient -- about 11% of each step's positions, measured.
+# epoch is ~430 steps. Note the *supervised* token count is much lower than
+# 16,384: prompts are masked, so only response tokens produce gradient.
 #
 # ---- Memory ----
 # Same batch_size as pretraining (8): the fp32 logits tensor is what bounds
@@ -68,7 +63,7 @@
 batch_size: 8
 seq_len: 512
 grad_accum_steps: 4
-max_steps: 940
+max_steps: 470
 warmup_steps: 50
 max_lr: 1.0e-5
 min_lr: 1.0e-6
@@ -78,7 +73,7 @@ grad_clip: 1.0
 log_interval: 1
 eval_interval: 100
 eval_steps: 40
-checkpoint_interval: 235
+checkpoint_interval: 150
 amp_dtype: float16
 gradient_checkpointing: false
 use_efficient_attention: true

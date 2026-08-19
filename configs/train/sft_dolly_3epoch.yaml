@@ -1,0 +1,48 @@
+# Third run in the Dolly schedule-length sweep: ~3 epochs, 1,410 steps. Not
+# the shipped stage-2 config -- see configs/train/sft_dolly.yaml -- but the
+# run that ended the sweep.
+#
+# Outcome: validation reached 2.7969 at step 1,300 and then ticked up
+# (1,400: 2.7971, 1,410: 2.7972), the first increase anywhere in the sweep.
+# So the minimum is real and sits around three epochs. It is also barely
+# worth having: epoch two bought 0.0199 nats, epoch three bought 0.0069, and
+# on Alpaca's held-out split this checkpoint is the worst of the three
+# (2.1427 against 2.1211 for one epoch). Longer helps Dolly and hurts
+# everything else at roughly 1:1.
+#
+# configs/train/sft_dolly.yaml assumed one epoch was the right length because
+# the Alpaca stage had overfit inside one. It did not: Dolly validation was
+# still falling at step 470 (2.8237). The 2-epoch run in
+# configs/train/sft_dolly_2epoch.yaml went further and reached 2.8038 at step
+# 900, then ticked up fractionally at 940 -- flat, not clearly turned. This
+# run exists to settle that: if the minimum is real, a full third epoch has
+# to bend the curve upward.
+#
+# Each run is a complete cosine cycle down to min_lr, so comparing their
+# endpoints compares schedule lengths fairly rather than comparing a finished
+# schedule against a truncated one. Everything except max_steps and the two
+# intervals that scale with it is held identical to the parent config.
+batch_size: 8
+seq_len: 512
+grad_accum_steps: 4
+max_steps: 1410
+warmup_steps: 50
+max_lr: 1.0e-5
+min_lr: 1.0e-6
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+log_interval: 1
+eval_interval: 100
+eval_steps: 40
+checkpoint_interval: 353
+amp_dtype: float16
+gradient_checkpointing: false
+use_efficient_attention: true
+# Irrelevant here -- InstructionDataset emits whole examples, not windows over
+# a stream -- but TrainConfig requires the field to be explicit or None.
+stride: null
+num_workers: 3
+pin_memory: true
+compile_model: false
+seed: 1337
