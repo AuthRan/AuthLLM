@@ -49,7 +49,7 @@ Run log: [`logs/supervisor.log`](logs/supervisor.log)
 > | Claim | Means | True here for |
 > |---|---|---|
 > | **"I implemented this architecture"** | Code exists that can construct it; weights would be random | `tiny`, `small`, `medium`, `xl_1b` — all four presets |
-> | **"I trained this checkpoint"** | Real gradient descent ran, on real data, producing a real checkpoint file | `tiny` and `small` on the small demo corpora in `tests/fixtures/`; `medium` (124M) **currently training** on 5B FineWeb-Edu tokens — see the live status above |
+> | **"I trained this checkpoint"** | Real gradient descent ran, on real data, producing a real checkpoint file | `tiny` and `small` on the small demo corpora in `tests/fixtures/`; `medium` (124M) **trained to completion** on FineWeb-Edu — 20,000 steps, 2.46B tokens, final validation perplexity 23.53 — see the status block above |
 > | **"I loaded this pretrained checkpoint for inference"** | Someone else's trained weights, used without training or fine-tuning them here | **Not true of anything in this repo.** GPT-2's weights were compared against, never loaded successfully — see [§12](#12-pretrained-checkpoints-comparison-not-loading) — and never claimed as trained by this project |
 
 See [§13](#13-provenance-trained--implemented--loaded) for the full,
@@ -876,12 +876,13 @@ The full version of the table at the top of this document:
    produced by `ashugpt/training/trainer.py` — real gradient descent, real
    data, a real file in the gitignored `checkpoints/` directory. True at
    `tiny`/`small` scale on the small demo corpora in `tests/fixtures/`, and
-   — as of this branch — at `medium` (124M) scale on 5B FineWeb-Edu tokens,
-   a run still in progress on a single RTX 2080 Ti. That run is what §11's
-   measured constraints were working toward; the live status block at the
-   top of this document is generated from its own metrics, not asserted by
-   hand. Still **never true of GPT-2's weights**, and still not true at
-   `xl_1b` scale.
+   — as of this branch — at `medium` (124M) scale on FineWeb-Edu: a
+   completed 20,000-step run on a single RTX 2080 Ti, which consumed 2.46B
+   of the prepared 5B-token corpus and ended at validation loss 3.1583
+   (perplexity 23.53). That run is what §11's measured constraints were
+   working toward; the status block at the top of this document is
+   generated from its own metrics, not asserted by hand. Still **never
+   true of GPT-2's weights**, and still not true at `xl_1b` scale.
 3. **"I loaded this publicly available pretrained checkpoint for
    inference."** Would be true if a checkpoint's *own* architecture were
    reimplemented and its weights genuinely loaded for inference-only use
