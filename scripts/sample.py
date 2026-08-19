@@ -20,6 +20,7 @@ from pathlib import Path
 
 import torch
 
+from ashugpt.data.instruction import InstructionExample
 from ashugpt.inference.generate import generate
 from ashugpt.tokenizer.tiktoken_bpe import TiktokenBPETokenizer
 from ashugpt.training.checkpoint import load_model_for_inference
@@ -34,6 +35,14 @@ def main() -> None:
     parser.add_argument("--top-p", type=float, default=None)
     parser.add_argument("--seed", type=int, default=1337)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--instruct",
+        action="store_true",
+        help="Wrap each prompt in the fine-tuning template (### Instruction / ### Response). "
+        "Required for checkpoints from scripts/finetune.py -- an instruction-tuned model was "
+        "trained to answer inside that template, and prompted bare it falls back to continuing "
+        "text like the base model it came from.",
+    )
     parser.add_argument("prompts", nargs="+", help='Prompt strings; "" generates unconditionally')
     args = parser.parse_args()
 
@@ -48,7 +57,8 @@ def main() -> None:
 
     for prompt in args.prompts:
         torch.manual_seed(args.seed)  # per-prompt, so each sample reproduces independently
-        input_ids = torch.tensor([tokenizer.encode(prompt, add_bos=True)], device=args.device)
+        text = InstructionExample(prompt, "", "").prompt() if args.instruct else prompt
+        input_ids = torch.tensor([tokenizer.encode(text, add_bos=True)], device=args.device)
 
         start = time.time()
         with torch.no_grad():
@@ -66,7 +76,11 @@ def main() -> None:
         print("=" * 78)
         print(f"PROMPT: {prompt!r}   [{args.max_new_tokens / elapsed:.0f} tok/s]")
         print("-" * 78)
-        print(tokenizer.decode(output_ids[0].tolist()).strip())
+        decoded = tokenizer.decode(output_ids[0].tolist())
+        if args.instruct:
+            # Show the answer, not the boilerplate template wrapped around it.
+            decoded = decoded.split("### Response:", 1)[-1]
+        print(decoded.strip())
         print()
 
 
