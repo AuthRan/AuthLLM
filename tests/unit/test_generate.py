@@ -8,7 +8,14 @@ import torch
 import torch.nn as nn
 
 from ashugpt.config import ModelConfig
-from ashugpt.inference.generate import _filter_top_k, _filter_top_p, generate, generate_text, sample_next_token
+from ashugpt.inference.generate import (
+    _filter_top_k,
+    _filter_top_p,
+    generate,
+    generate_stream,
+    generate_text,
+    sample_next_token,
+)
 from ashugpt.model.gpt import AshuGPT, GPTOutput
 from ashugpt.tokenizer import BPETokenizer
 
@@ -339,3 +346,90 @@ def test_cache_grows_by_one_position_per_layer_per_step() -> None:
         for k, v in output.kv_caches:
             assert k.shape[2] == 7  # grew from 6 cached + 1 new
             assert v.shape[2] == 7
+
+
+# ============================================================
+# generate_stream -- the loop generate() is built on
+# ============================================================
+
+
+def test_stream_and_generate_produce_the_same_tokens() -> None:
+    # generate() is generate_stream() concatenated, so this is really a
+    # check that the refactor kept one implementation rather than two: any
+    # divergence in sampling, EOS handling or cache bookkeeping between the
+    # streaming and collected paths shows up here as different tokens.
+    torch.manual_seed(0)
+    model = AshuGPT(small_model_config())
+    model.eval()
+    input_ids = torch.randint(0, 64, (2, 4))
+
+    torch.manual_seed(99)
+    collected = generate(model, input_ids, max_new_tokens=10, temperature=0.9, top_k=8)
+
+    torch.manual_seed(99)
+    streamed = torch.cat(
+        [input_ids]
+        + [
+            step.unsqueeze(1)
+            for step in generate_stream(model, input_ids, max_new_tokens=10, temperature=0.9, top_k=8)
+        ],
+        dim=1,
+    )
+    assert torch.equal(collected, streamed)
+
+
+def test_stream_yields_one_step_at_a_time() -> None:
+    model = _ConstantLogitsModel(vocab_size=20, next_token_id=5)
+    steps = list(generate_stream(model, torch.tensor([[1, 2, 3]]), max_new_tokens=4, temperature=0.0))
+    assert len(steps) == 4
+    assert all(step.shape == (1,) for step in steps)
+    assert all(step.item() == 5 for step in steps)
+
+
+def test_stream_stops_early_when_all_rows_hit_eos() -> None:
+    model = _ConstantLogitsModel(vocab_size=20, next_token_id=7)
+    steps = list(generate_stream(model, torch.tensor([[1, 2]]), max_new_tokens=50, temperature=0.0, eos_id=7))
+    assert len(steps) == 1  # the very first sampled token is EOS
+
+
+def test_stream_runs_with_gradients_disabled() -> None:
+    """A streaming generator that built an autograd graph would hold every
+    intermediate activation alive for the whole generation -- the exact
+    failure the @torch.no_grad() decorator on a *generator function* is
+    there to prevent, and one that is easy to get wrong because the
+    decorator has to re-enter the context at every resume rather than wrap
+    a single call."""
+    torch.manual_seed(0)
+    model = AshuGPT(small_model_config())
+    observed = []
+    original_forward = model.forward
+
+    def recording_forward(*args, **kwargs):
+        observed.append(torch.is_grad_enabled())
+        return original_forward(*args, **kwargs)
+
+    model.forward = recording_forward
+    list(generate_stream(model, torch.tensor([[1, 2, 3]]), max_new_tokens=3, temperature=0.0))
+
+    assert observed and not any(observed)
+
+
+def test_abandoning_a_stream_restores_training_mode() -> None:
+    # A browser closing a streaming connection abandons the generator
+    # part-way through, which raises GeneratorExit at the yield rather than
+    # running off the end of the function.
+    model = _ConstantLogitsModel(vocab_size=20, next_token_id=5)
+    model.train()
+    stream = generate_stream(model, torch.tensor([[1, 2]]), max_new_tokens=20, temperature=0.0)
+    next(stream)
+    stream.close()
+    assert model.training
+
+
+def test_stream_validates_context_length_before_yielding_anything() -> None:
+    # The check has to happen eagerly, not at the first next() -- a caller
+    # that builds a streaming HTTP response before pulling the first token
+    # would otherwise have already sent 200 OK by the time it fails.
+    model = _ConstantLogitsModel(vocab_size=20, next_token_id=5, context_length=10)
+    with pytest.raises(ValueError, match="context_length"):
+        generate_stream(model, torch.tensor([[1] * 8]), max_new_tokens=5, temperature=0.0)

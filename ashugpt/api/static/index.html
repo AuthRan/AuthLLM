@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AshuGPT</title>
+<style>
+  /* One file, no build step, no external requests. The page must work from
+     a git checkout on a machine with torch and nothing else -- a CDN link
+     would make the demo depend on the network being up and on someone
+     else's uptime. */
+  :root {
+    --bg: #fbfbfa; --panel: #ffffff; --ink: #1a1a19; --muted: #6b6b66;
+    --line: #e4e4e0; --accent: #7a5cff; --accent-ink: #ffffff; --warn: #b45309;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a; --panel: #1e1e23; --ink: #ececf0; --muted: #9a9aa4;
+      --line: #2e2e36; --accent: #9b82ff; --accent-ink: #14141a; --warn: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { margin-bottom: 24px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 13.5px; margin: 0; }
+  .meta { color: var(--muted); font-size: 12.5px; font-family: var(--mono); margin-top: 10px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px; margin-bottom: 16px;
+  }
+  textarea {
+    width: 100%; min-height: 84px; resize: vertical; padding: 11px 12px;
+    border: 1px solid var(--line); border-radius: 7px; background: var(--bg);
+    color: var(--ink); font: 14.5px/1.5 inherit;
+  }
+  textarea:focus, select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-top: 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .ctl { flex: 1 1 120px; min-width: 110px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+  button {
+    background: var(--accent); color: var(--accent-ink); border: 0;
+    border-radius: 7px; padding: 10px 20px; font-size: 14.5px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); font-weight: 500; }
+  .mode { display: flex; gap: 6px; }
+  .mode button {
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+    padding: 6px 12px; font-size: 13px; font-weight: 500;
+  }
+  .mode button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  #out {
+    white-space: pre-wrap; word-wrap: break-word; font-family: var(--mono);
+    font-size: 13.5px; line-height: 1.6; min-height: 120px; margin: 0;
+  }
+  #out .prompt { color: var(--muted); }
+  #out.empty { color: var(--muted); font-family: inherit; font-style: italic; }
+  .cursor {
+    display: inline-block; width: 7px; height: 1em; background: var(--accent);
+    vertical-align: text-bottom; animation: blink 1.05s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .status { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px;
+            font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .err { color: var(--warn); font-family: var(--mono); font-size: 12.5px; }
+  footer { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AshuGPT</h1>
+    <p class="sub">A decoder-only transformer written from scratch — RoPE, RMSNorm, SwiGLU, KV cache — talking to its own inference API.</p>
+    <p class="meta" id="model">connecting…</p>
+  </header>
+
+  <div class="panel">
+    <div class="mode" role="group" aria-label="Prompt mode">
+      <button id="m-continue" aria-pressed="true">Continue text</button>
+      <button id="m-instruct" aria-pressed="false">Answer instruction</button>
+    </div>
+    <p class="sub" id="mode-hint" style="margin:10px 0 12px;font-size:12.5px"></p>
+
+    <textarea id="prompt" spellcheck="false">The process of photosynthesis</textarea>
+
+    <div class="row">
+      <div class="ctl">
+        <label for="tokens">max new tokens <span class="val" id="tokens-v">120</span></label>
+        <input type="range" id="tokens" min="16" max="400" step="8" value="120">
+      </div>
+      <div class="ctl">
+        <label for="temp">temperature <span class="val" id="temp-v">0.80</span></label>
+        <input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.8">
+      </div>
+      <div class="ctl">
+        <label for="topk">top-k <span class="val" id="topk-v">50</span></label>
+        <input type="range" id="topk" min="0" max="200" step="1" value="50">
+      </div>
+      <div class="ctl">
+        <label for="topp">top-p <span class="val" id="topp-v">off</span></label>
+        <input type="range" id="topp" min="0.05" max="1" step="0.05" value="1">
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="go">Generate</button>
+      <button id="stop" class="ghost" disabled>Stop</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <p id="out" class="empty">Output appears here, one token at a time.</p>
+    <div class="status"><span id="stat"></span><span id="rate"></span></div>
+    <p class="err" id="err" hidden></p>
+  </div>
+
+  <footer>
+    Whatever this model says about the world is very likely wrong — it has 124M parameters and
+    learned from 2.46B tokens, which buys fluent prose and not facts. That limit is measured,
+    not hedged: see <code>results/</code> in the repo.
+  </footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const out = $("out"), errBox = $("err");
+  let instruct = false, controller = null;
+
+  const HINTS = {
+    continue: "The model continues your text. This is what a base checkpoint does, and the only thing it can do well.",
+    instruct: "Your text is wrapped in the ### Instruction / ### Response template before it reaches the model. Use this for a checkpoint from scripts/finetune.py; on a base checkpoint it will just write more instructions."
+  };
+
+  function setMode(isInstruct) {
+    instruct = isInstruct;
+    $("m-continue").setAttribute("aria-pressed", String(!isInstruct));
+    $("m-instruct").setAttribute("aria-pressed", String(isInstruct));
+    $("mode-hint").textContent = isInstruct ? HINTS.instruct : HINTS.continue;
+    if (isInstruct && $("prompt").value === "The process of photosynthesis") {
+      $("prompt").value = "Explain why the sky is blue.";
+    }
+  }
+  $("m-continue").onclick = () => setMode(false);
+  $("m-instruct").onclick = () => setMode(true);
+
+  // Slider readouts. top-k 0 and top-p 1 both mean "off", which is worth
+  // saying in words rather than making someone infer from the number.
+  const sliders = [
+    ["tokens", (v) => v],
+    ["temp", (v) => Number(v).toFixed(2) + (Number(v) === 0 ? " (greedy)" : "")],
+    ["topk", (v) => (Number(v) === 0 ? "off" : v)],
+    ["topp", (v) => (Number(v) >= 1 ? "off" : Number(v).toFixed(2))],
+  ];
+  for (const [id, fmt] of sliders) {
+    const el = $(id), label = $(id + "-v");
+    const sync = () => { label.textContent = fmt(el.value); };
+    el.addEventListener("input", sync);
+    sync();
+  }
+
+  fetch("health").then(r => r.json()).then(h => {
+    $("model").textContent = h.model_loaded
+      ? `${h.parameter_count.toLocaleString()} parameters · ${h.checkpoint_path}`
+      : "model still loading…";
+  }).catch(() => { $("model").textContent = "API unreachable"; });
+
+  function body() {
+    const topk = Number($("topk").value), topp = Number($("topp").value);
+    return {
+      prompt: $("prompt").value,
+      max_new_tokens: Number($("tokens").value),
+      temperature: Number($("temp").value),
+      top_k: topk === 0 ? null : topk,
+      top_p: topp >= 1 ? null : topp,
+      instruct: instruct,
+    };
+  }
+
+  function running(isRunning) {
+    $("go").disabled = isRunning;
+    $("stop").disabled = !isRunning;
+  }
+
+  async function generate() {
+    const prompt = $("prompt").value.trim();
+    if (!prompt) return;
+
+    errBox.hidden = true;
+    out.classList.remove("empty");
+    out.textContent = "";
+    if (!instruct) {
+      // Continuation mode only: showing the prompt greyed out in front of
+      // the completion is the clearest way to see where the model took over.
+      const span = document.createElement("span");
+      span.className = "prompt";
+      span.textContent = prompt;
+      out.appendChild(span);
+    }
+    const body_ = document.createTextNode("");
+    out.appendChild(body_);
+    const caret = document.createElement("span");
+    caret.className = "cursor";
+    out.appendChild(caret);
+
+    running(true);
+    $("stat").textContent = "generating…";
+    $("rate").textContent = "";
+    const started = performance.now();
+    let tokens = 0;
+
+    controller = new AbortController();
+    try {
+      const res = await fetch("generate/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body()),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.detail || `HTTP ${res.status}`);
+      }
+
+      // Server-sent events arrive as "data: {...}\n\n". A chunk boundary can
+      // land anywhere, including mid-event, so buffer and split on the
+      // blank line rather than assuming one read is one event.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let cut;
+        while ((cut = buffer.indexOf("\n\n")) !== -1) {
+          const line = buffer.slice(0, cut).replace(/^data: ?/, "");
+          buffer = buffer.slice(cut + 2);
+          if (!line) continue;
+          const evt = JSON.parse(line);
+          if (evt.error) throw new Error(evt.error);
+          if (evt.text) body_.appendData(evt.text);
+          if (evt.tokens_generated) tokens = evt.tokens_generated;
+          const secs = (performance.now() - started) / 1000;
+          $("rate").textContent = `${tokens} tokens · ${(tokens / secs).toFixed(1)} tok/s`;
+        }
+      }
+      $("stat").textContent = "done";
+    } catch (e) {
+      if (e.name === "AbortError") {
+        $("stat").textContent = "stopped";
+      } else {
+        errBox.textContent = String(e.message || e);
+        errBox.hidden = false;
+        $("stat").textContent = "failed";
+      }
+    } finally {
+      caret.remove();
+      running(false);
+      controller = null;
+    }
+  }
+
+  $("go").onclick = generate;
+  $("stop").onclick = () => controller && controller.abort();
+  $("prompt").addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") generate();
+  });
+  setMode(false);
+})();
+</script>
+</body>
+</html>

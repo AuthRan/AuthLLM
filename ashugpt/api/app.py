@@ -13,17 +13,22 @@ into the already-loaded InferenceService.
 
 from __future__ import annotations
 
+import json
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from pathlib import Path
+from typing import AsyncIterator, Iterator
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
 
 from ashugpt.api.schemas import GenerateRequest, GenerateResponse, HealthResponse
 from ashugpt.api.service import InferenceService
 
 CHECKPOINT_ENV_VAR = "ASHUGPT_CHECKPOINT"
 TOKENIZER_ENV_VAR = "ASHUGPT_TOKENIZER"
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
@@ -67,6 +72,67 @@ def health() -> HealthResponse:
     )
 
 
+@app.get("/", include_in_schema=False)
+def index() -> FileResponse:
+    """The browser frontend (SPEC.md M15's other half).
+
+    A single self-contained file with no build step, no framework, and no
+    external requests: the page has to work from a checkout, offline, on a
+    machine that has torch and nothing else. It is served from a route
+    rather than a StaticFiles mount so that mounting does not shadow the
+    API routes above it.
+    """
+    return FileResponse(STATIC_DIR / "index.html", media_type="text/html")
+
+
+@app.post("/generate/stream", include_in_schema=True)
+def generate_stream_endpoint(request: GenerateRequest) -> StreamingResponse:
+    """Server-sent events, one per decoded chunk of text.
+
+    SSE rather than a WebSocket because the traffic is entirely one-way --
+    the client sends a prompt and then only listens -- and SSE is a plain
+    HTTP response that needs no protocol upgrade, no ping/pong keepalive,
+    and no second code path on the server for connection state.
+
+    Sync `def` for the same reason as /generate below: torch decoding
+    blocks, so Starlette runs this in a worker thread and iterates the
+    generator from there, leaving the event loop free.
+
+    Validation errors have to be raised *before* the StreamingResponse is
+    constructed. Once the response object exists the status line is
+    committed, and a failure after that point can only be reported as an
+    error event inside a 200 -- which is why service.stream() does its
+    context-length check eagerly rather than at the first token.
+    """
+    service = _get_service(app)
+
+    try:
+        chunks = service.stream(
+            prompt=request.prompt,
+            max_new_tokens=request.max_new_tokens,
+            temperature=request.temperature,
+            top_k=request.top_k,
+            top_p=request.top_p,
+            instruct=request.instruct,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    def event_stream() -> Iterator[str]:
+        try:
+            for chunk in chunks:
+                payload = {"text": chunk.text, "tokens_generated": chunk.tokens_generated, "done": chunk.done}
+                yield f"data: {json.dumps(payload)}\n\n"
+        except Exception as e:  # noqa: BLE001 -- status line already sent; the only place left to report is in-band
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.post("/generate", response_model=GenerateResponse)
 def generate_endpoint(request: GenerateRequest) -> GenerateResponse:
     """Runs synchronously (plain `def`, not `async def`) on purpose:
@@ -83,6 +149,7 @@ def generate_endpoint(request: GenerateRequest) -> GenerateResponse:
             temperature=request.temperature,
             top_k=request.top_k,
             top_p=request.top_p,
+            instruct=request.instruct,
         )
     except ValueError as e:
         # A request the model itself rejects (e.g. prompt + max_new_tokens

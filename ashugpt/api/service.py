@@ -11,12 +11,16 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 import torch
 
-from ashugpt.inference.generate import generate
-from ashugpt.tokenizer import BPETokenizer
+from ashugpt.data.instruction import InstructionExample
+from ashugpt.inference.generate import generate, generate_stream
+from ashugpt.tokenizer import load_tokenizer
 from ashugpt.training.checkpoint import load_model_for_inference
+
+RESPONSE_MARKER = "### Response:\n"
 
 
 @dataclass
@@ -27,23 +31,67 @@ class GenerateResult:
     tokens_per_second: float
 
 
+@dataclass
+class StreamChunk:
+    """One step of a streaming generation: the new text, and the counters
+    a client needs to show progress without recomputing anything."""
+
+    text: str
+    tokens_generated: int
+    done: bool
+
+
 class InferenceService:
     """Holds one loaded model + tokenizer in memory. Constructed once at
     server startup (see app.py's lifespan handler) and reused for every
     request -- loading (reading the checkpoint file, constructing the
     nn.Module, moving weights into it) happens exactly once, not per call."""
 
-    def __init__(self, model: torch.nn.Module, tokenizer: BPETokenizer, checkpoint_path: str) -> None:
-        self.model = model
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        tokenizer,
+        checkpoint_path: str,
+        device: str = "cpu",
+    ) -> None:
+        self.model = model.to(device)
         self.tokenizer = tokenizer
         self.checkpoint_path = checkpoint_path
+        self.device = device
         self.model.eval()
 
     @classmethod
-    def load(cls, checkpoint_path: str | Path, tokenizer_path: str | Path) -> InferenceService:
-        tokenizer = BPETokenizer.load(tokenizer_path)
+    def load(
+        cls,
+        checkpoint_path: str | Path,
+        tokenizer_path: str | Path,
+        device: str | None = None,
+    ) -> InferenceService:
+        """`load_tokenizer`, not `BPETokenizer.load`: the two tokenizers in
+        this repo have different id spaces, and a checkpoint is only valid
+        with the one it was trained on. The 124M runs used the tiktoken
+        GPT-2 vocabulary, so hard-coding the from-scratch class here made
+        the server unable to serve the only large model this project has --
+        and it would not have failed loudly, it would have produced fluent
+        nonsense from mismatched ids."""
+        tokenizer = load_tokenizer(tokenizer_path)
         model = load_model_for_inference(checkpoint_path)
-        return cls(model=model, tokenizer=tokenizer, checkpoint_path=str(checkpoint_path))
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        return cls(model=model, tokenizer=tokenizer, checkpoint_path=str(checkpoint_path), device=device)
+
+    def _encode_prompt(self, prompt: str, instruct: bool) -> tuple[torch.Tensor, str]:
+        """Returns the model input and the exact text that was fed to it.
+
+        `instruct=True` wraps the prompt in the fine-tuning template. An
+        instruction-tuned checkpoint was trained to answer *inside* that
+        template; prompted bare it falls back to continuing text like the
+        base model it came from, which looks like a broken fine-tune rather
+        than a misused one (see README section 10.1).
+        """
+        text = InstructionExample(prompt, "", "").prompt() if instruct else prompt
+        input_ids = torch.tensor([self.tokenizer.encode(text, add_bos=True)], device=self.device)
+        return input_ids, text
 
     def generate(
         self,
@@ -52,12 +100,13 @@ class InferenceService:
         temperature: float,
         top_k: int | None,
         top_p: float | None,
+        instruct: bool = False,
     ) -> GenerateResult:
         """Raises ValueError for requests the model itself rejects (e.g.
         prompt + max_new_tokens exceeding context_length, or an invalid
         temperature/top_k/top_p) -- the caller (app.py) maps that to a 400,
         distinct from an actual server-side failure."""
-        input_ids = torch.tensor([self.tokenizer.encode(prompt, add_bos=True)])
+        input_ids, _ = self._encode_prompt(prompt, instruct)
         prompt_len = input_ids.shape[1]
 
         start = time.perf_counter()
@@ -74,6 +123,8 @@ class InferenceService:
 
         tokens_generated = output_ids.shape[1] - prompt_len
         generated_text = self.tokenizer.decode(output_ids[0].tolist())
+        if instruct:
+            generated_text = _strip_template(generated_text)
         tokens_per_second = tokens_generated / elapsed if elapsed > 0 else float("inf")
 
         return GenerateResult(
@@ -83,6 +134,79 @@ class InferenceService:
             tokens_per_second=tokens_per_second,
         )
 
+    def stream(
+        self,
+        prompt: str,
+        max_new_tokens: int,
+        temperature: float,
+        top_k: int | None,
+        top_p: float | None,
+        instruct: bool = False,
+    ) -> Iterator[StreamChunk]:
+        """Same generation, yielded as it happens.
+
+        Text deltas are computed by decoding the whole generated run each
+        step and taking what is new, rather than decoding each token on its
+        own. A BPE token is a sequence of *bytes*, not characters: a single
+        token can end mid-UTF-8, and decoding it alone would emit a
+        replacement character where the next token was going to complete a
+        multi-byte codepoint. Decode-all-and-diff costs an O(n) decode per
+        step over a few hundred tokens, which is nothing next to a forward
+        pass, and is correct for every input.
+
+        Note the difference from `generate()`, which returns the prompt and
+        the continuation together: a stream yields *only* new text, because
+        a client that already has the prompt on screen does not want it
+        sent back a second time.
+        """
+        input_ids, _ = self._encode_prompt(prompt, instruct)
+
+        # Not a generator function, for the same reason generate_stream()
+        # is not: anything that can be rejected -- an over-long prompt, an
+        # invalid top_p -- must raise now, while the caller can still turn
+        # it into a 400. A generator body would not run until the first
+        # token was pulled, by which point an HTTP response has already
+        # committed to 200 OK.
+        token_stream = generate_stream(
+            self.model,
+            input_ids,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            eos_id=self.tokenizer.eos_id,
+        )
+
+        def chunks() -> Iterator[StreamChunk]:
+            generated_ids: list[int] = []
+            emitted = ""
+            tokens_generated = 0
+
+            for step in token_stream:
+                generated_ids.append(int(step[0].item()))
+                tokens_generated += 1
+
+                text = self.tokenizer.decode(generated_ids)
+                if not text.startswith(emitted):
+                    # A newly completed codepoint can rewrite the tail of
+                    # what was already decoded. Rare, but a delta computed
+                    # by slicing would corrupt the output when it happens,
+                    # so send nothing and let the next token settle it.
+                    continue
+                delta, emitted = text[len(emitted) :], text
+                if delta:
+                    yield StreamChunk(text=delta, tokens_generated=tokens_generated, done=False)
+
+            yield StreamChunk(text="", tokens_generated=tokens_generated, done=True)
+
+        return chunks()
+
     @property
     def parameter_count(self) -> int:
         return self.model.num_parameters()
+
+
+def _strip_template(decoded: str) -> str:
+    """Show the answer, not the boilerplate wrapped around it. Matches what
+    scripts/sample.py --instruct prints."""
+    return decoded.split(RESPONSE_MARKER.rstrip("\n"), 1)[-1].strip()

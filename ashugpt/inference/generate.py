@@ -31,6 +31,8 @@ changes how much redundant computation happens, not what gets computed.
 
 from __future__ import annotations
 
+from typing import Iterator
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -101,8 +103,7 @@ def sample_next_token(
     return torch.multinomial(probs, num_samples=1).squeeze(-1)
 
 
-@torch.no_grad()
-def generate(
+def generate_stream(
     model: nn.Module,
     input_ids: torch.Tensor,
     max_new_tokens: int,
@@ -111,9 +112,20 @@ def generate(
     top_p: float | None = None,
     eos_id: int | None = None,
     use_cache: bool = True,
-) -> torch.Tensor:
-    """input_ids: (batch, prompt_len). Returns (batch, prompt_len + n),
-    n <= max_new_tokens (shorter if every row in the batch hit eos_id first).
+) -> Iterator[torch.Tensor]:
+    """The decoding loop itself, yielding each step's sampled tokens.
+
+    input_ids: (batch, prompt_len). Yields one (batch,) tensor of newly
+    sampled token ids per step, at most max_new_tokens of them, stopping
+    early once every row has emitted eos_id.
+
+    This exists so a caller can *see* tokens as they are produced -- the
+    API's streaming endpoint sends each one to the browser as it arrives,
+    which is the difference between a page that sits blank for eight
+    seconds and one that starts writing immediately. `generate()` below is
+    this function with the pieces concatenated, rather than a second copy
+    of the loop: two implementations of sampling that must agree token for
+    token is exactly the kind of duplication that drifts silently.
 
     A row that has already emitted eos_id is padded with more eos_id
     rather than left to keep sampling, so the batch tensor stays
@@ -128,10 +140,7 @@ def generate(
     tests/unit/test_generate.py's cache tests check), so False exists
     mainly as a correctness baseline, not something to prefer.
     """
-    was_training = model.training
-    model.eval()
-
-    batch_size, prompt_len = input_ids.shape
+    prompt_len = input_ids.shape[1]
     context_length = model.config.context_length
     if prompt_len + max_new_tokens > context_length:
         raise ValueError(
@@ -141,38 +150,111 @@ def generate(
             f"generated sequence must always fit in one context window."
         )
 
-    generated = input_ids
-    finished = torch.zeros(batch_size, dtype=torch.bool, device=input_ids.device)
+    # This function is deliberately *not* the generator: a generator
+    # function's body does not run until the first next(), which would make
+    # the check above fire only once a caller pulled a token. A streaming
+    # HTTP handler builds its response before pulling anything, so it would
+    # already have committed a 200 OK by then. Validate eagerly, then hand
+    # back the generator.
+    return _generate_stream(
+        model,
+        input_ids,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+        eos_id=eos_id,
+        use_cache=use_cache,
+    )
 
-    next_input = input_ids  # first call always processes the whole prompt
-    position_offset = 0
-    kv_caches = None
 
-    for _ in range(max_new_tokens):
-        output = model(next_input, kv_caches=kv_caches, position_offset=position_offset)
-        next_token_logits = output.logits[:, -1, :]  # (batch, vocab_size) -- the newest position only
-        next_tokens = sample_next_token(next_token_logits, temperature, top_k, top_p)  # (batch,)
+@torch.no_grad()
+def _generate_stream(
+    model: nn.Module,
+    input_ids: torch.Tensor,
+    max_new_tokens: int,
+    temperature: float,
+    top_k: int | None,
+    top_p: float | None,
+    eos_id: int | None,
+    use_cache: bool,
+) -> Iterator[torch.Tensor]:
+    """The generator half of generate_stream(); see it for the contract."""
+    batch_size, prompt_len = input_ids.shape
+    was_training = model.training
+    model.eval()
 
-        if eos_id is not None:
-            next_tokens = torch.where(finished, torch.full_like(next_tokens, eos_id), next_tokens)
+    # try/finally rather than a restore at the end: a consumer is free to
+    # abandon a generator part-way (a browser closing a streaming connection
+    # does exactly that, which raises GeneratorExit at the yield). Without
+    # this, a model that was in training mode would silently stay in eval.
+    try:
+        generated_len = prompt_len
+        finished = torch.zeros(batch_size, dtype=torch.bool, device=input_ids.device)
 
-        generated = torch.cat([generated, next_tokens.unsqueeze(1)], dim=1)
+        next_input = input_ids  # first call always processes the whole prompt
+        position_offset = 0
+        kv_caches = None
 
-        if eos_id is not None:
-            finished = finished | (next_tokens == eos_id)
-            if finished.all():
-                break
+        for _ in range(max_new_tokens):
+            output = model(next_input, kv_caches=kv_caches, position_offset=position_offset)
+            next_token_logits = output.logits[:, -1, :]  # (batch, vocab_size) -- the newest position only
+            next_tokens = sample_next_token(next_token_logits, temperature, top_k, top_p)  # (batch,)
 
-        if use_cache:
-            kv_caches = output.kv_caches  # covers everything processed so far (not yet the just-sampled token)
-            position_offset = generated.shape[1] - 1  # absolute position of the token we just appended
-            next_input = next_tokens.unsqueeze(1)  # (batch, 1) -- only the new token needs to run next
-        else:
-            next_input = generated  # (batch, cur_len) -- recompute the whole sequence again
+            if eos_id is not None:
+                next_tokens = torch.where(finished, torch.full_like(next_tokens, eos_id), next_tokens)
 
-    if was_training:
-        model.train()
-    return generated
+            yield next_tokens
+            generated_len += 1
+
+            if eos_id is not None:
+                finished = finished | (next_tokens == eos_id)
+                if finished.all():
+                    break
+
+            if use_cache:
+                kv_caches = output.kv_caches  # covers everything processed so far (not yet the just-sampled token)
+                position_offset = generated_len - 1  # absolute position of the token we just appended
+                next_input = next_tokens.unsqueeze(1)  # (batch, 1) -- only the new token needs to run next
+            else:
+                # The uncached path re-runs everything, so it needs the full
+                # sequence rebuilt -- the one thing streaming does not keep
+                # around on its own.
+                input_ids = torch.cat([input_ids, next_tokens.unsqueeze(1)], dim=1)
+                next_input = input_ids
+    finally:
+        if was_training:
+            model.train()
+
+
+def generate(
+    model: nn.Module,
+    input_ids: torch.Tensor,
+    max_new_tokens: int,
+    temperature: float = 1.0,
+    top_k: int | None = None,
+    top_p: float | None = None,
+    eos_id: int | None = None,
+    use_cache: bool = True,
+) -> torch.Tensor:
+    """input_ids: (batch, prompt_len). Returns (batch, prompt_len + n),
+    n <= max_new_tokens (shorter if every row in the batch hit eos_id first).
+
+    `generate_stream()` above is the actual loop; this collects it.
+    """
+    pieces = [input_ids]
+    for next_tokens in generate_stream(
+        model,
+        input_ids,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+        eos_id=eos_id,
+        use_cache=use_cache,
+    ):
+        pieces.append(next_tokens.unsqueeze(1))
+    return torch.cat(pieces, dim=1)
 
 
 def generate_text(
