@@ -24,7 +24,8 @@
 # whole run is now shorter than that stage's checkpoint interval.
 #
 # ---- Which Alpaca checkpoint this starts from ----
-# checkpoints/sft_alpaca/step_1500.pt, not the end of that run. Two reasons.
+# checkpoints/sft_alpaca_3epoch/step_1500.pt (the directory was named
+# checkpoints/sft_alpaca when this ran), not the end of that run. Two reasons.
 # Step 1,500 is where Alpaca's validation loss bottomed out (2.0793); every
 # later checkpoint is measurably further into memorizing Alpaca, and there is
 # no reason to hand this stage a worse starting point. And the true final

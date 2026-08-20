@@ -779,9 +779,9 @@ peak carries over unchanged.
 Both step counts were measured rather than chosen: the first versions of these
 configs ran 4,875 and 470 steps, and both were wrong in opposite directions.
 The runs behind those numbers are kept in `configs/train/sft_alpaca_3epoch.yaml`,
-`sft_dolly_1epoch.yaml` and `sft_dolly_3epoch.yaml` with their logs, because
-the arguments that produced them are more useful sitting next to the curves
-that refuted them than deleted.
+`sft_dolly_1epoch.yaml`, `sft_dolly_2epoch.yaml` and `sft_dolly_3epoch.yaml`
+with their logs, because the arguments that produced them are more useful
+sitting next to the curves that refuted them than deleted.
 
 Note the gap between "tokens/step" and "supervised tokens". Padding every
 example to a fixed 512 keeps the tensor shape identical to pretraining — which

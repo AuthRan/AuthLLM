@@ -1,0 +1,87 @@
+# Second run in the Dolly schedule-length sweep: ~2 epochs, 940 steps, started
+# from the 3-epoch Alpaca run's step 1,500. Not the shipped stage-2 config --
+# see configs/train/sft_dolly.yaml, which runs this same schedule off a better
+# stage 1 -- but the run that chose the schedule.
+#
+# This file *was* configs/train/sft_dolly.yaml until stage 1 was re-run as a
+# one-epoch schedule. Its hyperparameters are identical to the shipped
+# config's; the only difference is which checkpoint --init-from points at,
+# which is a CLI argument rather than a config field. It is kept under its own
+# name because its logs (logs/sft_dolly_2epoch.*) and checkpoints
+# (checkpoints/sft_dolly_2epoch/) are a real run whose numbers are quoted in
+# README.md section 10.4, and a run whose numbers are quoted should have a
+# config that says what it was.
+#
+# Outcome: validation reached 2.8038 at step 900 and ticked up fractionally by
+# 940. On held-out data, 2.7988 Dolly / 2.1311 Alpaca. Re-running this exact
+# schedule from the finished one-epoch stage 1 instead reaches 2.7707 /
+# 2.1365 -- 0.028 nats better on Dolly for no change to this stage at all,
+# which is what retired this lineage.
+#
+# ---- Which Alpaca checkpoint this started from ----
+# checkpoints/sft_alpaca_3epoch/step_1500.pt (that directory was named
+# checkpoints/sft_alpaca when this ran). Step 1,500 is where the 3-epoch
+# Alpaca run's validation bottomed out (2.0793), and the true final weights
+# (step 4,875) do not exist: that run's max_steps was not a multiple of its
+# 500-step checkpoint interval and the trainer only saved on the interval, so
+# the last file on disk is step_4500.pt. That is fixed now, but not
+# retroactively.
+#
+# Picking the best checkpoint of a long run is exactly the reasoning the
+# shipped config abandoned -- step 1,500 sits mid-cosine at lr ~1.7e-5 and
+# never receives the annealing that does the last of the work. See README.md
+# section 10.4 and results/instruction-tuning.md section 3.
+#
+#
+# Runs on one RTX 2080 Ti, launched by scripts/finetune.py, not
+# scripts/train.py: the data is prompt/response pairs with the prompt masked
+# out of the loss, not a continuous token stream.
+#
+# ---- Why the learning rate is 1.0e-5 ----
+# Pretraining ran at max_lr 6.0e-4 from random initialization, where large
+# steps are what you want; the Alpaca stage dropped to 2.0e-5, the usual SFT
+# range for a model this size, because it started from weights that already
+# encoded English and only needed to change behaviour. This stage halves that
+# again. It is not teaching the response format -- Alpaca already did, and
+# the model arrives here already producing it -- so the smallest step that
+# still moves answer quality is the right one. The risk being bought off is
+# that a third pass at full SFT strength over a 14k set drags the model into
+# Dolly's idiom without teaching it anything new.
+#
+# ---- Batch arithmetic ----
+# 8 * 4 * 1 * 512 = 16,384 tokens/step, ~32 examples per optimizer step --
+# identical to the Alpaca stage, so the two stages differ in data and
+# learning rate and nothing else. 13,756 usable training examples means an
+# epoch is ~430 steps, so this config is ~2.2 of them. Note the *supervised*
+# token count is much lower than 16,384: prompts are masked, so only response
+# tokens produce gradient -- about 11% of each step's positions, measured.
+#
+# ---- Memory ----
+# Same batch_size as pretraining (8): the fp32 logits tensor is what bounds
+# this on 11GB and it is unchanged at 8 * 512 * 50304 * 4 = 0.82GB. Padding
+# to a fixed 512 keeps the shape identical to the pretraining run, so the
+# measured 6.01GB peak carries over.
+batch_size: 8
+seq_len: 512
+grad_accum_steps: 4
+max_steps: 940
+warmup_steps: 50
+max_lr: 1.0e-5
+min_lr: 1.0e-6
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+log_interval: 1
+eval_interval: 100
+eval_steps: 40
+checkpoint_interval: 235
+amp_dtype: float16
+gradient_checkpointing: false
+use_efficient_attention: true
+# Irrelevant here -- InstructionDataset emits whole examples, not windows over
+# a stream -- but TrainConfig requires the field to be explicit or None.
+stride: null
+num_workers: 3
+pin_memory: true
+compile_model: false
+seed: 1337

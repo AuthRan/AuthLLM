@@ -24,8 +24,9 @@
 # model better, it is moving where the model is good. 940 steps is the minimum
 # of the average of the two held-out losses, which is the least arbitrary
 # place to stop given that trade. See README.md section 10 and
-# results/instruction-tuning.md; the two losing runs are kept in
-# configs/train/sft_dolly_1epoch.yaml and sft_dolly_3epoch.yaml.
+# results/instruction-tuning.md; the sweep runs are kept beside this file as
+# configs/train/sft_dolly_1epoch.yaml, sft_dolly_2epoch.yaml and
+# sft_dolly_3epoch.yaml.
 #
 # ---- Which Alpaca checkpoint this starts from ----
 # checkpoints/sft_alpaca/step_1600.pt -- the end of the one-epoch stage-1
