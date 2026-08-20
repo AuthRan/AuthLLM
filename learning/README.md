@@ -15,7 +15,7 @@ Read in order:
 4. **[How it turned out](04-results.md)** — the final numbers, what they mean,
    and what's still left to do.
 5. **[Teaching it to answer](05-instruction-tuning.md)** — the instruction
-   fine-tune that came after, and the three wrong conclusions I nearly drew
+   fine-tune that came after, and the four wrong conclusions I nearly drew
    from it.
 
 ## The 30-second version
@@ -32,7 +32,7 @@ Getting there took five failed launches, one OOM crash, one reboot that killed
 everything, and a status reporter that confidently published a wrong ETA. All
 of that is written down in file 3, because that's the part worth remembering.
 
-Afterwards it was instruction-tuned on Alpaca and Dolly — 66 minutes of GPU
+Afterwards it was instruction-tuned on Alpaca and Dolly — 29 minutes of GPU
 against pretraining's 27 hours — which taught it to answer questions and stop,
 and taught me that the metrics which look like they measure
 instruction-following peak on the checkpoint you least want. That's file 5.

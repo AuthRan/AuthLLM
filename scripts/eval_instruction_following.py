@@ -29,7 +29,7 @@ examples the fine-tune never trained on.
 Usage:
     python scripts/eval_instruction_following.py --data data/sft/dolly.jsonl \
         --checkpoint base=checkpoints/medium/step_20000.pt \
-        --checkpoint alpaca=checkpoints/sft_alpaca/step_1500.pt \
+        --checkpoint alpaca=checkpoints/sft_alpaca/step_1600.pt \
         --output results/instruction_eval.md
 """
 

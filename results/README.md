@@ -170,7 +170,7 @@ ever taught it to. If I want it to *respond* rather than *continue*, that's a
 fine-tune, not more pretraining.
 
 *(I did that next. It worked, in the narrow sense that it now answers and
-stops — 30% of generations terminated on their own before, 100% after — and
+stops — 30% of generations terminated on their own before, 98% after — and
 did nothing whatsoever for the facts:*
 [instruction-tuning.md](instruction-tuning.md)*.)*
 

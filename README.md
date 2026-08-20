@@ -673,8 +673,8 @@ flowchart LR
     A["Pretrained weights\n(step 20,000)"] --> B["scripts/finetune.py\nweights only, fresh optimizer"]
     C["Alpaca 52k\ninstruction/input/output"] --> D["InstructionDataset\ntemplate + EOS + prompt mask"]
     D --> B
-    B --> E["Stage 1: Alpaca\n4,875 steps @ 2e-5"]
-    E --> F["Stage 2: Dolly\n@ 1e-5"]
+    B --> E["Stage 1: Alpaca\n1,600 steps @ 2e-5"]
+    E --> F["Stage 2: Dolly\n940 steps @ 1e-5"]
     G["Dolly 15k\nhuman-written"] --> D
     F --> H["Answers instructions,\nstops on its own"]
 ```
@@ -1239,9 +1239,9 @@ python scripts/finetune.py --model configs/model/medium.yaml --train configs/tra
     --init-from checkpoints/medium/step_20000.pt --data data/sft/alpaca.jsonl \
     --checkpoint-dir checkpoints/sft_alpaca --log-path logs/sft_alpaca.csv
 
-# Stage 2 -- from stage 1's best-validation checkpoint:
+# Stage 2 -- from stage 1's final checkpoint:
 python scripts/finetune.py --model configs/model/medium.yaml --train configs/train/sft_dolly.yaml \
-    --init-from checkpoints/sft_alpaca/step_1500.pt --data data/sft/dolly.jsonl \
+    --init-from checkpoints/sft_alpaca/step_1600.pt --data data/sft/dolly.jsonl \
     --checkpoint-dir checkpoints/sft_dolly --log-path logs/sft_dolly.csv
 ```
 

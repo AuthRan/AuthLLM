@@ -16,27 +16,41 @@ going, generating `### Response:` headers and more questions for itself,
 forever, until it hit the token cap.
 
 That is the thing instruction tuning fixes, and I wanted to see it as a number
-rather than a vibe. So `scripts/eval_instruction_following.py` takes the same
-300 held-out Dolly examples the fine-tune never saw and measures, for each
+rather than a vibe. So `scripts/eval_instruction_following.py` takes held-out
+instruction data neither stage ever trained on and measures, for each
 checkpoint: held-out loss on the response only, how often the model stops on
 its own, how long its answers are, and how often it falls into a loop.
 
+The shipped pipeline is two stages — 1,600 steps on Alpaca, then 940 on Dolly
+— but seven other checkpoints ran on the way there, and the interesting part
+of this page is the four of them that were *supposed* to be better.
+
 ## The table
 
-40 held-out prompts generated at temperature 0.8, top-k 50, capped at 200
-tokens; loss averaged over 34 batches of the same held-out split.
+Every checkpoint that ran, scored the same way. Held-out loss on Dolly's split
+(300 examples) and on Alpaca's (1,039), both with the prompt masked exactly as
+in training, so the number scores prediction of the *response* only. The
+behavioural columns come from 40 real sampled generations per checkpoint at
+temperature 0.8, top-k 50, capped at 200 tokens.
 
-| checkpoint | held-out loss | ppl | stop rate | mean tokens | loop rate |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `base` (pretrained, step 20,000) | 3.0580 | 21.28 | 30% | 179 | 80% |
-| `alpaca` step 500 | 2.9049 | 18.26 | 98% | 58 | 15% |
-| `alpaca` step 1,500 | 2.9506 | 19.12 | 100% | 50 | 10% |
-| `alpaca` step 4,500 | 3.0844 | 21.85 | 100% | 51 | 0% |
-| `dolly` 1 epoch | 2.8183 | 16.75 | 98% | 44 | 12% |
-| `dolly` 2 epochs | 2.7988 | 16.42 | 100% | 52 | 15% |
-| `dolly` 3 epochs | 2.7921 | 16.31 | 100% | 52 | 18% |
+| checkpoint | Dolly loss | Alpaca loss | mean | stop rate | mean tokens | loop rate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `base` — pretrained, step 20,000 | 3.0580 | 2.5338 | 2.7959 | 30% | 179 | 80% |
+| 3-epoch Alpaca, step 500 | 2.9049 | 2.0973 | 2.5011 | 98% | 58 | 15% |
+| 3-epoch Alpaca, step 1,500 | 2.9506 | 2.0568 | 2.5037 | 100% | 50 | 10% |
+| 3-epoch Alpaca, step 4,500 | 3.0844 | 2.0752 | 2.5798 | 100% | 51 | 0% |
+| **stage 1** — 1-epoch Alpaca, step 1,600 | 2.9145 | **2.0512** | 2.4829 | 100% | 47 | 15% |
+| Dolly 1 epoch, off step 1,500 | 2.8183 | 2.1211 | 2.4697 | 98% | 44 | 12% |
+| Dolly 2 epochs, off step 1,500 | 2.7988 | 2.1311 | 2.4650 | 100% | 52 | 15% |
+| Dolly 3 epochs, off step 1,500 | 2.7921 | 2.1427 | 2.4674 | 100% | 52 | 18% |
+| **stage 2** — Dolly 2 epochs, off step 1,600 | **2.7707** | 2.1365 | **2.4536** | 98% | 52 | 15% |
 
-Three things in there are worth more than the rest.
+Compare *down* a column, never across one row: Alpaca's machine-generated
+responses are far more predictable than Dolly's human-written ones, which is
+why the base model scores half a nat better on one than the other before any
+tuning happens at all.
+
+Four things in there are worth more than the rest.
 
 ## 1. Stopping is learned in under 500 steps
 
@@ -59,9 +73,9 @@ those two numbers describe the same model wandering.
 
 ## 2. More fine-tuning made it worse in the way that matters
 
-Look at the `alpaca` rows again:
+Look at the three-epoch Alpaca rows again:
 
-| | held-out loss | stop rate | loop rate |
+| | Dolly held-out | stop rate | loop rate |
 |---|---:|---:|---:|
 | step 500 | **2.9049** | 98% | 15% |
 | step 1,500 | 2.9506 | 100% | 10% |
@@ -89,7 +103,45 @@ evaluate an instruction-tuned model on format alone. If I'd only tracked stop
 rate and loop rate — which are the metrics that *look* like they measure
 instruction following — I'd have shipped the worst checkpoint of the three.
 
-## 3. The second stage didn't make it better, it moved where it was good
+## 3. A short schedule beats the same step of a long one
+
+The obvious fix for §2 is "train long, keep the best checkpoint", and the
+three-epoch run's best checkpoint is step 1,500 — one epoch, near enough. So
+that seemed settled, and it wasn't. Re-running stage 1 as a **1,600-step
+schedule that actually finishes** gives a better model than that checkpoint on
+both held-out sets at once, for a third of the compute:
+
+| | Dolly held-out | Alpaca held-out | GPU time |
+|---|---:|---:|---:|
+| step 1,500 of the 3-epoch run | 2.9506 | 2.0568 | 55 min |
+| the 1,600-step run, finished | **2.9145** | **2.0512** | 18 min |
+
+The GPU-time column counts the whole run, because that is what it costs to
+have that checkpoint: step 1,500 arrives 17 minutes in, but you only learn it
+is the one worth keeping after the other 3,375 steps have gone by.
+
+The two checkpoints are nearly the same number of optimizer steps over nearly
+the same data. What differs is the learning rate at the end. Step 1,500 of the
+long run sits mid-cosine at lr ~1.7e-5 and never receives the annealing that
+does the last of the work; the short run decays to `min_lr` and lands. "Train
+long, keep the best checkpoint" and "train exactly as long as you need" look
+like the same experiment when you plot them against step number, and they are
+not.
+
+That difference compounds through stage 2. Same 940-step Dolly config, same
+everything, only the starting checkpoint changed:
+
+| stage 2 started from | Dolly held-out | Alpaca held-out | mean |
+|---|---:|---:|---:|
+| 3-epoch run's step 1,500 | 2.7988 | 2.1311 | 2.4650 |
+| the finished 1,600-step run | **2.7707** | 2.1365 | **2.4536** |
+
+0.028 nats at the end of a stage that had nothing to do with the change. A
+better starting point stays better through the stage built on top of it, which
+is an argument for spending the effort on stage 1 rather than tuning stage 2
+harder.
+
+## 4. The second stage didn't make it better, it moved where it was good
 
 Dolly is human-written where Alpaca is machine-generated, so stage two was
 supposed to be about answer quality. Held-out Dolly loss does improve with
@@ -98,24 +150,13 @@ I'd looked at, the conclusion would have been "more Dolly is better, keep
 going".
 
 So I scored the same checkpoints a second time, on **Alpaca's** held-out
-split, which no stage of training saw either:
-
-| checkpoint | Dolly held-out | Alpaca held-out | mean |
-|---|---:|---:|---:|
-| `base` | 3.0580 | 2.5338 | 2.7959 |
-| `alpaca` step 1,500 | 2.9506 | **2.0568** | 2.5037 |
-| `alpaca` step 4,500 | 3.0844 | 2.0752 | 2.5798 |
-| `dolly` 1 epoch | 2.8183 | 2.1211 | 2.4697 |
-| `dolly` 2 epochs | 2.7988 | 2.1311 | **2.4650** |
-| `dolly` 3 epochs | **2.7921** | 2.1427 | 2.4674 |
-
-Read down the Dolly rows. Every epoch improves the Dolly column and degrades
-the Alpaca column by almost exactly the same amount: one epoch to three is
-−0.026 on Dolly and +0.022 on Alpaca. That is not a model learning to follow
-instructions better. That is a model sliding from one instruction
-distribution toward another, at close to a 1:1 exchange rate, and there is no
-way to see it with a single held-out set — which is the whole reason I ran
-the second one.
+split, which no stage of training saw either. Read down the Dolly rows in the
+big table. Every epoch improves the Dolly column and degrades the Alpaca
+column by almost exactly the same amount: one epoch to three is −0.026 on
+Dolly and +0.022 on Alpaca. That is not a model learning to follow
+instructions better. That is a model sliding from one instruction distribution
+toward another, at close to a 1:1 exchange rate, and there is no way to see it
+with a single held-out set — which is the whole reason I ran the second one.
 
 It also settles the schedule question I'd been arguing with myself about.
 `configs/train/sft_dolly.yaml` originally ran one epoch, reasoning by analogy:
@@ -138,9 +179,14 @@ held-out losses bottoms out. That's the least arbitrary stopping point I can
 justify once the trade is visible, and I'd rather ship a defensible number
 than the one that wins the column I happened to plot first.
 
-The wrong prediction is still in the repo, in
-`configs/train/sft_dolly_1epoch.yaml`, with a note at the top explaining what
-overturned it. It is more useful to me there than deleted.
+That sweep ran on the older stage-1 lineage, before §3 was known. Its
+conclusion carried over unchanged — the curve off the new stage 1 has the same
+shape and the same minimum, bottoming at step 900 and ticking up by 940 — so
+it was not re-run.
+
+Both wrong predictions are still in the repo, in `sft_alpaca_3epoch.yaml` and
+`sft_dolly_1epoch.yaml` under `configs/train/`, each with a note at the top
+explaining what overturned it. They are more useful to me there than deleted.
 
 ## What it did not change
 
@@ -152,17 +198,18 @@ to **answer**; it did not teach it to **know**.
 >
 > *base:* (writes more instructions)
 >
-> *alpaca:* Brambles are small objects that have a shape made up of a
-> single-ingredient element. They are usually made of glass, metal, or
-> anything else that can absorb and release energy when pushed.
+> *stage 1:* Brambles are small objects that have a shape made out of a
+> material that is used in a machine. Depending on the type of object, the
+> materials can vary, but common materials include plastics, metal, and glass.
 >
-> *dolly:* Brambles, also known as plasticizers, are chemical compounds that
-> are added to a mixture of water and water particles to create a slurry.
+> *stage 2:* Brambles, also known as plasticizers, are chemical compounds that
+> are added to a mixture of non-cemented polymers. They are also an essential
+> part of a good manufacturing process.
 
 Brambles are thorny shrubs. Both fine-tuned answers are the right length, in
 the right register, with the right confident encyclopaedic cadence, and both
 are inventions. The fine-tune moved the model from "cannot participate in the
-conversation" to "participates fluently and is wrong", which is about what 11
+conversation" to "participates fluently and is wrong", which is about what 5.0
 million supervised tokens can buy on top of 2.46B pretraining tokens, and no
 more than that.
 
@@ -180,9 +227,9 @@ positions:
 - ~1,850 (11%) are *supervised* — the rest is padding plus the masked prompt
 
 So roughly 89% of every fine-tuning step is spent computing gradients that are
-then thrown away by the mask, or attention over padding. The whole Alpaca
-stage is 9.0M supervised tokens and the Dolly stage 2.0M, delivered at the
-cost of 80M and 15M token-positions of compute respectively.
+then thrown away by the mask, or attention over padding. Stage 1 is 3.0M
+supervised tokens and stage 2 is 2.0M, delivered at the cost of 26M and 15M
+token-positions of compute respectively.
 
 Fixed padding was the right call for the first run — it keeps the tensor shape
 byte-identical to pretraining, so the measured 6.01GB peak carried over with
@@ -193,17 +240,23 @@ boundaries so they can't see each other) would recover most of that 4-5x.
 ## Reproducing this
 
 ```bash
-python scripts/eval_instruction_following.py \
+.venv/bin/python scripts/eval_instruction_following.py \
     --data data/sft/dolly.jsonl \
     --checkpoint base=checkpoints/medium/step_20000.pt \
-    --checkpoint alpaca-1500=checkpoints/sft_alpaca/step_1500.pt \
-    --checkpoint dolly-2ep=checkpoints/sft_dolly/step_940.pt \
+    --checkpoint alpacaS-1600=checkpoints/sft_alpaca/step_1600.pt \
+    --checkpoint dollyS-2ep=checkpoints/sft_dolly/step_940.pt \
     --output results/instruction_eval_dolly.md
 
 # the cross-check, same checkpoints, the other held-out set:
-python scripts/eval_instruction_following.py --data data/sft/alpaca.jsonl ... \
+.venv/bin/python scripts/eval_instruction_following.py --data data/sft/alpaca.jsonl ... \
     --output results/instruction_eval_alpaca.md
 ```
+
+`checkpoints/sft_alpaca/` and `checkpoints/sft_dolly/` are the shipped runs;
+the superseded schedules keep qualified names (`sft_alpaca_3epoch`,
+`sft_dolly_1epoch`, `sft_dolly_2epoch`, `sft_dolly_3epoch`). The training logs
+were written before that rename and still name the directories the runs
+originally wrote to.
 
 Every generation behind the tables is in
 [instruction_eval_dolly.md](instruction_eval_dolly.md) and
