@@ -20,6 +20,7 @@ from pathlib import Path
 
 import torch
 
+from ashugpt.data.chat import ASSISTANT_MARKER, SYSTEM_MARKER, USER_MARKER, Conversation, Turn
 from ashugpt.data.instruction import InstructionExample
 from ashugpt.inference.generate import generate
 from ashugpt.tokenizer.tiktoken_bpe import TiktokenBPETokenizer
@@ -43,6 +44,13 @@ def main() -> None:
         "trained to answer inside that template, and prompted bare it falls back to continuing "
         "text like the base model it came from.",
     )
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="Wrap each prompt as the first user turn of a conversation (### User / ### Assistant). "
+        "For checkpoints from scripts/finetune.py --format chat. Pass several prompts to hold a "
+        "multi-turn conversation: each one is answered with every earlier turn still in context.",
+    )
     parser.add_argument("prompts", nargs="+", help='Prompt strings; "" generates unconditionally')
     args = parser.parse_args()
 
@@ -55,9 +63,20 @@ def main() -> None:
         f"max_new_tokens={args.max_new_tokens} seed={args.seed}\n"
     )
 
+    # In chat mode the prompts are turns of ONE conversation rather than
+    # independent samples, so the model's own answers stay in context --
+    # which is the only way to see whether multi-turn training did anything.
+    conversation = Conversation([])
+
     for prompt in args.prompts:
         torch.manual_seed(args.seed)  # per-prompt, so each sample reproduces independently
-        text = InstructionExample(prompt, "", "").prompt() if args.instruct else prompt
+        if args.chat:
+            conversation.turns.append(Turn("user", prompt))
+            text = conversation.render_for_generation()
+        elif args.instruct:
+            text = InstructionExample(prompt, "", "").prompt()
+        else:
+            text = prompt
         input_ids = torch.tensor([tokenizer.encode(text, add_bos=True)], device=args.device)
 
         start = time.time()
@@ -82,7 +101,18 @@ def main() -> None:
         print(f"PROMPT: {prompt!r}   [{generated} tokens, {generated / elapsed:.0f} tok/s]")
         print("-" * 78)
         decoded = tokenizer.decode(output_ids[0].tolist())
-        if args.instruct:
+        if args.chat:
+            # Only this turn's answer: everything before the last assistant
+            # marker is conversation the reader has already seen.
+            decoded = decoded.rsplit(ASSISTANT_MARKER.strip(), 1)[-1].strip()
+            # A model that has not fully learned to stop will keep going and
+            # write the user's next turn itself. Cut there: that text is not
+            # part of its answer, and feeding it back as one would put a role
+            # marker inside a turn, which Turn refuses outright.
+            for marker in (USER_MARKER, ASSISTANT_MARKER, SYSTEM_MARKER):
+                decoded = decoded.split(marker.strip(), 1)[0].strip()
+            conversation.turns.append(Turn("assistant", decoded))
+        elif args.instruct:
             # Show the answer, not the boilerplate template wrapped around it.
             decoded = decoded.split("### Response:", 1)[-1]
         print(decoded.strip())

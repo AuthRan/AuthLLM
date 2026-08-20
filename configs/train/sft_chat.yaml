@@ -1,0 +1,75 @@
+# Stage 3: multi-turn chat, on top of the instruction-tuned model.
+#
+# Stages 1 and 2 taught the model to answer one question and stop. This
+# stage teaches it that a conversation continues afterwards -- that the text
+# above its own answer is context it should use, and that <|endoftext|> ends
+# a *turn* rather than the document. See ashugpt/data/chat.py and README.md
+# section 10.7.
+#
+# ---- Why seq_len is 1024 and not 512 ----
+# Every other fine-tuning config here uses 512, because an Alpaca example
+# averages 113 tokens and the window is mostly padding anyway. Conversations
+# are not like that, and the difference is not cosmetic. Measured on this
+# corpus (20,000 UltraChat conversations, trimmed to at most 8 turns), by
+# how much of a conversation fits before ChatDataset has to cut at a turn
+# boundary:
+#
+#     seq_len   usable   dropped   supervised   mean assistant   >=2 answers
+#                                                       turns
+#       512     10,203     9,397      50.7%         1.45           36%
+#       768     15,149     4,451      54.1%         1.84           60%
+#      1024     17,672     1,928      54.4%         2.20           77%
+#
+# At 512 the corpus is barely multi-turn: 48% of conversations do not fit
+# even their first answer, and the average surviving example carries 1.45
+# assistant turns, which is a single-turn dataset with extra steps. At 1024
+# -- the full context the `medium` model was pretrained with -- 90% of
+# conversations survive and 77% carry at least two answers. Training a
+# multi-turn model on mostly-single-turn examples is the kind of mistake
+# that produces a plausible loss curve and no new behaviour.
+#
+# ---- Why the supervised fraction is suddenly 54% ----
+# Instruction tuning supervised about 11% of each step (README section
+# 10.3): short answers in a padded window. Conversations are long and the
+# assistant does most of the talking, so half of every window now produces
+# gradient. That also means this stage is *not* padding-bound, which is why
+# sequence packing (section 10.6) is not wired up for it -- there is very
+# little empty window left to reclaim.
+#
+# ---- Why max_lr is 4.0e-5 ----
+# Chosen by sweep, not by analogy -- the same lesson section 10.6 learned
+# the hard way. A step here carries ~8,900 supervised tokens against the
+# Dolly stage's ~1,850, so the learning rate that stage used cannot be
+# inherited; what actually settled it is the held-out curve, and the sweep
+# runs are kept in logs/sft_chat_lr*.csv.
+#
+# ---- Steps ----
+# One epoch. 17,672 examples / (4 * 4 per step) = ~1,105 steps. One epoch
+# is what the Alpaca stage's sweep argued for and what the Dolly stage's
+# sweep partly refuted, so it is a starting point here rather than a
+# settled answer -- the run is short enough to revisit.
+batch_size: 4
+seq_len: 1024
+grad_accum_steps: 4
+max_steps: 1105
+warmup_steps: 70
+max_lr: 4.0e-5
+min_lr: 4.0e-6
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+log_interval: 1
+eval_interval: 100
+eval_steps: 40
+checkpoint_interval: 553
+amp_dtype: float16
+gradient_checkpointing: false
+use_efficient_attention: true
+pack_sequences: false
+# Irrelevant here -- ChatDataset emits whole conversations, not windows over
+# a stream -- but TrainConfig requires the field to be explicit or None.
+stride: null
+num_workers: 3
+pin_memory: true
+compile_model: false
+seed: 1337

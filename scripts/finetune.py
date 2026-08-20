@@ -10,6 +10,12 @@ Differs from scripts/train.py in three ways:
      masked out of the loss. See ashugpt/data/instruction.py.
   3. Examples are whole and padded, so there is no windowing or stride.
 
+`--format chat` switches the data to multi-turn conversations
+(ashugpt/data/chat.py) read as {"messages": [...]} rather than
+instruction/input/output pairs. Everything else about the run is the same,
+which is the point: multi-turn is a change of what a training document
+contains, not of how training works.
+
 Usage:
     python scripts/finetune.py --model configs/model/medium.yaml \
         --train configs/train/sft_alpaca.yaml \
@@ -29,6 +35,7 @@ from pathlib import Path
 import torch
 
 from ashugpt.config import load_model_config, load_train_config
+from ashugpt.data.chat import ChatDataset, Conversation
 from ashugpt.data.instruction import InstructionDataset, InstructionExample, PackedInstructionDataset
 from ashugpt.model import AshuGPT
 from ashugpt.tokenizer.tiktoken_bpe import TiktokenBPETokenizer
@@ -52,12 +59,23 @@ def read_jsonl(path: Path) -> list[InstructionExample]:
     return examples
 
 
+def read_conversations(path: Path) -> list[Conversation]:
+    with path.open(encoding="utf-8") as fh:
+        return [Conversation.from_messages(json.loads(line)["messages"]) for line in fh]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--train", type=Path, required=True)
     parser.add_argument("--init-from", type=Path, required=True, help="Pretrained checkpoint to start from")
-    parser.add_argument("--data", type=Path, required=True, help="JSONL from scripts/prepare_instruction_data.py")
+    parser.add_argument("--data", type=Path, required=True, help="JSONL from scripts/prepare_*_data.py")
+    parser.add_argument(
+        "--format",
+        choices=("instruction", "chat"),
+        default="instruction",
+        help="instruction: {instruction, input, output} pairs. chat: {messages: [...]} conversations.",
+    )
     parser.add_argument("--val-fraction", type=float, default=0.02)
     parser.add_argument("--checkpoint-dir", type=Path, default=None)
     parser.add_argument("--log-path", type=Path, default=None)
@@ -67,7 +85,8 @@ def main() -> None:
     model_config = load_model_config(args.model)
     tokenizer = TiktokenBPETokenizer()
 
-    examples = read_jsonl(args.data)
+    is_chat = args.format == "chat"
+    examples = read_conversations(args.data) if is_chat else read_jsonl(args.data)
     random.Random(train_config.seed).shuffle(examples)
     n_val = max(1, int(len(examples) * args.val_fraction))
     val_examples, train_examples = examples[:n_val], examples[n_val:]
@@ -77,9 +96,19 @@ def main() -> None:
     # a packed batch holds ~9x the supervised tokens of an unpacked one, and
     # the two numbers would no longer be comparable to every run already
     # logged. Packing is a training-throughput change, not an eval change.
-    dataset_cls = PackedInstructionDataset if train_config.pack_sequences else InstructionDataset
+    if is_chat:
+        # Packing is not wired up for conversations. A packed window would
+        # have to keep several whole conversations apart with the same
+        # segment mask instruction packing uses, and a chat example is
+        # already long enough that the window is mostly full -- so the
+        # 4.4x that packing buys on Alpaca is not there to win here.
+        dataset_cls = ChatDataset
+        val_dataset_cls = ChatDataset
+    else:
+        dataset_cls = PackedInstructionDataset if train_config.pack_sequences else InstructionDataset
+        val_dataset_cls = InstructionDataset
     train_dataset = dataset_cls(train_examples, tokenizer, seq_len=train_config.seq_len)
-    val_dataset = InstructionDataset(val_examples, tokenizer, seq_len=train_config.seq_len)
+    val_dataset = val_dataset_cls(val_examples, tokenizer, seq_len=train_config.seq_len)
 
     if _IS_MAIN_PROCESS:
         dropped = train_dataset.dropped + val_dataset.dropped
