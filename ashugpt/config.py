@@ -124,7 +124,23 @@ class TrainConfig:
     # the short runs the tests and demos do.
     compile_model: bool = False
 
+    # How to use more than one GPU. "ddp" replicates the model on every rank
+    # and all-reduces gradients; "fsdp" sharded parameters, gradients and
+    # optimizer state across ranks so a model larger than one card can train
+    # at all. Both are no-ops at world_size 1. See README.md section 12.
+    parallel: str = "ddp"  # "ddp" | "fsdp"
+
+    # FSDP only. Keeps the sharded parameters and optimizer state in host RAM
+    # and streams each layer to the GPU as it is reached. This is what makes
+    # xl_1b trainable on 2x11GB (2.04GB/GPU against an OOM without it) and it
+    # costs roughly 2x the step time, so it is off unless a model needs it.
+    fsdp_cpu_offload: bool = False
+
     def __post_init__(self) -> None:
+        if self.parallel not in ("ddp", "fsdp"):
+            raise ValueError(f'parallel must be "ddp" or "fsdp", got {self.parallel!r}')
+        if self.fsdp_cpu_offload and self.parallel != "fsdp":
+            raise ValueError("fsdp_cpu_offload only applies when parallel is 'fsdp'")
         if self.batch_size <= 0 or self.seq_len <= 0 or self.max_steps <= 0:
             raise ValueError("batch_size, seq_len, and max_steps must all be positive")
         if self.grad_accum_steps <= 0:

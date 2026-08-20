@@ -32,6 +32,12 @@ from ashugpt.training.amp import (
 )
 from ashugpt.training.checkpoint import load_checkpoint, save_checkpoint
 from ashugpt.training.ddp import cleanup_distributed, setup_distributed, unwrap_model, wrap_model_for_ddp
+from ashugpt.training.fsdp import (
+    fsdp_state_dicts,
+    is_fsdp_model,
+    load_fsdp_state_dicts,
+    wrap_model_for_fsdp,
+)
 from ashugpt.training.optim import build_optimizer, get_lr
 
 _CSV_FIELDNAMES = ["step", "train_loss", "lr", "val_loss", "val_perplexity"]
@@ -120,8 +126,13 @@ def train(
 
     info = setup_distributed()
     try:
-        model = wrap_model_for_ddp(model, info)
-        raw_model = unwrap_model(model)  # for state_dict / anything DDP won't forward attribute access to
+        if config.parallel == "fsdp":
+            model = wrap_model_for_fsdp(model, info, cpu_offload=config.fsdp_cpu_offload)
+        else:
+            model = wrap_model_for_ddp(model, info)
+        # FSDP2 shards in place, so this is the same object; DDP returns a
+        # wrapper whose state_dict keys carry a "module." prefix.
+        raw_model = unwrap_model(model)
         raw_model.set_memory_optimizations(
             gradient_checkpointing=config.gradient_checkpointing,
             efficient_attention=config.use_efficient_attention,
@@ -168,8 +179,17 @@ def train(
         # val_dataset, un-sharded) -- simpler than all-reducing a
         # distributed validation loss, and cheap enough at this scale that
         # it doesn't need to be split across ranks.
+        #
+        # Except under FSDP, where a forward pass is a collective: every
+        # layer all-gathers its parameters from every rank. A rank-0-only
+        # validation would leave rank 0 waiting for shards from ranks that
+        # went straight on to the next training step, and the run would
+        # hang with no error. So under FSDP every rank runs the same
+        # validation over the same data -- redundant arithmetic, but it is
+        # the same number on every rank, and only rank 0 logs it.
+        run_validation_here = info.is_main_process or config.parallel == "fsdp"
         val_loader = None
-        if val_dataset is not None and info.is_main_process:
+        if val_dataset is not None and run_validation_here:
             val_loader = DataLoader(
                 val_dataset,
                 batch_size=config.batch_size,
@@ -196,7 +216,14 @@ def train(
             # on shared/local disk -- simplest correct approach for
             # single-node multi-GPU; a non-shared-storage multi-node setup
             # would instead need rank 0 to load and broadcast.
-            start_step = load_checkpoint(resume_from, raw_model, optimizer)
+            if is_fsdp_model(model):
+                checkpoint = torch.load(resume_from, map_location="cpu", weights_only=True)
+                load_fsdp_state_dicts(
+                    model, optimizer, checkpoint["model_state_dict"], checkpoint["optimizer_state_dict"]
+                )
+                start_step = checkpoint["step"]
+            else:
+                start_step = load_checkpoint(resume_from, raw_model, optimizer)
             if info.is_main_process:
                 print(f"Resumed from {resume_from} at step {start_step}")
 
@@ -305,12 +332,33 @@ def train(
             # 4,875, checkpoint_interval 500) lost its final model exactly that
             # way -- the newest file on disk was step_4500.pt. Logging and
             # validation already special-case the last step; saving now does too.
-            if info.is_main_process and checkpoint_dir is not None and (
+            if checkpoint_dir is not None and (
                 step % config.checkpoint_interval == 0 or step == config.max_steps
             ):
                 ckpt_path = checkpoint_dir / f"step_{step}.pt"
-                save_checkpoint(ckpt_path, raw_model, optimizer, step, model_config, config)
-                print(f"Saved checkpoint to {ckpt_path}")
+                if is_fsdp_model(model):
+                    # Gathering a full state dict is a collective too, so it
+                    # happens on every rank and only the write is rank 0's.
+                    # What lands on disk is byte-identical in *form* to a
+                    # single-process checkpoint -- plain tensors, no shards,
+                    # no rank count baked in -- so inference never learns
+                    # that the run that produced it was sharded.
+                    model_state, optim_state = fsdp_state_dicts(model, optimizer)
+                    if info.is_main_process:
+                        save_checkpoint(
+                            ckpt_path,
+                            raw_model,
+                            optimizer,
+                            step,
+                            model_config,
+                            config,
+                            model_state=model_state,
+                            optimizer_state=optim_state,
+                        )
+                elif info.is_main_process:
+                    save_checkpoint(ckpt_path, raw_model, optimizer, step, model_config, config)
+                if info.is_main_process:
+                    print(f"Saved checkpoint to {ckpt_path}")
 
         return history
     finally:

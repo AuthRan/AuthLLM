@@ -30,10 +30,19 @@ def save_checkpoint(
     step: int,
     model_config: ModelConfig,
     train_config: TrainConfig,
+    model_state: dict | None = None,
+    optimizer_state: dict | None = None,
 ) -> None:
+    """`model_state`/`optimizer_state` override what is read off the model
+    and optimizer directly. FSDP is the reason they exist: a sharded
+    model's own `.state_dict()` returns this rank's `DTensor` shards, which
+    would write a file no single-process loader could read. The training
+    loop gathers a full, plain-tensor state dict across all ranks first
+    (ashugpt/training/fsdp.py) and passes it here, so what lands on disk
+    does not record how many GPUs happened to produce it."""
     checkpoint = {
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
+        "model_state_dict": model.state_dict() if model_state is None else model_state,
+        "optimizer_state_dict": optimizer.state_dict() if optimizer_state is None else optimizer_state,
         "step": step,
         "model_config": asdict(model_config),
         "train_config": asdict(train_config),
