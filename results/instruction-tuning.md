@@ -23,7 +23,8 @@ its own, how long its answers are, and how often it falls into a loop.
 
 The shipped pipeline is two stages — 1,600 steps on Alpaca, then 940 on Dolly
 — but seven other checkpoints ran on the way there, and the interesting part
-of this page is the four of them that were *supposed* to be better.
+of this page is the four of them that were *supposed* to be better. A later
+pass at making the stages cheaper produced a fifth, which is the last section.
 
 ## The table
 
@@ -233,9 +234,93 @@ token-positions of compute respectively.
 
 Fixed padding was the right call for the first run — it keeps the tensor shape
 byte-identical to pretraining, so the measured 6.01GB peak carried over with
-no new memory work — but it is the obvious thing to fix next. Packing several
-short examples into one 512-token window (with attention masked at the
-boundaries so they can't see each other) would recover most of that 4-5x.
+no new memory work. Then I went and fixed it, which is the next section.
+
+## Packing the window, and the thing it taught me instead
+
+Packing several short examples into one 512-token window — with attention
+masked at the boundaries so they can't see each other, and RoPE positions
+restarting per example — recovers almost exactly the 4-5x the arithmetic above
+predicts. Measured on a real step rather than assumed: **4.40x the supervised
+tokens per second for 1.02x the per-step cost** and +0.07GB peak. Alpaca's
+50,868 usable examples go from 50,868 windows to 11,220, 98.8% full. One epoch
+of stage 1 drops from 18 minutes to 4.5.
+
+That is the boring half. The interesting half is that **a packed step is a
+different step**, and I nearly shipped that mistake. It carries 4.5x the
+supervised tokens, so an epoch is 350 steps instead of 1,600 — and at the
+learning rate the old config used, packing made the model *worse*:
+
+| stage 1, max_lr | packed | unpacked |
+|---|---:|---:|
+| 2.0e-5 | 2.0912 | **2.0745** |
+| 3.0e-5 | 2.0678 | 2.0720 |
+| 6.0e-5 | 2.0352 | 2.0973 |
+| 9.0e-5 | 2.0217 | — |
+| 1.5e-4 | **2.0175** | — |
+
+Same data, same one epoch, better throughput, worse model — purely because the
+schedule got silently rescaled underneath. I ran the unpacked column as a
+control specifically to check the boring explanation, that packing was really
+just fixing a badly tuned baseline. It isn't: unpacked peaks at 3e-5 and has
+already turned by 6e-5, so the 2e-5 the stage shipped was about right for the
+batch it had. The two optima sit about 5x apart against a 4.53x batch ratio,
+which is linear scaling. I'd have guessed square-root, and square-root would
+have stopped me less than halfway.
+
+### And then the same trap as §2, wearing different clothes
+
+The packed column keeps falling all the way to 1.5e-4. So take the best one,
+obviously.
+
+No. Feeding each of those checkpoints into the *identical* unchanged stage 2:
+
+| stage 1 | Dolly | Alpaca | mean | → final model | Dolly | Alpaca | mean |
+|---|---:|---:|---:|---|---:|---:|---:|
+| packed 3.0e-5 | **2.8809** | 2.0431 | 2.4620 | from 3.0e-5 | **2.7444** | 2.1237 | 2.4341 |
+| packed 9.0e-5 | 2.9230 | 1.9993 | 2.4612 | from 9.0e-5 | 2.7755 | 2.0768 | **2.4261** |
+| packed 1.5e-4 | 2.9690 | **1.9958** | 2.4824 | — | | | |
+| unpacked 2e-5 | 2.9145 | 2.0512 | 2.4829 | the shipped pipeline | 2.7707 | 2.1365 | 2.4536 |
+
+Rank those three by the stage-1 Alpaca loss I'd have selected on — 9.0e-5 is
+best, then 3.0e-5, then unpacked — and the finished models come out in exactly
+the reverse order on Dolly. The best stage 1 by that metric gives the worst
+final model. (1.5e-4 scores better still at stage 1 and I didn't run stage 2
+from it at all: it's already the worst row in that table on Dolly, which is
+the tell Alpaca's own split can't give you.)
+
+Past about 3e-5, the extra learning rate stops teaching the model to follow
+instructions and starts driving it into Alpaca's particular distribution —
+and Alpaca's own held-out split cannot see that happening, because it is
+drawn from the same distribution.
+
+That's the third time this project has handed me the same lesson. §2: the
+behavioural metrics peak on the checkpoint you least want. §3: the best
+checkpoint of a long run loses to a short run that finished. And now: the
+metric closest to what you're training on is the one least able to tell you
+whether the stage was good for the pipeline it feeds. Every time, the fix was
+to score against something the stage was not trained on.
+
+### What ships
+
+Both packed pipelines beat the unpacked one, and the two of them are tied to
+0.0008 on the mean, which is noise. `sft_alpaca_packed.yaml` (3.0e-5) is the
+default: it produces the best Dolly held-out loss anything in this repo has
+reached, and Dolly is the distribution stage 2 exists to fit.
+`sft_alpaca_packed_9e5.yaml` sits next to it because it wins the mean, which
+is the tiebreak I used for `sft_dolly.yaml` and I'd rather not switch
+tiebreaks when it suits me.
+
+The honest reading of 9.0e-5's win: all of its edge on the mean is Alpaca loss
+that stage 2 didn't wash out. That's either a better-preserved model or just a
+model stage 2 moved less — which is §4's relocation effect, not a gain. Both
+readings fit. So both configs ship with their numbers rather than one quietly
+becoming the answer.
+
+One caveat that cost me a full re-run: `--loss-batches` defaults to 40 and
+every number on this page uses 34. The flag silently changes which subset
+"held-out loss" means — at 40 the base model scores 3.0653 on Dolly instead of
+3.0580 — so a report run at the default is not comparable to any table here.
 
 ## Reproducing this
 
@@ -245,6 +330,7 @@ boundaries so they can't see each other) would recover most of that 4-5x.
     --checkpoint base=checkpoints/medium/step_20000.pt \
     --checkpoint alpacaS-1600=checkpoints/sft_alpaca/step_1600.pt \
     --checkpoint dollyS-2ep=checkpoints/sft_dolly/step_940.pt \
+    --loss-batches 34 \
     --output results/instruction_eval_dolly.md
 
 # the cross-check, same checkpoints, the other held-out set:
@@ -254,13 +340,21 @@ boundaries so they can't see each other) would recover most of that 4-5x.
 
 `checkpoints/sft_alpaca/` and `checkpoints/sft_dolly/` are the shipped runs;
 the superseded schedules keep qualified names (`sft_alpaca_3epoch`,
-`sft_dolly_1epoch`, `sft_dolly_2epoch`, `sft_dolly_3epoch`). The training logs
+`sft_dolly_1epoch`, `sft_dolly_2epoch`, `sft_dolly_3epoch`), and the packed
+lineage is `sft_alpaca_packed{,_9e5}` for stage 1 and
+`sft_dolly_packed{3e5,9e5}` for what stage 2 made of them. The training logs
 were written before that rename and still name the directories the runs
 originally wrote to.
 
 Every generation behind the tables is in
 [instruction_eval_dolly.md](instruction_eval_dolly.md) and
-[instruction_eval_alpaca.md](instruction_eval_alpaca.md) — 40 prompts per
-checkpoint, unedited and uncherry-picked. The held-out splits are
+[instruction_eval_alpaca.md](instruction_eval_alpaca.md) for the shipped
+pipeline, and in [instruction_eval_packed_dolly.md](instruction_eval_packed_dolly.md)
+/ [instruction_eval_packed_alpaca.md](instruction_eval_packed_alpaca.md) (the
+stage-1 sweep) and
+[instruction_eval_packed_final_dolly.md](instruction_eval_packed_final_dolly.md)
+/ [instruction_eval_packed_final_alpaca.md](instruction_eval_packed_final_alpaca.md)
+(the finished pipelines) — 40 prompts per checkpoint, unedited and
+uncherry-picked. The held-out splits are
 reconstructed from the same seed the fine-tune used rather than stored, so
 those examples are genuinely ones no stage of training ever saw.

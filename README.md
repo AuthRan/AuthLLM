@@ -789,8 +789,11 @@ is why the 6.01GB memory measurement carried over untouched — but Alpaca
 examples average 113 tokens, of which 58 are response. Per optimizer step,
 about 22% of the 16,384 positions are real tokens and about 11% produce
 gradient. Roughly 89% of the compute in these stages is padding and masked
-prompt. Sequence packing is the obvious next optimization and is not
-implemented; see [§18](#18-whats-not-built).
+prompt. That is what sequence packing recovers — 4.40x the supervised
+throughput for 1.02x the per-step cost, and a better model at the end of the
+pipeline; the mechanism and the measurements are [§10.6](#106-sequence-packing--the-89-that-was-padding).
+The two stages above ship unpacked because they are the runs the rest of this
+section's numbers came from.
 
 Throughput is 1.47 optimizer steps/s, or ~24,100 token-positions/s — within
 4% of the 25,002 tok/s the pretraining run measured at the same batch shape,
@@ -910,6 +913,196 @@ changes how they come out, not how many there are.
 Also not built: no RLHF, no DPO, no reward model, no multi-turn chat format,
 and no model-judged evaluation. The numbers above are the ones that can be
 computed exactly from a held-out split; nothing here scores helpfulness.
+
+What *was* built after this section's runs finished is sequence packing, which
+attacks the cost of the two stages rather than what they teach — and, less
+expectedly, ends the pipeline in a better place than it started. That is
+[§10.6](#106-sequence-packing--the-89-that-was-padding).
+
+### 10.6 Sequence packing — the 89% that was padding
+
+§10.3's arithmetic is the whole motivation: an Alpaca example averages 113
+tokens, gets padded out to a 512-token window on its own, and only ~58 of
+those tokens are supervised. Forward and backward cost is set by the tensor
+shape, not by how much of it is real, so roughly 89% of both fine-tuning
+stages was GPU time spent computing gradients that the mask threw away or
+attention over padding.
+
+`PackedInstructionDataset` (`ashugpt/data/instruction.py`) fills the window
+instead — whole examples laid end to end until the next one does not fit —
+behind `TrainConfig.pack_sequences`, off by default. Two extra tensors ride
+along with `input_ids` and `labels` to describe the seams:
+
+| tensor | what it says | what breaks without it |
+|---|---|---|
+| `segment_ids` | which packed example each position belongs to | example 2 attends to example 1 — conditioning on context that never exists at inference |
+| `position_ids` | position *within* its own example, restarting at 0 | RoPE rotates every example after the first to positions training never otherwise uses |
+
+`segment_ids` becomes a block-diagonal mask (`segment_causal_mask` in
+`ashugpt/model/attention.py`) — a position may attend to another only if it is
+not in the future *and* they belong to the same example:
+
+```python
+blocked[b, i, j] = (j > i) or (segment_ids[b, i] != segment_ids[b, j])
+```
+
+With both tensors, a packed example is mathematically identical to the same
+example run alone: same attention pattern, same RoPE positions, same masked
+labels. The only thing that changed is how many ride along in one forward pass.
+
+Three details that are easy to get wrong and hard to notice:
+
+- **The one-token shift is applied per example, not per window.** An example
+  of L tokens occupies L−1 positions. Shifting the packed window as a whole
+  would make the last position of one example predict the first token of the
+  next — exactly the cross-example leakage the mask exists to prevent.
+- **Padding gets its own segment id (`-1`), not "no segment".** A row that
+  could attend to nothing at all would softmax over an all-`-inf` score row and
+  produce NaN, which poisons the entire batch's gradient even though the padded
+  positions' labels are masked out of the loss. Padded rows attend to
+  themselves.
+- **Validation stays unpacked in both modes.** A packed batch holds ~9x the
+  supervised tokens, so packing the val set would silently reweight held-out
+  loss out of comparability with every run already logged.
+
+**Both failure modes still train.** A model with the mask left off, or with
+RoPE positions running across the whole window, converges and logs a
+believable loss curve — that is precisely what makes them dangerous. So the
+central test in `tests/unit/test_packed_instruction_dataset.py` runs a real
+model over a packed window and over each example alone and demands the logits
+match, with a negative control asserting they diverge when the mask is
+removed. Two more paths could have differed silently and are now covered:
+gradient checkpointing passes the packing arguments through
+`torch.utils.checkpoint` as keywords (so a recomputed forward could have used
+plain causal attention while the original used the block-diagonal mask — the
+test asserts exact gradient equivalence with the lever on and off), and an
+integration test runs the real trainer over packed batches end to end.
+
+**Which examples share a window** is best-fit-decreasing bin packing: largest
+first into the tightest bin that still fits, so awkward long examples get
+placed while there is still room to choose. Bin packing is NP-hard;
+best-fit-decreasing lands within a few percent of optimal, which is more than
+enough against a 22%-full baseline. Bookkeeping is a sorted list of remaining
+capacities searched with `bisect`, keeping it O(n log n) — a naive scan of
+every open bin per example is tens of millions of Python-level comparisons at
+Alpaca's size.
+
+| dataset | usable examples | windows | per window | positions filled |
+|---|---:|---:|---:|---:|
+| Alpaca | 50,868 | 11,220 | 4.5 | 98.8% |
+| Dolly | 13,756 | 4,341 | 3.2 | 99.3% |
+
+**What it costs per step, measured** (`scripts/benchmark_packing.py`, medium
+model, batch 8 x seq 512, fp16, fused attention):
+
+| | ms/step | supervised tokens/step | supervised tokens/s | peak |
+|---|---:|---:|---:|---:|
+| unpacked | 160 | 472 | 2,945 | — |
+| packed | 163 | 2,111 | 12,953 | +0.07GB |
+
+4.40x the supervised throughput for 1.02x the per-step cost. That ratio is the
+number worth benchmarking rather than asserting: "fewer windows" is
+arithmetic, but packing swaps one shared `(seq, seq)` causal mask for a
+per-example `(batch, 1, seq, seq)` block-diagonal one, which has to be built,
+materialized in the autocast dtype, and broadcast against every head. It turns
+out to be nearly free; it did not have to be.
+
+```
+python scripts/benchmark_packing.py --data data/sft/alpaca.jsonl
+```
+
+#### The learning rate does not survive packing
+
+A packed step carries 4.5x the supervised tokens of an unpacked one, so a
+config's step count and learning rate cannot be inherited — which is why
+packing ships as separate configs rather than a flag flipped on the old ones.
+One epoch of Alpaca is now ~350 steps rather than 1,600, and at the inherited
+2e-5, packing is *worse* than not packing (2.0912 against 2.0745 in-training
+val): the throughput win is real and the quality regresses, purely because the
+schedule was silently rescaled underneath.
+
+Swept at step 350, with two unpacked controls run at the same learning rates
+to rule out the obvious confound — that packing's gains were really a badly
+tuned baseline being fixed:
+
+| max_lr | packed (350 steps) | unpacked (1,600 steps) |
+|---|---:|---:|
+| 2.0e-5 | 2.0912 | **2.0745** (shipped stage 1) |
+| 3.0e-5 | 2.0678 | 2.0720 |
+| 4.2e-5 | 2.0505 | — |
+| 6.0e-5 | 2.0352 | 2.0973 |
+| 9.0e-5 | 2.0217 | — |
+| 1.5e-4 | **2.0175** | — |
+
+The controls rule it out: unpacked peaks at 3e-5 and has turned by 6e-5, so
+the 2e-5 the stage shipped was about right. Packed keeps improving to 1.5e-4.
+The two optima sit ~5x apart against a 4.53x batch ratio — **linear** scaling,
+not the square-root rule that is the usual first guess and would have stopped
+less than halfway.
+
+#### Stage 1's own held-out loss picks the wrong checkpoint
+
+That sweep column keeps falling to 1.5e-4. Feed each checkpoint into the
+identical, unchanged stage 2 and the ranking inverts. Scored by
+`scripts/eval_instruction_following.py` on both held-out sets, directly
+comparable to the table in §10.4:
+
+| stage 1 | Dolly | Alpaca | mean |
+|---|---:|---:|---:|
+| packed 3.0e-5 | **2.8809** | 2.0431 | 2.4620 |
+| packed 9.0e-5 | 2.9230 | 1.9993 | 2.4612 |
+| packed 1.5e-4 | 2.9690 | **1.9958** | 2.4824 |
+| unpacked 2.0e-5 (shipped) | 2.9145 | 2.0512 | 2.4829 |
+
+| final model, after the identical 940-step stage 2 | Dolly | Alpaca | mean |
+|---|---:|---:|---:|
+| from packed 3.0e-5 | **2.7444** | 2.1237 | 2.4341 |
+| from packed 9.0e-5 | 2.7755 | 2.0768 | **2.4261** |
+| from unpacked 2.0e-5 — the shipped pipeline | 2.7707 | 2.1365 | 2.4536 |
+
+Rank the three stage-1 checkpoints that were carried through stage 2 by their
+own Alpaca held-out loss — 9.0e-5 (1.9993), then 3.0e-5 (2.0431), then
+unpacked (2.0512) — and the final models rank exactly backwards on Dolly:
+**the best stage 1 by that metric produces the worst final model.** The 1.5e-4
+checkpoint scores better still at stage 1 (1.9958, the lowest Alpaca loss
+anywhere in this project) and was never carried forward, because it is already
+the worst row in the table above on Dolly, which is the leading indicator
+Alpaca's own split cannot supply.
+
+Past ~3e-5 the extra learning rate stops teaching instruction-following and
+starts driving the model into Alpaca's specific distribution — which Alpaca's
+own held-out set is structurally unable to see, because it is drawn from that
+same distribution.
+
+That is the third instance of the same shape in this project, after the
+behavioural metrics in §10.4 and after early stopping in §10.4's short-schedule
+result: **the metric that is closest to the thing you are training on is the
+one least able to tell you whether the stage was good for the pipeline it
+feeds.**
+
+Both packed pipelines beat the unpacked one. Between them the split is real,
+not a settled question, so both configs ship with their numbers:
+[`sft_alpaca_packed.yaml`](configs/train/sft_alpaca_packed.yaml) at 3.0e-5 is
+the one to reach for first — it gives the best Dolly held-out loss anything in
+this repo has reached (2.7444), and Dolly is the distribution stage 2 exists
+to fit — while
+[`sft_alpaca_packed_9e5.yaml`](configs/train/sft_alpaca_packed_9e5.yaml) wins
+the mean of the two, which is the tiebreak `sft_dolly.yaml` already uses. The
+catch is that all of 9.0e-5's edge on the mean is Alpaca loss that stage 2 did
+not wash out, which is either a better-preserved model or merely one that
+stage 2 moved less — the relocation effect from §10.4 rather than a real gain.
+Both readings fit the numbers, so the trade is stated rather than hidden
+behind a single default.
+
+One epoch of stage 1 now costs **4.5 minutes instead of 18**, and ends the
+pipeline in a better place than the schedule it replaces.
+
+**A note on `--loss-batches`.** Every number in §10.4 and §10.6 is run with
+`--loss-batches 34`, not the flag's default of 40. The flag silently changes
+which subset "held-out loss" means: at 40 the same base model scores 3.0653 on
+Dolly and 2.5711 on Alpaca instead of the published 3.0580 and 2.5338. Both
+anchors reproduce exactly at 34, which is what makes every row above
+comparable to every row in §10.4.
 
 ## 11. Inference
 
@@ -1245,6 +1438,24 @@ python scripts/finetune.py --model configs/model/medium.yaml --train configs/tra
     --checkpoint-dir checkpoints/sft_dolly --log-path logs/sft_dolly.csv
 ```
 
+The packed stage 1 ([§10.6](#106-sequence-packing--the-89-that-was-padding))
+is the same command against a different config -- same data, same one epoch,
+350 steps instead of 1,600 -- and stage 2 is unchanged apart from where it
+starts:
+
+```
+python scripts/finetune.py --model configs/model/medium.yaml --train configs/train/sft_alpaca_packed.yaml \
+    --init-from checkpoints/medium/step_20000.pt --data data/sft/alpaca.jsonl \
+    --checkpoint-dir checkpoints/sft_alpaca_packed --log-path logs/sft_alpaca_packed_30.csv
+
+python scripts/finetune.py --model configs/model/medium.yaml --train configs/train/sft_dolly.yaml \
+    --init-from checkpoints/sft_alpaca_packed/step_350.pt --data data/sft/dolly.jsonl \
+    --checkpoint-dir checkpoints/sft_dolly_packed3e5 --log-path logs/sft_dolly_from_packed_30.csv
+
+# What packing costs per step, on whichever set you point it at:
+python scripts/benchmark_packing.py --data data/sft/alpaca.jsonl
+```
+
 An instruction-tuned checkpoint must be prompted through the same template it
 was trained on, which `scripts/sample.py --instruct` does:
 
@@ -1263,8 +1474,15 @@ python scripts/evaluate.py --checkpoint checkpoints/demo/step_150.pt --tokenizer
 python scripts/eval_instruction_following.py --data data/sft/dolly.jsonl \
     --checkpoint base=checkpoints/medium/step_20000.pt \
     --checkpoint tuned=checkpoints/sft_dolly/step_940.pt \
+    --loss-batches 34 \
     --output results/instruction_eval_dolly.md
 ```
+
+`--loss-batches 34` is not the default (40) and matters: the flag changes
+which subset "held-out loss" is averaged over, so a report run at 40 is not
+comparable to the tables in [§10.4](#104-what-it-changed-measured) or
+[§10.6](#106-sequence-packing--the-89-that-was-padding). Every published
+number here uses 34.
 
 **Generate**
 
@@ -1303,7 +1521,7 @@ authLLM/
 ├── requirements.txt           # + pytest, psutil, httpx (dev/test only)
 ├── configs/
 │   ├── model/                 # tiny / small / medium / xl_1b presets (§4)
-│   └── train/                 # pretraining presets + sft_alpaca / sft_dolly fine-tuning presets (§10)
+│   └── train/                 # pretraining presets + sft_alpaca / sft_dolly fine-tuning presets (§10), packed and not (§10.6)
 ├── scripts/                   # CLI entry points (train_tokenizer, train, finetune, evaluate, eval_instruction_following, sample, serve, benchmark_*, demo_pretrained_loading)
 ├── logs/                      # metrics CSVs and run logs for every real training run
 ├── results/                   # unedited samples + what the model did and didn't learn
@@ -1316,7 +1534,7 @@ authLLM/
 │   ├── api/                     # FastAPI server (§11.3) — separate from model code
 │   ├── model/                   # architecture: norm, rope, attention, feedforward, block, gpt (§6)
 │   ├── tokenizer/                # from-scratch BPE (§5)
-│   ├── data/                     # tokenized-dataset loading/chunking (§7), instruction.py (§10.1)
+│   ├── data/                     # tokenized-dataset loading/chunking (§7), instruction.py (§10.1, §10.6)
 │   ├── training/                 # optim, amp, checkpoint, ddp, trainer (§8-9)
 │   ├── eval/                     # perplexity (§8)
 │   ├── inference/                # generate.py (§11), pretrained_loader.py (§13)
@@ -1330,7 +1548,7 @@ authLLM/
 ## 17. Testing
 
 ```
-pytest                    # everything (210 tests)
+pytest                    # everything (277 tests)
 pytest tests/unit          # fast, run constantly
 pytest tests/integration   # slower — real training run + real 2-process DDP run
 ```
@@ -1357,12 +1575,6 @@ for the inference API.
 
 Not built on the fine-tuning side ([§10](#10-instruction-tuning)):
 
-- **Sequence packing.** Every instruction example is padded to a fixed 512
-  tokens, so ~78% of each optimizer step is padding and another ~11% is
-  masked prompt. Packing several short examples per window, with attention
-  masked at the boundaries so they cannot see each other, is worth roughly
-  4-5x on this stage and is the single biggest piece of compute left on the
-  table anywhere in the repo.
 - **Preference tuning** — no RLHF, no DPO, no reward model. The model is
   supervised-fine-tuned only, so it has been shown what a good answer looks
   like but never told which of two answers is better.
@@ -1372,6 +1584,17 @@ Not built on the fine-tuning side ([§10](#10-instruction-tuning)):
   exactly from a held-out split — loss, stop rate, answer length, loop rate.
   Nothing here scores helpfulness or correctness, and the samples make it
   very clear that fluent format and correct content are separate axes.
+
+Built on 2026-08-20, after §10's runs had already shipped:
+
+- **Sequence packing** — the item that used to head this list. Every
+  instruction example was padded to its own 512-token window, so ~89% of both
+  fine-tuning stages produced no gradient. `PackedInstructionDataset` fills
+  the window instead, with attention blocked at the boundaries and RoPE
+  positions restarting per example: 4.40x the supervised throughput for 1.02x
+  the per-step cost, one epoch of stage 1 in 4.5 minutes instead of 18, and a
+  better model at the end of the pipeline than the schedule it replaces
+  ([§10.6](#106-sequence-packing--the-89-that-was-padding)).
 
 Built on 2026-08-16, when GPUs replaced the CPU-only constraint:
 

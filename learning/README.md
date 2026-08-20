@@ -17,6 +17,9 @@ Read in order:
 5. **[Teaching it to answer](05-instruction-tuning.md)** — the instruction
    fine-tune that came after, and the four wrong conclusions I nearly drew
    from it.
+6. **[Packing the window](06-packing-the-window.md)** — recovering the 89% of
+   fine-tuning compute that was padding, and discovering that a throughput
+   change is a schedule change.
 
 ## The 30-second version
 
@@ -36,6 +39,10 @@ Afterwards it was instruction-tuned on Alpaca and Dolly — 29 minutes of GPU
 against pretraining's 27 hours — which taught it to answer questions and stop,
 and taught me that the metrics which look like they measure
 instruction-following peak on the checkpoint you least want. That's file 5.
+
+Then I packed the fine-tuning windows, because ~89% of both stages was padding.
+It came out 4.4x faster and, once the learning rate was re-tuned for a step
+that now means something different, better as well. That's file 6.
 
 ---
 

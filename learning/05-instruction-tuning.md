@@ -162,7 +162,8 @@ add any.
 - **Pack the sequences.** Every example is padded to 512 tokens, so ~78% of
   each step is padding and another ~11% is masked prompt. About 89% of the
   compute in both stages produced no gradient. That's a 4-5x speedup sitting
-  untouched.
+  untouched. *(I did this next. It was worth 4.40x, and the schedule I forgot
+  to re-tune for it was worth more —* [file 6](06-packing-the-window.md)*.)*
 - **A finished short schedule beats an unfinished long one.** Early stopping
   hands you a checkpoint that never got its learning-rate decay. If the sweep
   says one epoch, run a one-epoch schedule, don't stop a three-epoch one.
