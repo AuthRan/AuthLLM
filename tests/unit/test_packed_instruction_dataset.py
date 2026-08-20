@@ -256,3 +256,52 @@ def test_segment_ids_are_rejected_with_a_kv_cache(tokenizer, examples, model):
             kv_caches=primed.kv_caches,
             segment_ids=segment_ids[8:16].unsqueeze(0),
         )
+
+
+def test_gradient_checkpointing_agrees_with_the_normal_path(tokenizer, examples):
+    """Gradient checkpointing re-runs each block's forward during backward, so
+    the packing arguments have to survive being passed through
+    torch.utils.checkpoint as keywords. If they did not, the recomputed
+    forward would use plain causal attention while the original used the
+    block-diagonal mask -- and the gradients would quietly disagree.
+
+    Matches how the other memory levers are tested (SPEC M6): exact gradient
+    equivalence with the lever on and off, not merely "it runs".
+    """
+    packed = PackedInstructionDataset(examples, tokenizer, seq_len=128)
+    input_ids, labels, segment_ids, position_ids = packed[0]
+    args = dict(
+        labels=labels.unsqueeze(0),
+        segment_ids=segment_ids.unsqueeze(0),
+        position_ids=position_ids.unsqueeze(0),
+    )
+
+    torch.manual_seed(1337)
+    config = ModelConfig(
+        name="packing-gc-test",
+        vocab_size=tokenizer.vocab_size,
+        d_model=64,
+        n_layers=2,
+        n_heads=4,
+        n_kv_heads=4,
+        d_ff=128,
+        context_length=128,
+    )
+    model = AshuGPT(config)
+    model.train()
+
+    def gradients(checkpointing: bool):
+        model.set_memory_optimizations(gradient_checkpointing=checkpointing)
+        model.zero_grad(set_to_none=True)
+        output = model(input_ids.unsqueeze(0), **args)
+        output.loss.backward()
+        return output.loss.item(), {n: p.grad.clone() for n, p in model.named_parameters() if p.grad is not None}
+
+    loss_off, grads_off = gradients(False)
+    loss_on, grads_on = gradients(True)
+    model.set_memory_optimizations(gradient_checkpointing=False)
+
+    assert loss_off == pytest.approx(loss_on, abs=1e-6)
+    assert grads_off, "no gradients were produced"
+    for name, grad in grads_off.items():
+        torch.testing.assert_close(grad, grads_on[name], rtol=1e-4, atol=1e-6, msg=f"gradient mismatch in {name}")
