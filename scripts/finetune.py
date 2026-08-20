@@ -29,7 +29,7 @@ from pathlib import Path
 import torch
 
 from ashugpt.config import load_model_config, load_train_config
-from ashugpt.data.instruction import InstructionDataset, InstructionExample
+from ashugpt.data.instruction import InstructionDataset, InstructionExample, PackedInstructionDataset
 from ashugpt.model import AshuGPT
 from ashugpt.tokenizer.tiktoken_bpe import TiktokenBPETokenizer
 from ashugpt.training import train
@@ -72,15 +72,28 @@ def main() -> None:
     n_val = max(1, int(len(examples) * args.val_fraction))
     val_examples, train_examples = examples[:n_val], examples[n_val:]
 
-    train_dataset = InstructionDataset(train_examples, tokenizer, seq_len=train_config.seq_len)
+    # Validation stays unpacked whichever mode training uses. Held-out loss is
+    # averaged per batch, so packing the val set would silently reweight it --
+    # a packed batch holds ~9x the supervised tokens of an unpacked one, and
+    # the two numbers would no longer be comparable to every run already
+    # logged. Packing is a training-throughput change, not an eval change.
+    dataset_cls = PackedInstructionDataset if train_config.pack_sequences else InstructionDataset
+    train_dataset = dataset_cls(train_examples, tokenizer, seq_len=train_config.seq_len)
     val_dataset = InstructionDataset(val_examples, tokenizer, seq_len=train_config.seq_len)
 
     if _IS_MAIN_PROCESS:
         dropped = train_dataset.dropped + val_dataset.dropped
+        n_train = len(train_examples) - train_dataset.dropped
         print(
-            f"Data: {len(train_dataset):,} train / {len(val_dataset):,} val examples "
+            f"Data: {n_train:,} train / {len(val_dataset):,} val examples "
             f"({dropped:,} dropped as longer than {train_config.seq_len} tokens)"
         )
+        if train_config.pack_sequences:
+            print(
+                f"Packing: {n_train:,} examples into {len(train_dataset):,} windows "
+                f"({n_train / len(train_dataset):.1f} per window, "
+                f"{train_dataset.packing_efficiency:.1%} of positions used)"
+            )
 
     torch.manual_seed(train_config.seed)
     model = AshuGPT(model_config)

@@ -45,6 +45,40 @@ def causal_mask(seq_len_q: int, seq_len_k: int, offset: int, device: torch.devic
     return k_positions > q_positions  # (seq_len_q, seq_len_k), broadcasts over batch/heads
 
 
+def segment_causal_mask(segment_ids: torch.Tensor) -> torch.Tensor:
+    """Block-diagonal causal mask for a window holding several packed examples.
+
+    True where attention must be blocked. A position may attend to another iff
+    it is not in the future *and* both belong to the same packed example:
+
+        blocked[b, i, j] = (j > i) or (segment_ids[b, i] != segment_ids[b, j])
+
+    Without the second clause, packing would silently change the objective --
+    example 2 would condition on example 1, which never happens at inference
+    and teaches the model to expect context that will not be there.
+
+    segment_ids: (batch, seq_len) int64, one id per position; positions
+        sharing an id belong to the same example. Padding is conventionally
+        its own id (see PackedInstructionDataset), which keeps padded rows
+        attending to themselves -- a row with nothing to attend to would
+        softmax over all -inf and produce NaN, even though its loss is masked.
+
+    Returns (batch, 1, seq_len, seq_len), broadcasting over heads.
+
+    This is only for the training path, where queries and keys are the same
+    window. Cached generation has one segment by definition and uses
+    `causal_mask`.
+    """
+    causal = causal_mask(
+        seq_len_q=segment_ids.shape[1],
+        seq_len_k=segment_ids.shape[1],
+        offset=0,
+        device=segment_ids.device,
+    )  # (seq_len, seq_len)
+    cross = segment_ids.unsqueeze(2) != segment_ids.unsqueeze(1)  # (batch, seq_len, seq_len)
+    return (causal | cross).unsqueeze(1)  # (batch, 1, seq_len, seq_len)
+
+
 class CausalSelfAttention(nn.Module):
     """Input shape: (batch, seq_len, d_model). Output shape: (batch, seq_len, d_model)."""
 
@@ -91,6 +125,8 @@ class CausalSelfAttention(nn.Module):
         x: torch.Tensor,
         kv_cache: tuple[torch.Tensor, torch.Tensor] | None = None,
         position_offset: int = 0,
+        segment_ids: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         """
         x: (batch, seq_len, d_model) -- the new tokens for this call only
@@ -100,6 +136,15 @@ class CausalSelfAttention(nn.Module):
             past_len, head_dim) -- keys/values from previous calls.
         position_offset: absolute position of x[:, 0, :]. 0 during training;
             `past_len` when continuing from a cache.
+        segment_ids: optional (batch, seq_len) -- which packed example each
+            position belongs to. When given, attention is additionally
+            blocked across examples (see segment_causal_mask). Ignored by
+            every unpacked path, which passes None and gets the plain causal
+            mask unchanged.
+        position_ids: optional (batch, seq_len) -- explicit RoPE positions,
+            which packing needs because each example restarts at 0. When
+            None, positions are the contiguous run starting at
+            position_offset, exactly as before.
 
         Returns (output, present_kv) where output has x's shape and
         present_kv is (k, v) including this call's new keys/values
@@ -120,7 +165,10 @@ class CausalSelfAttention(nn.Module):
         k = k.view(batch, seq_len, self.n_kv_heads, self.head_dim).transpose(1, 2)
         v = v.view(batch, seq_len, self.n_kv_heads, self.head_dim).transpose(1, 2)
 
-        cos, sin = self.rope(seq_len=seq_len, offset=position_offset)
+        if position_ids is None:
+            cos, sin = self.rope(seq_len=seq_len, offset=position_offset)
+        else:
+            cos, sin = self.rope.from_positions(position_ids)
         q = apply_rotary_pos_emb(q, cos, sin)
         k = apply_rotary_pos_emb(k, cos, sin)
 
@@ -144,7 +192,12 @@ class CausalSelfAttention(nn.Module):
             k = k.repeat_interleave(self.n_groups, dim=1)
             v = v.repeat_interleave(self.n_groups, dim=1)
 
-        mask = causal_mask(seq_len_q=seq_len, seq_len_k=k.shape[2], offset=position_offset, device=x.device)
+        if segment_ids is None:
+            mask = causal_mask(seq_len_q=seq_len, seq_len_k=k.shape[2], offset=position_offset, device=x.device)
+        else:
+            if kv_cache is not None:
+                raise ValueError("segment_ids is a training-path argument and cannot be combined with a KV cache")
+            mask = segment_causal_mask(segment_ids)
 
         if self.use_efficient_attention:
             # torch.nn.functional.scaled_dot_product_attention: a fused
@@ -159,6 +212,8 @@ class CausalSelfAttention(nn.Module):
             # converted to SDPA's additive-bias convention (0 = attend,
             # -inf = blocked) instead of masked_fill's "True = blocked".
             attn_bias = torch.zeros(mask.shape, dtype=q.dtype, device=x.device).masked_fill(mask, float("-inf"))
+            # (batch, 1, seq, seq) when packing, (seq, seq) otherwise; SDPA
+            # broadcasts either against (batch, n_heads, seq, seq).
             attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_bias)
         else:
             # Scaled dot-product attention, computed explicitly rather than

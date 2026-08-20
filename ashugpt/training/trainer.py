@@ -22,6 +22,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 
 from ashugpt.config import ModelConfig, TrainConfig
+from ashugpt.data.batch import split_batch
 from ashugpt.eval.perplexity import evaluate
 from ashugpt.training.amp import (
     autocast_context,
@@ -231,19 +232,20 @@ def train(
             accumulated_loss = 0.0
             for micro_step in range(config.grad_accum_steps):
                 try:
-                    input_ids, labels = next(train_iter)
+                    batch = next(train_iter)
                 except StopIteration:  # ran out of batches -- start another pass over the data
                     epoch += 1
                     if train_sampler is not None:
                         train_sampler.set_epoch(epoch)  # reshuffle differently each epoch, same way on every rank
                     train_iter = iter(train_loader)
-                    input_ids, labels = next(train_iter)
+                    batch = next(train_iter)
                 # non_blocking pairs with the loader's pinned memory: the H2D
                 # copy is queued and the CPU runs ahead to enqueue the forward
                 # pass instead of blocking on the transfer. It is a no-op
                 # without pinned source memory, so it is safe unconditionally.
-                input_ids = input_ids.to(info.device, non_blocking=use_pinned)
-                labels = labels.to(info.device, non_blocking=use_pinned)
+                # extras is empty unless the loader is packed, in which case it
+                # carries segment_ids/position_ids -- see ashugpt/data/batch.py.
+                input_ids, labels, extras = split_batch(batch, info.device, non_blocking=use_pinned)
 
                 # DDP all-reduces gradients on every backward() by default --
                 # correct but wasteful mid-accumulation-window, since only the
@@ -260,7 +262,7 @@ def train(
                 with sync_context:
                     # ---- forward pass + loss calculation ----
                     with autocast_context(info.device.type, amp_dtype):
-                        output = model(input_ids, labels=labels)
+                        output = model(input_ids, labels=labels, **extras)
                         loss = output.loss / config.grad_accum_steps  # average across the accumulation window
 
                     # ---- backward pass, with gradient scaling if using mixed precision ----

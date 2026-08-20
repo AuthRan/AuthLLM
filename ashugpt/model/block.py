@@ -45,9 +45,17 @@ class TransformerBlock(nn.Module):
         x: torch.Tensor,
         kv_cache: tuple[torch.Tensor, torch.Tensor] | None = None,
         position_offset: int = 0,
+        segment_ids: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
-        """See CausalSelfAttention.forward for kv_cache/position_offset semantics."""
-        attn_out, present_kv = self.attn(self.attn_norm(x), kv_cache=kv_cache, position_offset=position_offset)
+        """See CausalSelfAttention.forward for every argument's semantics."""
+        attn_out, present_kv = self.attn(
+            self.attn_norm(x),
+            kv_cache=kv_cache,
+            position_offset=position_offset,
+            segment_ids=segment_ids,
+            position_ids=position_ids,
+        )
         x = x + attn_out
         x = x + self.ffn(self.ffn_norm(x))
         return x, present_kv

@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from ashugpt.data.batch import split_batch
+
 
 def perplexity_from_loss(loss: float) -> float:
     return math.exp(loss)
@@ -48,12 +50,14 @@ def evaluate(
 
     total_loss = 0.0
     num_batches = 0
-    for i, (input_ids, labels) in enumerate(val_loader):
+    for i, batch in enumerate(val_loader):
         if max_batches is not None and i >= max_batches:
             break
-        input_ids, labels = input_ids.to(device), labels.to(device)
+        # extras carries segment_ids/position_ids when the loader is packed,
+        # and is empty otherwise -- see ashugpt/data/batch.py.
+        input_ids, labels, extras = split_batch(batch, device)
         with autocast_context(device.type, amp_dtype):
-            output = model(input_ids, labels=labels)
+            output = model(input_ids, labels=labels, **extras)
         total_loss += output.loss.item()
         num_batches += 1
 

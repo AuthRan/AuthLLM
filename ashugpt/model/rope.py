@@ -61,6 +61,31 @@ class RotaryEmbedding(nn.Module):
             self.sin_cached[offset : offset + seq_len],
         )
 
+    def from_positions(self, position_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Gather the rotation tables for arbitrary, per-token positions.
+
+        `forward` covers the common case, where a call's tokens occupy a
+        contiguous run of positions. Sequence packing breaks that assumption:
+        several independent examples share one window, and each must start at
+        position 0 again, so positions look like 0,1,2,0,1,0,1,2,3 rather than
+        0..seq_len-1. Indexing the cached tables with an explicit position
+        tensor covers both -- `from_positions(arange(seq_len) + offset)` is
+        exactly `forward(seq_len, offset)`.
+
+        position_ids: (batch, seq_len) or (seq_len,) int64.
+        Returns (cos, sin), each (batch, 1, seq_len, head_dim) for a batched
+        input -- the extra axis is the head dimension, which broadcasts --
+        or (seq_len, head_dim) for a 1-D input.
+        """
+        cos = self.cos_cached[position_ids]
+        sin = self.sin_cached[position_ids]
+        if position_ids.dim() == 2:
+            # (batch, seq_len, head_dim) -> (batch, 1, seq_len, head_dim) so it
+            # broadcasts against q/k's (batch, n_heads, seq_len, head_dim).
+            cos = cos.unsqueeze(1)
+            sin = sin.unsqueeze(1)
+        return cos, sin
+
 
 def rotate_half(x: torch.Tensor) -> torch.Tensor:
     """(..., head_dim) -> (..., head_dim): [-second_half, first_half]."""

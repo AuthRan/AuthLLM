@@ -100,6 +100,11 @@ class TrainConfig:
     use_efficient_attention: bool = False
     optimizer: str = "adamw"  # "adamw" | "sgd"
 
+    # Sequence packing (instruction tuning only). Off by default: it changes
+    # what one optimizer step contains, so an existing config's step count and
+    # learning rate do not carry over unexamined -- see README.md section 10.6.
+    pack_sequences: bool = False
+
     # Data windowing. None means "let the dataset decide" -- TokenizedDataset
     # defaults to 1 (every start position, maximally overlapping) and
     # ShardedTokenDataset to seq_len (disjoint). Set explicitly to override;

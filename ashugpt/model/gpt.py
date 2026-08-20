@@ -169,6 +169,8 @@ class AshuGPT(nn.Module):
         labels: torch.Tensor | None = None,
         kv_caches: list[KVCache] | None = None,
         position_offset: int = 0,
+        segment_ids: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
     ) -> GPTOutput:
         """See the module docstring for the labels/shift convention.
 
@@ -177,6 +179,13 @@ class AshuGPT(nn.Module):
         model is already usable with incremental decoding once a KV-cache
         manager exists -- not exercised by training, which always passes
         kv_caches=None, position_offset=0.
+
+        segment_ids / position_ids are the sequence-packing path: several
+        independent examples share one window, so attention must not cross
+        their boundaries and RoPE must restart each one at position 0. Both
+        default to None, which is the unpacked behaviour this model has
+        always had. See ashugpt/data/instruction.py's
+        PackedInstructionDataset for what produces them.
         """
         batch, seq_len = input_ids.shape
         if seq_len > self.config.context_length:
@@ -203,10 +212,21 @@ class AshuGPT(nn.Module):
                 # forward pass -- see README.md's Memory Optimization
                 # section. use_reentrant=False is the modern, DDP-safe mode.
                 x, present = torch.utils.checkpoint.checkpoint(
-                    block, x, position_offset=position_offset, use_reentrant=False
+                    block,
+                    x,
+                    position_offset=position_offset,
+                    segment_ids=segment_ids,
+                    position_ids=position_ids,
+                    use_reentrant=False,
                 )
             else:
-                x, present = block(x, kv_cache=layer_cache, position_offset=position_offset)
+                x, present = block(
+                    x,
+                    kv_cache=layer_cache,
+                    position_offset=position_offset,
+                    segment_ids=segment_ids,
+                    position_ids=position_ids,
+                )
             present_kv_caches.append(present)
 
         x = self.final_norm(x)  # (batch, seq_len, d_model)
