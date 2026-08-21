@@ -225,3 +225,39 @@ def test_supervised_fraction_is_reported(tokenizer) -> None:
     # Small answers in a large window: the number should be small, and the
     # point of reporting it is that this is what a chat corpus costs.
     assert 0.0 < dataset.supervised_fraction < 0.2
+
+
+def test_split_last_answer_holds_out_the_turn_with_the_most_history():
+    """An evaluation that always prompts at the first turn is a single-turn
+    evaluation wearing a chat template -- it never tests whether the model
+    reads what came before."""
+    conversation = Conversation.from_messages(
+        [
+            {"role": "user", "content": "First question"},
+            {"role": "assistant", "content": "First answer"},
+            {"role": "user", "content": "Second question"},
+            {"role": "assistant", "content": "Second answer"},
+        ]
+    )
+    history, answer = conversation.split_last_answer()
+
+    assert answer.content == "Second answer"
+    assert [t.content for t in history.turns] == ["First question", "First answer", "Second question"]
+
+    prompt = history.render_for_generation()
+    assert prompt.endswith(ASSISTANT_MARKER), "the prompt must end where the assistant should start"
+    assert "First answer" in prompt, "the history has to be in the prompt or nothing multi-turn is tested"
+    assert "Second answer" not in prompt, "the held-out answer must not leak into its own prompt"
+
+
+def test_split_last_answer_refuses_a_conversation_with_no_history():
+    """One user turn and one answer is a single-turn example; there is no
+    prefix to condition on."""
+    single = Conversation.from_messages(
+        [{"role": "user", "content": "Only question"}, {"role": "assistant", "content": "Only answer"}]
+    )
+    history, answer = single.split_last_answer()
+    assert [t.content for t in history.turns] == ["Only question"]
+
+    no_answer = Conversation.from_messages([{"role": "user", "content": "Unanswered"}])
+    assert no_answer.split_last_answer() is None

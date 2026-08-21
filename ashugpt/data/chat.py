@@ -106,6 +106,27 @@ class Conversation:
         """
         return self.render() + ASSISTANT_MARKER
 
+    def split_last_answer(self) -> tuple[Conversation, Turn] | None:
+        """(everything before the last assistant turn, that turn).
+
+        What an evaluation needs in order to ask the model to produce an
+        answer it can be scored against: the prefix renders to a prompt with
+        `render_for_generation()`, and the held-out turn is the reference.
+
+        The *last* assistant turn rather than the first, deliberately -- it is
+        the one with the most history in front of it, and a conversation
+        evaluated only at its opening turn is a single-turn evaluation wearing
+        a chat template.
+
+        None when there is no assistant turn, or when the only one is the
+        first turn: a prefix of nothing is not a conversation.
+        """
+        positions = [i for i, turn in enumerate(self.turns) if turn.role == "assistant"]
+        if not positions or positions[-1] == 0:
+            return None
+        index = positions[-1]
+        return Conversation(self.turns[:index]), self.turns[index]
+
     @classmethod
     def from_messages(cls, messages: list[dict]) -> Conversation:
         """Builds from `[{"role": ..., "content": ...}]`, the shape both

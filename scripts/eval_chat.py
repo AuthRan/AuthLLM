@@ -19,6 +19,16 @@ times with more conversation after it.
 Alongside it, the same three behavioural numbers §10.4 uses, so the columns
 are readable next to that table, plus held-out loss over every assistant turn.
 
+**The generation cap is 400 tokens, not the 200 the single-turn eval uses**,
+and that difference is not cosmetic. UltraChat's held-out final assistant turns
+average 296 tokens and 71% of them are longer than 200, against Dolly answers
+averaging 88. At a 200-token cap the stop rate stops measuring "does the model
+finish its turn" and starts measuring "does the model write answers shorter
+than most real ones", which a model tuned on Dolly passes by being far too
+terse. A `mean reference tokens` column is reported beside the model's own
+length for the same reason: an answer length only means something next to the
+length the data actually has.
+
 The prompt is always the conversation's **last** assistant turn with all of
 its history in front of it -- the hardest and most representative case, and
 the one a first-turn-only evaluation would never exercise.
@@ -63,31 +73,15 @@ def held_out_split(conversations: list[Conversation], seed: int, val_fraction: f
     return conversations[:n_val]
 
 
-def last_turn_prompt(conversation: Conversation) -> tuple[str, str] | None:
-    """(prompt ending at the assistant marker, the answer that really followed).
-
-    None when the conversation has no assistant turn to hold out, or when
-    holding out the last one would leave no history at all -- a single
-    user turn is a single-turn prompt, which is what the *other* eval script
-    is for.
-    """
-    assistant_positions = [i for i, turn in enumerate(conversation.turns) if turn.role == "assistant"]
-    if not assistant_positions:
-        return None
-    index = assistant_positions[-1]
-    if index == 0:
-        return None
-    return Conversation(conversation.turns[:index]).render_for_generation(), conversation.turns[index].content
-
-
 def measure_generation(model, tokenizer, conversations, args) -> tuple[dict[str, float], list[dict]]:
     device = next(model.parameters()).device
     records = []
     for conversation in conversations:
-        prepared = last_turn_prompt(conversation)
+        prepared = conversation.split_last_answer()
         if prepared is None:
             continue
-        prompt, reference = prepared
+        history, answer = prepared
+        prompt, reference = history.render_for_generation(), answer.content
         prompt_ids = tokenizer.encode(prompt, add_bos=True)
         # A prompt that leaves no room to answer measures the window, not the
         # model. Skipped rather than truncated: cutting the history would
@@ -125,6 +119,7 @@ def measure_generation(model, tokenizer, conversations, args) -> tuple[dict[str,
                 "stopped": stopped,
                 "leaked": leaked,
                 "tokens": len(answer_ids),
+                "reference_tokens": len(tokenizer.encode(reference)),
                 "looped": has_repeated_window(answer_ids),
             }
         )
@@ -140,6 +135,7 @@ def measure_generation(model, tokenizer, conversations, args) -> tuple[dict[str,
             "stop_rate": sum(r["stopped"] for r in records) / n,
             "leak_rate": sum(r["leaked"] is not None for r in records) / n,
             "mean_tokens": sum(r["tokens"] for r in records) / n,
+            "mean_reference_tokens": sum(r["reference_tokens"] for r in records) / n,
             "loop_rate": sum(r["looped"] for r in records) / n,
             "prompts": n,
         },
@@ -164,7 +160,12 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--seq-len", type=int, default=1024)
     parser.add_argument("--n-prompts", type=int, default=40, help="Held-out conversations to generate from")
-    parser.add_argument("--max-new-tokens", type=int, default=200)
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=400,
+        help="Higher than the single-turn eval's 200 on purpose -- see the module docstring",
+    )
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--top-k", type=int, default=50)
     parser.add_argument("--seed", type=int, default=1337)
@@ -190,7 +191,8 @@ def main() -> None:
         all_records[name] = records
         print(
             f"{name:>10}: loss {loss['loss']:.4f} | stop {summary['stop_rate']:.0%} | "
-            f"turn leak {summary['leak_rate']:.0%} | {summary['mean_tokens']:.0f} tokens | "
+            f"turn leak {summary['leak_rate']:.0%} | {summary['mean_tokens']:.0f} tokens "
+            f"(reference {summary['mean_reference_tokens']:.0f}) | "
             f"loop {summary['loop_rate']:.0%}  ({summary['prompts']} prompts)"
         )
         del model
@@ -214,6 +216,10 @@ def main() -> None:
         "marker-cut that `scripts/sample.py` applies for display, because that cut is exactly what would "
         "hide it.",
         "",
+        f"The reference answers these are compared against average "
+        f"{next(iter(rows.values()))['mean_reference_tokens']:.0f} tokens, which is what the mean-tokens "
+        f"column should be read against -- an answer length means nothing on its own.",
+        "",
         "| checkpoint | held-out loss | stop rate | turn leak rate | mean tokens | loop rate |",
         "| --- | ---: | ---: | ---: | ---: | ---: |",
     ]
@@ -234,7 +240,7 @@ def main() -> None:
                 "",
                 "> " + (record["answer"] or "*(empty)*").replace("\n", "\n> "),
                 "",
-                f"*Reference:* {record['reference'][:400]}",
+                f"*Reference ({record['reference_tokens']} tokens):* {record['reference'][:400]}",
                 "",
             ]
 
