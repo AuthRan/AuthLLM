@@ -1,0 +1,191 @@
++ cd /home/system/projects/AuthLLM
++ run --model medium --strategy ddp
++ .venv/bin/torchrun --nproc_per_node=2 --rdzv_backend=c10d --rdzv_endpoint=127.0.0.1:29511 scripts/benchmark_fsdp.py --model medium --strategy ddp
++ grep -Ev '^W[0-9]|Warning|warn'
+medium   ddp             world=2 bs=1 seq=512 gc=0 | peak  3.83 GB/GPU | reserved  4.08 GB |   0.17 s/step
++ run --model medium --strategy fsdp
++ .venv/bin/torchrun --nproc_per_node=2 --rdzv_backend=c10d --rdzv_endpoint=127.0.0.1:29511 scripts/benchmark_fsdp.py --model medium --strategy fsdp
++ grep -Ev '^W[0-9]|Warning|warn'
+[rank1]:W0821 23:20:51.182000 1863898 torch/distributed/tensor/_random.py:215] DTensor is synchronizing RNG states of every rank with the state from rank 0. This behavior is deprecated. Please call `torch.manual_seed()` on every rank that participates in SPMD DTensor Operations with the same seed. If using Pipeline Parallelism, each pipeline state would use a different seed, but all ranks belonging to one pipeline stage would use the same seed.
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+medium   fsdp             world=2 bs=1 seq=512 gc=0 | peak  1.67 GB/GPU | reserved  2.68 GB |   0.17 s/step
++ run --model medium --strategy fsdp --cpu-offload
++ .venv/bin/torchrun --nproc_per_node=2 --rdzv_backend=c10d --rdzv_endpoint=127.0.0.1:29511 scripts/benchmark_fsdp.py --model medium --strategy fsdp --cpu-offload
++ grep -Ev '^W[0-9]|Warning|warn'
+[rank1]:W0821 23:20:59.325000 1864000 torch/distributed/tensor/_random.py:215] DTensor is synchronizing RNG states of every rank with the state from rank 0. This behavior is deprecated. Please call `torch.manual_seed()` on every rank that participates in SPMD DTensor Operations with the same seed. If using Pipeline Parallelism, each pipeline state would use a different seed, but all ranks belonging to one pipeline stage would use the same seed.
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+medium   fsdp +cpu-offload world=2 bs=1 seq=512 gc=0 | peak  0.97 GB/GPU | reserved  1.72 GB |   0.65 s/step
++ run --model xl_1b --strategy ddp
++ .venv/bin/torchrun --nproc_per_node=2 --rdzv_backend=c10d --rdzv_endpoint=127.0.0.1:29511 scripts/benchmark_fsdp.py --model xl_1b --strategy ddp
++ grep -Ev '^W[0-9]|Warning|warn'
+[rank1]:[W821 23:21:09.160467997 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 5347737600 bytes (free: 3638296576, total: 11337531392).
+[rank0]:[W821 23:21:09.162600764 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 5347737600 bytes (free: 4025942016, total: 11347623936).
+[rank1]:[W821 23:21:10.784398680 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 5347737600 bytes (free: 5135400960, total: 11337531392).
+[rank1] xl_1b    ddp             world=2 bs=1 seq=512 gc=0 | OOM -- does not fit
+E0821 23:21:10.532000 1864100 torch/distributed/elastic/multiprocessing/api.py:1002] failed (exitcode: 1) local_rank: 1 (pid: 1864121) of binary: /home/system/projects/AuthLLM/.venv/bin/python3
+Traceback (most recent call last):
+  File "/home/system/projects/AuthLLM/.venv/bin/torchrun", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 367, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/run.py", line 1028, in main
+    run(args)
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/run.py", line 1019, in run
+    elastic_launch(
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/launcher/api.py", line 194, in __call__
+    return launch_agent(
+           ^^^^^^^^^^^^^
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/launcher/api.py", line 383, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+scripts/benchmark_fsdp.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-08-21_23:21:10
+  host      : system-HP-Z8-G4-Workstation
+  rank      : 0 (local_rank: 0)
+  exitcode  : -15 (pid: 1864120)  (SIGTERM)
+  error_file: <N/A>
+  traceback : Signal 15 (SIGTERM) received by PID 1864120
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-08-21_23:21:10
+  host      : system-HP-Z8-G4-Workstation
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 1864121) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
++ run --model xl_1b --strategy fsdp
++ .venv/bin/torchrun --nproc_per_node=2 --rdzv_backend=c10d --rdzv_endpoint=127.0.0.1:29511 scripts/benchmark_fsdp.py --model xl_1b --strategy fsdp
++ grep -Ev '^W[0-9]|Warning|warn'
+[rank1]:W0821 23:21:15.561000 1864191 torch/distributed/tensor/_random.py:215] DTensor is synchronizing RNG states of every rank with the state from rank 0. This behavior is deprecated. Please call `torch.manual_seed()` on every rank that participates in SPMD DTensor Operations with the same seed. If using Pipeline Parallelism, each pipeline state would use a different seed, but all ranks belonging to one pipeline stage would use the same seed.
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+[rank1]:[W821 23:21:17.972767586 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 23068672 bytes (free: 89063424, total: 11337531392).
+[rank0]:[W821 23:21:17.985736333 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23068672 bytes (free: 14090240, total: 11347623936).
+[rank1]:[W821 23:21:17.021818157 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 23068672 bytes (free: 74383360, total: 11337531392).
+[rank1]:[W821 23:21:17.021919811 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 23068672 bytes (free: 74383360, total: 11337531392).
+[rank1] xl_1b    fsdp             world=2 bs=1 seq=512 gc=0 | OOM -- does not fit
+E0821 23:21:17.766000 1864168 torch/distributed/elastic/multiprocessing/api.py:1002] failed (exitcode: 1) local_rank: 1 (pid: 1864191) of binary: /home/system/projects/AuthLLM/.venv/bin/python3
+Traceback (most recent call last):
+  File "/home/system/projects/AuthLLM/.venv/bin/torchrun", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 367, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/run.py", line 1028, in main
+    run(args)
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/run.py", line 1019, in run
+    elastic_launch(
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/launcher/api.py", line 194, in __call__
+    return launch_agent(
+           ^^^^^^^^^^^^^
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/launcher/api.py", line 383, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+scripts/benchmark_fsdp.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-08-21_23:21:17
+  host      : system-HP-Z8-G4-Workstation
+  rank      : 0 (local_rank: 0)
+  exitcode  : -15 (pid: 1864190)  (SIGTERM)
+  error_file: <N/A>
+  traceback : Signal 15 (SIGTERM) received by PID 1864190
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-08-21_23:21:17
+  host      : system-HP-Z8-G4-Workstation
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 1864191) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
++ run --model xl_1b --strategy fsdp --gradient-checkpointing
++ .venv/bin/torchrun --nproc_per_node=2 --rdzv_backend=c10d --rdzv_endpoint=127.0.0.1:29511 scripts/benchmark_fsdp.py --model xl_1b --strategy fsdp --gradient-checkpointing
++ grep -Ev '^W[0-9]|Warning|warn'
+[rank1]:W0821 23:21:22.989000 1864299 torch/distributed/tensor/_random.py:215] DTensor is synchronizing RNG states of every rank with the state from rank 0. This behavior is deprecated. Please call `torch.manual_seed()` on every rank that participates in SPMD DTensor Operations with the same seed. If using Pipeline Parallelism, each pipeline state would use a different seed, but all ranks belonging to one pipeline stage would use the same seed.
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+[rank1]:[W821 23:21:24.427011474 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 20971520 bytes (free: 85917696, total: 11337531392).
+[rank0]:[W821 23:21:24.451517237 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 23068672 bytes (free: 7798784, total: 11347623936).
+[rank1]:[W821 23:21:24.457647669 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 20971520 bytes (free: 82051072, total: 11337531392).
+[rank1]:[W821 23:21:24.457833413 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 20971520 bytes (free: 82051072, total: 11337531392).
+[rank1] xl_1b    fsdp             world=2 bs=1 seq=512 gc=1 | OOM -- does not fit
+E0821 23:21:25.222000 1864265 torch/distributed/elastic/multiprocessing/api.py:1002] failed (exitcode: 1) local_rank: 1 (pid: 1864299) of binary: /home/system/projects/AuthLLM/.venv/bin/python3
+Traceback (most recent call last):
+  File "/home/system/projects/AuthLLM/.venv/bin/torchrun", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 367, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/run.py", line 1028, in main
+    run(args)
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/run.py", line 1019, in run
+    elastic_launch(
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/launcher/api.py", line 194, in __call__
+    return launch_agent(
+           ^^^^^^^^^^^^^
+  File "/home/system/projects/AuthLLM/.venv/lib/python3.12/site-packages/torch/distributed/launcher/api.py", line 383, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+scripts/benchmark_fsdp.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-08-21_23:21:25
+  host      : system-HP-Z8-G4-Workstation
+  rank      : 0 (local_rank: 0)
+  exitcode  : -15 (pid: 1864298)  (SIGTERM)
+  error_file: <N/A>
+  traceback : Signal 15 (SIGTERM) received by PID 1864298
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-08-21_23:21:25
+  host      : system-HP-Z8-G4-Workstation
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 1864299) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
++ run --model xl_1b --strategy fsdp --cpu-offload --gradient-checkpointing
++ .venv/bin/torchrun --nproc_per_node=2 --rdzv_backend=c10d --rdzv_endpoint=127.0.0.1:29511 scripts/benchmark_fsdp.py --model xl_1b --strategy fsdp --cpu-offload --gradient-checkpointing
++ grep -Ev '^W[0-9]|Warning|warn'
+[rank1]:W0821 23:21:32.146000 1864385 torch/distributed/tensor/_random.py:215] DTensor is synchronizing RNG states of every rank with the state from rank 0. This behavior is deprecated. Please call `torch.manual_seed()` on every rank that participates in SPMD DTensor Operations with the same seed. If using Pipeline Parallelism, each pipeline state would use a different seed, but all ranks belonging to one pipeline stage would use the same seed.
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+xl_1b    fsdp +cpu-offload world=2 bs=1 seq=512 gc=1 | peak  2.04 GB/GPU | reserved  4.11 GB |   6.61 s/step
++ run --model xl_1b --strategy fsdp --cpu-offload --gradient-checkpointing --batch-size 2
++ .venv/bin/torchrun --nproc_per_node=2 --rdzv_backend=c10d --rdzv_endpoint=127.0.0.1:29511 scripts/benchmark_fsdp.py --model xl_1b --strategy fsdp --cpu-offload --gradient-checkpointing --batch-size 2
++ grep -Ev '^W[0-9]|Warning|warn'
+[rank1]:W0821 23:22:13.204000 1864803 torch/distributed/tensor/_random.py:215] DTensor is synchronizing RNG states of every rank with the state from rank 0. This behavior is deprecated. Please call `torch.manual_seed()` on every rank that participates in SPMD DTensor Operations with the same seed. If using Pipeline Parallelism, each pipeline state would use a different seed, but all ranks belonging to one pipeline stage would use the same seed.
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+  output = self._register_pre_backward_hook(output)
+xl_1b    fsdp +cpu-offload world=2 bs=2 seq=512 gc=1 | peak  2.33 GB/GPU | reserved  4.81 GB |   6.68 s/step

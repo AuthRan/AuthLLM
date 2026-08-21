@@ -1291,14 +1291,15 @@ ever saw, by `scripts/eval_preference.py`:
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `sft` — where this starts | 46.3% | 92.8% | 8.3% | 54.3% | 50.0% | +0.0000 |
 | **DPO, 400 steps** (shipped) | 46.4% | 92.9% | 8.4% | 55.2% | 57.1% | +0.0505 |
-| DPO, step 598 | 46.5% | 92.8% | 8.6% | 55.7% | 57.3% | +0.0792 |
-| DPO, step 1,196 | 46.5% | 92.8% | 8.6% | 55.7% | 58.4% | +0.0921 |
-| **DPO, step 1,495** (shipped) | 46.5% | 92.8% | 8.6% | **55.7%** | **58.4%** | +0.0935 |
+| full epoch, step 598 | 46.5% | 92.8% | 8.6% | 55.7% | 57.3% | +0.0792 |
+| full epoch, step 1,196 | 46.5% | 92.8% | 8.6% | 55.7% | 58.4% | +0.0921 |
+| full epoch, step 1,495 | 46.5% | 92.8% | 8.6% | 55.7% | 58.4% | +0.0935 |
 
 **DPO accuracy** — the quantity the run optimizes, "does the policy prefer the
 chosen answer *more than the reference did*" — goes from 50% (where it starts
 by construction, the policy being the reference) to 57.1%, and to 58.4% if the
-run is allowed a full epoch — on a split it never saw. The objective is learned and it generalizes.
+run is allowed a full epoch — on a split it never saw. The objective is
+learned and it generalizes.
 
 **Raw accuracy** — the same question asked of the model alone, with no
 reference in it — goes from 46.3% to 46.4%, and to 46.5% with the extra 1,095
@@ -1560,8 +1561,13 @@ Neither has changed what the section is *for*: reporting exactly how big a
 config is, and roughly what training it would cost, before spending a GPU-day
 finding out.
 
-**`xl_1b` has still never been trained to convergence** — it fits, it steps,
-and nobody has paid for the run.
+**`xl_1b` has still never been trained to convergence** — it fits, it steps
+(§12.1 has the measurements), and nobody has paid for the run. The gap is
+larger than the step times suggest: 6.6 s/step is measured at batch 1, which
+is 1,024 tokens per step across both cards, against the 122,880 tokens/step the
+124M run actually trained at. Matching that throughput is not a matter of
+waiting longer on this hardware; the offloading that makes the model fit is
+what puts the tokens/second out of reach.
 
 ```
 python -m ashugpt.inspect_model --config 1b
@@ -1601,6 +1607,52 @@ scale with model size (so accuracy *improves*, not worsens, at GB scale).
 Every preset reports in under a second — `estimate_memory()` only calls
 `ModelConfig.approx_param_count()` (pure arithmetic); nothing here
 constructs an `nn.Module`.
+
+### 12.1 Sharding: what makes `xl_1b` step at all
+
+DDP answers "how fast can I train a model that fits". It replicates the whole
+model on every GPU, so two cards give you two copies of a 26.9GB memory
+requirement and not one bigger card. FSDP answers the other question — it
+shards parameters, gradients and optimizer state across ranks, all-gathering
+each layer's parameters only for as long as that layer's forward or backward
+takes.
+
+Measured by [`scripts/benchmark_fsdp.py`](scripts/benchmark_fsdp.py) on two
+RTX 2080 Tis (11.3GB each, no NVLink), batch 1 × seq 512, three real optimizer
+steps after a warmup — full log in
+[`logs/benchmark_fsdp.log`](logs/benchmark_fsdp.log):
+
+| model | strategy | peak GB/GPU | reserved GB | s/step |
+|---|---|---:|---:|---:|
+| `medium` | ddp | 3.83 | 4.08 | 0.17 |
+| `medium` | fsdp | 1.67 | 2.68 | 0.17 |
+| `medium` | fsdp + cpu-offload | 0.97 | 1.72 | 0.65 |
+| `xl_1b` | ddp | — | — | **OOM** |
+| `xl_1b` | fsdp | — | — | **OOM** |
+| `xl_1b` | fsdp + gradient checkpointing | — | — | **OOM** |
+| `xl_1b` | fsdp + cpu-offload + gc | **2.04** | 4.11 | 6.61 |
+| `xl_1b` | fsdp + cpu-offload + gc, batch 2 | 2.33 | 4.81 | 6.68 |
+
+The `medium` rows are the mechanism working as advertised: 2.3x less memory per
+GPU at identical step time, because the all-gather overlaps with compute that
+was going to happen anyway. The `xl_1b` rows are the point. Sharding alone is
+not enough — 1.23B parameters split two ways is still 2.5GB of fp32 weights
+plus gradients plus 9.9GB of AdamW state, and the OOM arrives while gathering a
+layer. What makes it fit is **cpu-offload**: parameters and optimizer state
+live in host RAM and stream to the GPU a layer at a time, which costs roughly
+10x the step time and turns "does not fit" into 2.04GB/GPU. Doubling the batch
+costs 0.29GB and 0.07 s/step, which is what you would expect when the resident
+weights, not the activations, are the binding constraint.
+
+An OOM is reported as a row rather than raised as a crash, because "this does
+not fit" is precisely what the table exists to establish.
+
+The trainer reaches all of this through `TrainConfig`: `parallel: "fsdp"` and
+`fsdp_cpu_offload: true`. A checkpoint written by a sharded run is gathered to
+plain, full, CPU tensors before it is saved
+([`ashugpt/training/fsdp.py`](ashugpt/training/fsdp.py)), so what lands on disk
+does not record how many GPUs produced it and `load_model_for_inference` never
+learns the difference.
 
 ## 13. Pretrained Checkpoints: Comparison, Not Loading
 
