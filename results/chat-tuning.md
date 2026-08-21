@@ -119,3 +119,38 @@ is good, and UltraChat's idiom is long and discursive where Dolly's is short.
 Whether that is a cost or the entire point depends on which distribution you
 intend to serve. It is a cost if you wanted the Dolly model. It is the goal if
 you wanted a model that can hold a conversation.
+
+## Reproducing this
+
+```bash
+python scripts/prepare_chat_data.py --output data/sft/ultrachat.jsonl --limit 20000
+
+python scripts/finetune.py --model configs/model/medium.yaml \
+    --train configs/train/sft_chat.yaml --format chat \
+    --init-from checkpoints/sft_dolly_packed3e5/step_940.pt \
+    --data data/sft/ultrachat.jsonl \
+    --checkpoint-dir checkpoints/sft_chat --log-path logs/sft_chat.csv
+
+# multi-turn behaviour: held-out loss, stop rate, turn leak rate, length, loops
+python scripts/eval_chat.py --data data/sft/ultrachat.jsonl \
+    --checkpoint sft=checkpoints/sft_dolly_packed3e5/step_940.pt \
+    --checkpoint chat=checkpoints/sft_chat/step_1105.pt \
+    --output results/chat_eval.md
+
+# what it cost on the single-turn distribution, comparable to instruction-tuning.md
+python scripts/eval_instruction_following.py --data data/sft/dolly.jsonl \
+    --loss-batches 34 \
+    --checkpoint sft=checkpoints/sft_dolly_packed3e5/step_940.pt \
+    --checkpoint chat=checkpoints/sft_chat/step_1105.pt \
+    --output results/instruction_eval_chat.md
+```
+
+The sweep is `logs/sft_chat_lr{15e6,4e5,1e4,25e4}.csv` — the same command with
+`max_lr`/`min_lr` changed and `max_steps` at 300.
+
+Talk to it yourself, holding a conversation across several prompts:
+
+```bash
+python scripts/sample.py --chat --checkpoint checkpoints/sft_chat/step_1105.pt \
+    "What is a black hole?" "Could one ever hit the Earth?"
+```
