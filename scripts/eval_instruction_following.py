@@ -44,6 +44,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from ashugpt.data.instruction import InstructionDataset, InstructionExample
+from ashugpt.eval.generation import has_repeated_window
 from ashugpt.eval.perplexity import evaluate
 from ashugpt.inference.generate import generate
 from ashugpt.tokenizer.tiktoken_bpe import TiktokenBPETokenizer
@@ -62,24 +63,6 @@ def held_out_split(examples: list[InstructionExample], seed: int, val_fraction: 
     random.Random(seed).shuffle(examples)
     n_val = max(1, int(len(examples) * val_fraction))
     return examples[:n_val]
-
-
-def has_repeated_window(token_ids: list[int], window: int = 10) -> bool:
-    """True if any window-length token sequence occurs more than once.
-
-    A short answer that is simply short cannot trip this; a model that has
-    fallen into an attractor and is re-emitting the same clause repeats a
-    10-token window many times over.
-    """
-    if len(token_ids) < 2 * window:
-        return False
-    seen = set()
-    for i in range(len(token_ids) - window + 1):
-        key = tuple(token_ids[i : i + window])
-        if key in seen:
-            return True
-        seen.add(key)
-    return False
 
 
 def measure_generation(model, tokenizer, examples, args) -> tuple[dict[str, float], list[dict]]:
