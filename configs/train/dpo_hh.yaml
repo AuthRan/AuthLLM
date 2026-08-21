@@ -1,0 +1,127 @@
+# Stage 4: preference tuning with DPO, on top of the instruction-tuned model.
+#
+# Stages 1-2 (configs/train/sft_alpaca_packed.yaml, sft_dolly.yaml) taught the
+# model to answer a question and stop, by imitation. This stage is the first
+# that is ever shown a *bad* answer: the data is pairs, and the loss is a
+# comparison against a frozen copy of the model this run starts from. See
+# ashugpt/training/dpo.py for the objective and README.md section 10.8.
+#
+# ---- Data ----
+# Anthropic/hh-rlhf, single-exchange pairs only: 49,241 of its 160,800 rows
+# survive the filter (the rest are multi-turn dialogues, which this repo's
+# single-instruction template has no way to represent), and 48,800 of those
+# fit a 512-token window on both sides. 2% held out, so ~47,829 training pairs
+# and 971 for validation.
+#
+# Worth knowing before the run rather than after: chosen answers in this set
+# average 80 tokens against the rejected answers' 72. Summed log-probabilities
+# are all negative, so "prefer the shorter answer" is a strategy that scores,
+# and the evaluation reports per-token accuracy beside the raw number for
+# exactly that reason (scripts/eval_preference.py).
+#
+# ---- Memory: why batch_size is 4 when the SFT stages used 8 ----
+# A preference step costs about four times what a supervised step of the same
+# batch size costs. Two models are resident (policy + frozen reference), and
+# each pair is two rows through the network, not one. Measured on one 2080 Ti,
+# seq 512, fp16, efficient attention:
+#
+#     pairs/micro-batch    peak GB    ms/micro-step
+#            2               4.82         115
+#            4               7.36         207
+#            6               9.84         298
+#            8               OOM           --
+#
+# 4 leaves headroom on an 11.3GB card without giving up much throughput. The
+# dominant term is the fp32 log-probability tensor the objective needs:
+# 2 rows x 512 positions x 50,259 vocab, kept for the backward pass, which is
+# why this does not scale like the SFT stages did.
+#
+# ---- Batch arithmetic ----
+# 4 pairs x 8 accumulation steps = 32 pairs per optimizer step, which is the
+# usual DPO batch size and 64 sequences of real forward/backward work. One
+# epoch over 47,829 training pairs is 1,495 steps.
+#
+# ---- Why max_lr is 1.0e-6, which is not what the sweep's headline said ----
+# Three learning rates, 400 steps each, each a complete cosine cycle so the
+# endpoints compare fairly. Scored on hh-rlhf's own test split (2,574 pairs
+# neither run saw) and then on the held-out Dolly split every instruction
+# stage is scored on:
+#
+#   max_lr    DPO acc   per-token acc   Dolly loss   stop rate   loop rate
+#   1.0e-6     57.1%        55.2%         2.7504        98%         18%
+#   5.0e-6     58.4%        56.1%         2.7661        98%         22%
+#   2.0e-5     59.9%        56.6%         2.8008        88%         40%
+#   (the SFT model this starts from)      2.7444        92%         20%
+#
+# Every preference metric ranks these 2.0e-5 > 5.0e-6 > 1.0e-6. Every
+# behavioural metric ranks them exactly backwards, and 2.0e-5 is the only
+# checkpoint in the sweep that is *worse than the model it started from* on
+# all of them: it stops less often than the untuned baseline, its answers grow
+# by two thirds, and its loop rate doubles. Its held-out DPO loss also spent
+# steps 50-250 above the 0.6931 it started at and only came back because the
+# cosine annealed the learning rate away -- logs/dpo_hh_lr2e5.csv.
+#
+# 1.0e-6 is the only setting that improves the model rather than trading it:
+# stop rate 92% -> 98%, loop rate 20% -> 18%, Dolly held-out loss up 0.006,
+# which is noise at this scale. That is the fourth time in this project that
+# the metric closest to the training objective has ranked checkpoints in the
+# reverse of the order that matters. README.md section 10.8 and
+# results/preference-tuning.md have the tables.
+#
+# ---- beta ----
+# 0.1, the standard starting point, and it is doing real work: at every
+# learning rate in the sweep *both* implicit rewards go negative, meaning the
+# policy is making the preferred answers less likely too and merely making the
+# rejected ones less likely faster. A larger beta would hold the policy closer
+# to the reference and is the first thing to try if a longer run degenerates.
+#
+# ---- Why 400 steps and not the 1,495 that would be one epoch ----
+# One epoch over 47,829 pairs at 32 per step is 1,495 steps, and that run was
+# made: logs/dpo_hh.csv, a complete cosine cycle at this learning rate. Its
+# held-out DPO loss falls the whole way (0.6931 -> 0.6491) and never turns up,
+# which is the shape that normally argues for training longer.
+#
+# Scored on anything else, the extra 1,095 steps bought nothing:
+#
+#                        DPO acc   per-token acc   Dolly loss   stop   loop   len
+#   400 steps             57.1%        55.2%         2.7504      98%    18%    70
+#   1,495 steps           58.4%        55.7%         2.7595      98%    25%    77
+#   (the SFT model)       50.0%        54.3%         2.7444      92%    20%    62
+#
+# Ranking by content plateaus at step 598 and does not move again; what keeps
+# growing after that is the margin, which is divergence from the reference
+# rather than skill. Meanwhile every behavioural number drifts the wrong way,
+# and the answers keep getting longer -- the direction DPO is known to push,
+# and the direction this dataset's 80-vs-73-token gap rewards.
+#
+# The behavioural differences are small and the loop rate comes off 40 sampled
+# generations, so this is not "the long run is proven worse". It is "the long
+# run costs 3.7x the compute and shows no benefit outside the objective it was
+# trained on", which is enough. 400 steps is one complete cosine cycle at 27%
+# of an epoch, and it is what the sweep in this file measured.
+batch_size: 4
+seq_len: 512
+grad_accum_steps: 8
+max_steps: 400
+warmup_steps: 30
+max_lr: 1.0e-6
+min_lr: 1.0e-7
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+log_interval: 5
+eval_interval: 100
+eval_steps: 40
+checkpoint_interval: 200
+amp_dtype: float16
+gradient_checkpointing: false
+use_efficient_attention: true
+pack_sequences: false
+dpo_beta: 0.1
+# Irrelevant here -- PreferenceDataset emits whole pairs, not windows over a
+# stream -- but TrainConfig requires the field to be explicit or None.
+stride: null
+num_workers: 3
+pin_memory: true
+compile_model: false
+seed: 1337

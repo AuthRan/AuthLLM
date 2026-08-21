@@ -37,3 +37,8 @@ __pycache__/
 # Console output of scripts/eval_instruction_following.py -- the same tables are
 # committed in results/instruction_eval_*.md, with every generation behind them
 /logs/instruction_eval_*.log
+
+# Console output of the preference evaluations -- same rule as the line above:
+# the tables they print are committed in results/preference_eval_*.md and
+# results/instruction_eval_dpo*.md, with every generation behind them
+/logs/dpo_*_eval.log

@@ -3,7 +3,10 @@
 > **This page is about the base model.** It was later instruction-tuned on
 > Alpaca and Dolly, which changed its behaviour a great deal and its knowledge
 > not at all — [instruction-tuning.md](instruction-tuning.md) has that story,
-> with held-out measurements rather than impressions.
+> with held-out measurements rather than impressions. Later still it was
+> preference-tuned with DPO, which moved the objective it was given ten points
+> and the thing anyone cares about half a point —
+> [preference-tuning.md](preference-tuning.md) has that one.
 
 The run finished. Perplexity 23.53. That number tells you almost nothing about
 what the thing sounds like, so I sat down and generated a pile of text from the

@@ -1,5 +1,7 @@
 # AshuGPT
 
+[![tests](https://github.com/AuthRan/AuthLLM/actions/workflows/tests.yml/badge.svg)](https://github.com/AuthRan/AuthLLM/actions/workflows/tests.yml)
+
 **An educational, from-scratch GPT-style decoder-only language model.**
 Tokenizer, Transformer architecture (RoPE, RMSNorm, SwiGLU, causal
 attention), training loop, distributed training (DDP and FSDP), memory
@@ -1273,6 +1275,141 @@ destroying the model pushes both down and the rejected one down faster, which
 reads as progress in the margin and as damage in the samples.
 
 
+#### What it did, measured
+
+What ships is 400 steps at 1.0e-6 over HH-RLHF, 32 pairs per step, about
+fifteen minutes on one 2080 Ti. A full epoch (1,495 steps) was also run and is
+the reason the shipped schedule is short — that comparison is two sections
+down.
+
+Held-out DPO loss falls monotonically in both, 0.6931 → 0.6491 over the full
+epoch and still inching down at the end (`logs/dpo_hh.csv`). Scored on
+HH-RLHF's own **test** split — 2,574 pairs, conversations nothing in either run
+ever saw, by `scripts/eval_preference.py`:
+
+| checkpoint | raw accuracy | chosen shorter | chosen longer | per-token accuracy | DPO accuracy | margin |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sft` — where this starts | 46.3% | 92.8% | 8.3% | 54.3% | 50.0% | +0.0000 |
+| **DPO, 400 steps** (shipped) | 46.4% | 92.9% | 8.4% | 55.2% | 57.1% | +0.0505 |
+| DPO, step 598 | 46.5% | 92.8% | 8.6% | 55.7% | 57.3% | +0.0792 |
+| DPO, step 1,196 | 46.5% | 92.8% | 8.6% | 55.7% | 58.4% | +0.0921 |
+| **DPO, step 1,495** (shipped) | 46.5% | 92.8% | 8.6% | **55.7%** | **58.4%** | +0.0935 |
+
+**DPO accuracy** — the quantity the run optimizes, "does the policy prefer the
+chosen answer *more than the reference did*" — goes from 50% (where it starts
+by construction, the policy being the reference) to 57.1%, and to 58.4% if the
+run is allowed a full epoch — on a split it never saw. The objective is learned and it generalizes.
+
+**Raw accuracy** — the same question asked of the model alone, with no
+reference in it — goes from 46.3% to 46.4%, and to 46.5% with the extra 1,095
+steps.
+
+Those are not in conflict; they are two different questions, and only the first
+one is what DPO optimizes. But the second is the one that means "this model
+prefers better answers", and it moved by two tenths of a point.
+
+#### The length column is the whole story
+
+Split raw accuracy by which side is longer and the model stops being mysterious:
+
+- chosen answer **shorter** than rejected → ranked first **92.8%** of the time
+- chosen answer **longer** → **8.3%**
+
+That is not a preference model, it is a ruler. Summed log-probabilities are all
+negative, so each extra token costs another 2-3 nats and an answer eight tokens
+longer starts ~20 nats behind — far more than any plausible difference in
+content. HH-RLHF's chosen answers average 80 tokens against the rejected
+answers' 73, so the shortcut is available, and the base model takes it every
+time. DPO moved those two numbers to 92.9% and 8.4%. It did not touch the
+length prior at all.
+
+What it *did* move is per-token accuracy, 54.3% → 55.2%: real ranking by
+content, and about a tenth of what the headline number suggested. It reaches
+55.7% over a full epoch and then stops — flat from step 598 onward while the
+margin keeps growing, which is divergence from the reference rather than skill.
+
+#### Both rewards go down, which is the number to watch
+
+The implicit rewards are `beta` times how much more likely the policy has made
+each answer than the reference did. At the end of the full epoch:
+
+```
+chosen -0.2509    rejected -0.3729    margin +0.1220
+```
+
+Both negative. At beta = 0.1 that says the policy made the answers a human
+*preferred* about 12x less likely than the model it started from, and the
+rejected ones about 45x less likely. The margin is positive, the loss is
+falling, and what is actually happening is that the model is retreating from
+both answers and retreating from one faster. In the margin alone — the only
+thing the loss sees — that is invisible, which is why
+`ashugpt/eval/preference.py` reports the two halves separately.
+
+At the sweep's most aggressive setting the same numbers read -0.6595 and
+-0.8270: a 700x retreat from the preferred answers. That run is also the one
+that damaged the model, and the next section is how that showed up.
+
+#### And then the same trap as §10.6, wearing different clothes
+
+Three learning rates, 400 steps each, each a complete cosine cycle so the
+endpoints compare fairly (`logs/dpo_hh_lr*.csv`). Every preference metric ranks
+them 2.0e-5 > 5.0e-6 > 1.0e-6. Then the same instruction-following eval §10.4
+uses, on the same held-out Dolly split, directly comparable to every row there:
+
+| checkpoint | Dolly held-out loss | stop rate | mean tokens | loop rate |
+| --- | ---: | ---: | ---: | ---: |
+| `sft` — where DPO starts | **2.7444** | 92% | 62 | 20% |
+| DPO, 1.0e-6 | 2.7504 | **98%** | 70 | **18%** |
+| DPO, 5.0e-6 | 2.7661 | **98%** | 79 | 22% |
+| DPO, 2.0e-5 | 2.8008 | 88% | 103 | 40% |
+
+The ranking inverts completely. **2.0e-5 — first on every preference metric —
+is the only checkpoint in the sweep that is worse than the model it started
+from on every behavioural one.** Its held-out DPO loss also sat *above* its own
+starting value from step 50 to step 250 and only came back because the cosine
+annealed the learning rate to nothing; the endpoint is real, but it is the
+endpoint of a run that spent most of its length damaging the model.
+
+1.0e-6 — weakest margin, lowest DPO accuracy, the least impressive run in the
+sweep — is the only one that improves anything, and is what
+[`configs/train/dpo_hh.yaml`](configs/train/dpo_hh.yaml) ships.
+
+This is the fourth time in this project that the metric closest to the training
+objective has ordered checkpoints backwards, after the behavioural metrics in
+[§10.4](#104-what-it-changed-measured), early stopping in the same section, and
+stage 1's own held-out loss in
+[§10.6](#106-sequence-packing--the-89-that-was-padding). At this point it
+should be the default assumption rather than a recurring surprise: **a
+preference run cannot be scored on the preference objective.**
+
+The full narrative, with the samples, is in
+[`results/preference-tuning.md`](results/preference-tuning.md).
+
+#### The full epoch, and why it is not what ships
+
+The shipped run is 400 steps — 27% of an epoch. A full 1,495-step cycle at the
+same learning rate was run to check whether that was leaving anything on the
+table (`logs/dpo_hh.csv`), and its held-out DPO loss falls the whole way and
+never turns up, which is normally the shape that argues for training longer.
+
+Everything else disagrees:
+
+| | DPO accuracy | per-token accuracy | Dolly loss | stop rate | mean tokens | loop rate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sft` | 50.0% | 54.3% | **2.7444** | 92% | **62** | 20% |
+| 400 steps (shipped) | 57.1% | 55.2% | 2.7504 | **98%** | 70 | **18%** |
+| 1,495 steps | **58.4%** | **55.7%** | 2.7595 | **98%** | 77 | 25% |
+
+The extra 1,095 steps — 3.7x the compute — buy 1.3 points of the metric being
+optimized, 0.5 points of ranking-by-content that arrives by step 598 and then
+stops, and a slow drift the wrong way on everything behavioural: answers keep
+lengthening, and the loop rate ends above the untuned baseline.
+
+Those behavioural gaps are small, and loop rate comes off 40 sampled
+generations, so the honest claim is not "the long run is worse" but "the long
+run shows no benefit outside the objective it was trained on, at 3.7x the
+cost". That is enough to ship the short one.
+
 ## 11. Inference
 
 ### 11.1 KV Caching
@@ -1792,10 +1929,20 @@ authLLM/
 ## 17. Testing
 
 ```
-pytest                    # everything (344 tests)
+pytest                    # everything
 pytest tests/unit          # fast, run constantly
 pytest tests/integration   # slower — real training run + real 2-process DDP run
 ```
+
+Every push runs the whole suite on a GitHub runner
+([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) — from a clean
+checkout, on CPU, with nothing installed but what `pyproject.toml` and
+`requirements.txt` declare. That last part is the point: `tiktoken` and
+`datasets` went undeclared for months because they happened to be present
+locally, and no amount of local green could have caught it. The integration
+tests run there too; they launch real multi-process runs over gloo rather than
+NCCL, so a GPU-less runner is a supported configuration rather than a degraded
+one.
 
 Every architectural component (RMSNorm, RoPE, attention, SwiGLU, causal
 masking, KV cache) is tested against a *known property*, not just "it

@@ -20,6 +20,9 @@ Read in order:
 6. **[Packing the window](06-packing-the-window.md)** — recovering the 89% of
    fine-tuning compute that was padding, and discovering that a throughput
    change is a schedule change.
+7. **[Teaching it to prefer](07-preference-tuning.md)** — the first stage that
+   is shown a *bad* answer, and the four ways its own headline metric
+   flattered it.
 
 ## The 30-second version
 
@@ -43,6 +46,14 @@ instruction-following peak on the checkpoint you least want. That's file 5.
 Then I packed the fine-tuning windows, because ~89% of both stages was padding.
 It came out 4.4x faster and, once the learning rate was re-tuned for a step
 that now means something different, better as well. That's file 6.
+
+Then I gave it preferences — pairs of answers with a human's ranking, trained
+with DPO. The objective learned what it was asked to learn, and almost none of
+that was what I wanted: measured without reference to the model it started
+from, its preference for the better answer moved half a percentage point, and
+what it was really ranking by was answer length. That's file 7, and it is the
+fourth time in this project that the metric closest to the training objective
+pointed the wrong way.
 
 ---
 

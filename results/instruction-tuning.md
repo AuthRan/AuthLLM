@@ -322,6 +322,13 @@ every number on this page uses 34. The flag silently changes which subset
 "held-out loss" means — at 40 the base model scores 3.0653 on Dolly instead of
 3.0580 — so a report run at the default is not comparable to any table here.
 
+## What came after this
+
+The model on this page is the one preference tuning starts from. That stage is
+the first in the pipeline that is ever shown a *bad* answer, and the first
+whose headline metric turned out to be measuring something other than quality:
+[preference-tuning.md](preference-tuning.md).
+
 ## Reproducing this
 
 ```bash
