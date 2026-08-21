@@ -648,7 +648,8 @@ matching single-process), exactly one checkpoint saved by rank 0. Took
 dominates at this tiny scale; DDP pays off when per-step compute is large
 relative to fixed communication cost (bigger models/batches, or NCCL/GPU).
 
-Not implementing FSDP or model parallelism.
+FSDP came later, when `xl_1b` needed to train on cards that cannot each
+hold it — see [§12](#12-scaling-to-billion-parameter-architectures).
 
 ## 10. Instruction Tuning
 
@@ -910,9 +911,14 @@ and [`results/`](results/) describe for the base model, and 5.0M supervised
 tokens does not move it: facts live in the pretrained weights, and fine-tuning
 changes how they come out, not how many there are.
 
-Also not built: no RLHF, no DPO, no reward model, no multi-turn chat format,
-and no model-judged evaluation. The numbers above are the ones that can be
-computed exactly from a held-out split; nothing here scores helpfulness.
+Also not built at the time: no RLHF, no DPO, no reward model, no multi-turn
+chat format, and no model-judged evaluation. The numbers above are the ones
+that can be computed exactly from a held-out split; nothing here scores
+helpfulness. Two of those have since been built —
+[§10.7](#107-multi-turn-chat--a-conversation-not-a-question) is the chat
+format and [§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)
+is preference tuning, which is the first stage in this pipeline that is ever
+shown a *bad* answer.
 
 What *was* built after this section's runs finished is sequence packing, which
 attacks the cost of the two stages rather than what they teach — and, less
@@ -1104,6 +1110,168 @@ Dolly and 2.5711 on Alpaca instead of the published 3.0580 and 2.5338. Both
 anchors reproduce exactly at 34, which is what makes every row above
 comparable to every row in §10.4.
 
+### 10.7 Multi-turn chat — a conversation, not a question
+
+Everything above answers exactly one question. The template has one
+instruction slot and one response slot and no place to put what was said
+before, so a model trained on it has no reason to treat the text above its
+answer as its own words, and no reason to expect anything to follow. That is
+not a missing feature so much as a missing *format*:
+[`ashugpt/data/chat.py`](ashugpt/data/chat.py) changes what a training
+document contains, and nothing else about training changes at all —
+`scripts/finetune.py --format chat` runs the same loop, the same optimizer,
+the same masking rule.
+
+Two decisions carry it.
+
+**Every assistant turn is supervised; everything else is masked.** That is
+[§10.1](#101-prompt-masking--the-one-idea-that-makes-this-work)'s rule applied
+per turn instead of once. A conversation with three assistant turns
+contributes three supervised spans to one document; the user's words are in
+`input_ids`, attention reads all of them, and the model is never asked to
+produce them.
+
+**`<|endoftext|>` ends a turn, not the document.** In single-turn tuning the
+EOS after the response is the last token of the example, so "stop talking" and
+"the document is over" are the same event and the model cannot tell them
+apart. A conversation holds several, each followed by more conversation, so
+the token comes to mean *my turn is finished* — which is the whole reason a
+chat model stops instead of cheerfully writing the user's next message too.
+
+Roles are plain text (`### User:` / `### Assistant:`), not new special tokens.
+A real role token would be unambiguous and impossible for user text to forge,
+but adding one means growing the vocabulary, which means a randomly
+initialized embedding row in a model whose other 50,257 rows carry 2.46B
+tokens of training. The markers cost a handful of tokens per turn instead;
+the price is that user content could contain one, so `Turn` refuses such
+content outright and the sampler cuts the model's answer at any marker it
+emits.
+
+**Long conversations are cut at a turn boundary** — not dropped, and not cut
+mid-sentence. Dropping would discard most of the corpus, and cutting mid-answer
+teaches the model to stop dead at the window edge, the exact failure
+`InstructionDataset` drops examples to avoid. Every surviving example is a
+well-formed conversation that ends on a complete answer.
+
+That last decision is why this stage runs at `seq_len` 1024 when every other
+fine-tuning config here uses 512. Measured over the 19,600-conversation
+training split of UltraChat 200k (`scripts/prepare_chat_data.py`, at most 8
+turns each):
+
+| seq_len | usable | dropped | supervised | mean assistant turns | ≥2 answers |
+|---:|---:|---:|---:|---:|---:|
+| 512 | 10,203 | 9,397 | 50.7% | 1.45 | 36% |
+| 768 | 15,149 | 4,451 | 54.1% | 1.84 | 60% |
+| 1024 | 17,672 | 1,928 | 54.4% | 2.20 | 77% |
+
+At 512 the corpus is barely multi-turn: 48% of conversations do not fit even
+their first answer, and the average survivor carries 1.45 assistant turns,
+which is a single-turn dataset with extra steps. Training a multi-turn model
+on that would have produced a believable loss curve and no new behaviour.
+
+The supervised fraction is the other number worth reading. Instruction tuning
+supervised ~11% of every step ([§10.3](#103-the-two-stages-that-ran)); here
+the assistant does most of the talking and 54% of each window produces
+gradient. So this stage is not padding-bound, and
+[§10.6](#106-sequence-packing--the-89-that-was-padding)'s 4.4x is not
+available to win — which is why packing is not wired up for conversations.
+
+**Status: implemented, configured, not yet run.**
+[`configs/train/sft_chat.yaml`](configs/train/sft_chat.yaml) is complete and
+the data pipeline is tested
+([`tests/unit/test_chat_dataset.py`](tests/unit/test_chat_dataset.py)), but no
+chat checkpoint exists yet, so there are no held-out numbers and no samples in
+this section. The config's learning rate is the one value in it derived by
+analogy rather than measurement, and it says so in place: sweeping it is the
+first thing the run should do, for the reason §10.6 already paid for once.
+
+
+### 10.8 Preference tuning — the first stage that is shown a bad answer
+
+Every stage above learns by imitation. §10 shows the model good answers,
+§10.7's format would show it good conversations, and cross-entropy can carry
+exactly one instruction: *be more like this*. Nothing in that pipeline can say one answer
+is better than another, because no training example ever contains two.
+
+A preference example does: one prompt, two answers, and a human's judgement
+of which is better. The textbook way to learn from it is RLHF — fit a reward
+model to the judgements, then optimize the policy against that reward with
+PPO, which means four models and a reinforcement-learning loop.
+[Direct Preference Optimization](https://arxiv.org/abs/2305.18290) observes
+that the optimal policy for that objective has a closed form, and substituting
+it back collapses the whole apparatus into a *classification* loss over pairs:
+
+```
+L = -log sigmoid( beta * [ (log pi(chosen)  - log ref(chosen))
+                         - (log pi(rejected) - log ref(rejected)) ] )
+```
+
+No reward model, no sampling, no rollouts — two forward passes and a
+backward. Read the bracket as a margin. `log pi(y) - log ref(y)` is how much
+more likely the policy has made answer `y` than a frozen copy of where
+training started did: an *implicit reward*, never fitted, only measured. The
+loss pushes it up for the chosen answer and down for the rejected one, and
+sigmoid means it stops caring once the margin is comfortably positive rather
+than pushing forever.
+
+**The frozen reference is why this does not collapse.** Nothing in "make
+chosen more likely than rejected" forbids wrecking the model on the way —
+assigning both answers near-zero probability satisfies the ranking perfectly
+well. Anchoring each term to the model the run started from makes the
+objective about *changes* in likelihood, so drifting away costs something on
+both sides of the comparison. That is the job KL regularization does in RLHF,
+arrived at by algebra instead of by adding a penalty term. `beta` sets how
+much drift is tolerated: 0.1 here, the usual starting point.
+
+#### What the implementation had to get right
+
+Three things, each of which fails silently rather than loudly:
+
+**Log-probabilities are summed over the response, not averaged.** The
+quantity in the objective is `log pi(y|x)` for a whole sequence, which is a
+sum. Averaging is a different (defensible, much-debated) algorithm, and the
+difference shows up as a slow drift toward short answers rather than as an
+error.
+
+**`log_softmax` runs in fp32 even under fp16 autocast.** These are sums of a
+few hundred log-probabilities each around -2 to -10, and the entire training
+signal is the *difference* between two such sums. fp16 carries ~3 decimal
+digits at those magnitudes, so computing the difference there would leave a
+gradient made mostly of rounding.
+
+**The reference model must never move, in two senses** — no gradients, and
+permanently in `eval()` mode. `DPOModel.train()` overrides `nn.Module.train()`
+to keep it that way, because the moment the reference drifts, the implicit
+reward is measured against a moving baseline and the objective stops meaning
+what the derivation says it means. A run with a leaking reference still shows
+a falling loss and a rising accuracy. That is what the test suite is for.
+
+#### Why it reuses the pretraining loop verbatim
+
+`DPOModel` wraps the policy and the reference and presents them as one model
+whose `forward()` returns a loss, so `train()` — the LR schedule, gradient
+accumulation, mixed precision, CSV logging, checkpointing, resume — is reused
+without a line changed. A preference example is `(2, seq_len)` with chosen on
+row 0, so a batch is `(batch, 2, seq_len)` and is still just "input_ids and
+labels" to the DataLoader and the trainer; the wrapper flattens it into one
+`(2 * batch, seq_len)` forward pass, which is also the efficient thing to do.
+`state_dict()` deliberately returns the *policy's*, so what a DPO run writes
+to disk is an ordinary checkpoint that inference, evaluation and any later
+fine-tune can load without knowing it came from a preference run.
+
+The one thing that could not be reused is the validation metric. Perplexity
+is `exp(cross-entropy)`, and a ranking loss exponentiates to a confident
+number between 1 and 2 that describes nothing, so `evaluate()` now reports
+perplexity only for a model whose loss is a cross-entropy and the column is
+written empty otherwise. What replaces it is
+[`ashugpt/eval/preference.py`](ashugpt/eval/preference.py): held-out loss,
+**ranking accuracy**, and the **reward margin**, plus the chosen and rejected
+rewards separately — because the failure mode they diagnose is invisible in
+the difference. A healthy run pushes the chosen reward up; a run quietly
+destroying the model pushes both down and the rejected one down faster, which
+reads as progress in the margin and as damage in the samples.
+
+
 ## 11. Inference
 
 ### 11.1 KV Caching
@@ -1196,8 +1364,22 @@ Real measured output (891K-param demo checkpoint, CPU): single request
 ashugpt/api/
 ├── schemas.py   -- Pydantic request/response models (pure data contracts)
 ├── service.py   -- InferenceService: the ONLY file touching ashugpt.model/tokenizer/inference
+├── static/      -- index.html, the browser frontend
 └── app.py       -- FastAPI routes, HTTP status codes, startup config
 ```
+
+**The browser frontend** is `ashugpt/api/static/index.html`, served at `/`:
+a prompt box, sampling controls, a switch between continuing text and
+answering an instruction through the §10 template, and tokens appearing as
+they decode. One file, no build step, no framework, and no external requests
+— a test asserts the last part, because a single CDN `<script>` would make a
+demo that is supposed to run from a checkout depend on someone else's uptime.
+
+Streaming is why `/generate/stream` exists alongside `/generate`, and why the
+sampling loop had to become a generator. `generate_stream()` is that loop and
+`generate()` is it concatenated, rather than a second copy of sampling, EOS
+handling and cache bookkeeping that would have to stay in agreement by hand;
+a test asserts both paths produce identical tokens from one seed.
 
 A `lifespan` handler reads `ASHUGPT_CHECKPOINT`/`ASHUGPT_TOKENIZER` env
 vars **once** at process startup and builds one `InferenceService`, stored
@@ -1230,9 +1412,18 @@ than the last.
 
 ## 12. Scaling to Billion-Parameter Architectures
 
-**This project has never trained anything at `medium` or `xl_1b` scale.**
-What it *can* do, instantly and without building anything, is report
-exactly how big a config is and roughly what training it would cost:
+This section was written when the largest thing this project had trained was
+a ~14M-parameter toy on a CPU. Both of its premises have since changed:
+`medium` was trained for real — 124M parameters over 2.46B tokens of
+FineWeb-Edu, 27 hours on one RTX 2080 Ti ([§10](#10-instruction-tuning),
+[`results/`](results/)) — and `xl_1b` takes real optimizer steps under FSDP
+with CPU offload, on the same two 11GB cards that cannot hold it under DDP.
+Neither has changed what the section is *for*: reporting exactly how big a
+config is, and roughly what training it would cost, before spending a GPU-day
+finding out.
+
+**`xl_1b` has still never been trained to convergence** — it fits, it steps,
+and nobody has paid for the run.
 
 ```
 python -m ashugpt.inspect_model --config 1b
@@ -1456,6 +1647,43 @@ python scripts/finetune.py --model configs/model/medium.yaml --train configs/tra
 python scripts/benchmark_packing.py --data data/sft/alpaca.jsonl
 ```
 
+**Multi-turn chat** ([§10.7](#107-multi-turn-chat--a-conversation-not-a-question)) —
+same script, a different `--format`, because multi-turn is a change of what a
+training document contains and not of how training works:
+
+```
+python scripts/prepare_chat_data.py --output data/sft/ultrachat.jsonl --limit 20000
+
+python scripts/finetune.py --model configs/model/medium.yaml --train configs/train/sft_chat.yaml \
+    --format chat --init-from checkpoints/sft_dolly_packed3e5/step_940.pt \
+    --data data/sft/ultrachat.jsonl \
+    --checkpoint-dir checkpoints/sft_chat --log-path logs/sft_chat.csv
+```
+
+**Preference tune** ([§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)) —
+a different script, because the objective compares two answers instead of
+imitating one, and needs a frozen copy of where it started:
+
+```
+python scripts/prepare_preference_data.py --dataset hh --output data/preference/hh.jsonl
+python scripts/prepare_preference_data.py --dataset hh --split test \
+    --output data/preference/hh_test.jsonl
+
+python scripts/preference_tune.py --model configs/model/medium.yaml \
+    --train configs/train/dpo_hh.yaml \
+    --init-from checkpoints/sft_dolly_packed3e5/step_940.pt \
+    --data data/preference/hh.jsonl \
+    --checkpoint-dir checkpoints/dpo_hh --log-path logs/dpo_hh.csv
+
+# Ranking accuracy on the source's own test split, against the SFT model it
+# started from -- the reference must be the same for every column:
+python scripts/eval_preference.py --data data/preference/hh_test.jsonl \
+    --reference checkpoints/sft_dolly_packed3e5/step_940.pt \
+    --checkpoint sft=checkpoints/sft_dolly_packed3e5/step_940.pt \
+    --checkpoint dpo=checkpoints/dpo_hh/step_1495.pt \
+    --output results/preference_eval_hh.md
+```
+
 An instruction-tuned checkpoint must be prompted through the same template it
 was trained on, which `scripts/sample.py --instruct` does:
 
@@ -1521,8 +1749,8 @@ authLLM/
 ├── requirements.txt           # + pytest, psutil, httpx (dev/test only)
 ├── configs/
 │   ├── model/                 # tiny / small / medium / xl_1b presets (§4)
-│   └── train/                 # pretraining presets + sft_alpaca / sft_dolly fine-tuning presets (§10), packed and not (§10.6)
-├── scripts/                   # CLI entry points (train_tokenizer, train, finetune, evaluate, eval_instruction_following, sample, serve, benchmark_*, demo_pretrained_loading)
+│   └── train/                 # pretraining presets + sft_alpaca / sft_dolly fine-tuning presets (§10), packed and not (§10.6), sft_chat (§10.7), dpo_hh (§10.8)
+├── scripts/                   # CLI entry points (train_tokenizer, train, finetune, preference_tune, prepare_*_data, evaluate, eval_instruction_following, sample, serve, benchmark_*, demo_pretrained_loading)
 ├── logs/                      # metrics CSVs and run logs for every real training run
 ├── results/                   # unedited samples + what the model did and didn't learn
 ├── learning/                  # the build diary: what broke, what fixed it
@@ -1534,9 +1762,9 @@ authLLM/
 │   ├── api/                     # FastAPI server (§11.3) — separate from model code
 │   ├── model/                   # architecture: norm, rope, attention, feedforward, block, gpt (§6)
 │   ├── tokenizer/                # from-scratch BPE (§5)
-│   ├── data/                     # tokenized-dataset loading/chunking (§7), instruction.py (§10.1, §10.6)
-│   ├── training/                 # optim, amp, checkpoint, ddp, trainer (§8-9)
-│   ├── eval/                     # perplexity (§8)
+│   ├── data/                     # tokenized-dataset loading/chunking (§7), instruction.py (§10.1, §10.6), chat.py (§10.7), preference.py (§10.8)
+│   ├── training/                 # optim, amp, checkpoint, ddp, trainer (§8-9), dpo.py (§10.8)
+│   ├── eval/                     # perplexity (§8), preference.py (§10.8)
 │   ├── inference/                # generate.py (§11), pretrained_loader.py (§13)
 │   └── utils/                    # memory.py, the memory estimator (§12)
 └── tests/
@@ -1548,7 +1776,7 @@ authLLM/
 ## 17. Testing
 
 ```
-pytest                    # everything (277 tests)
+pytest                    # everything (344 tests)
 pytest tests/unit          # fast, run constantly
 pytest tests/integration   # slower — real training run + real 2-process DDP run
 ```
@@ -1567,25 +1795,49 @@ See [SPEC.md](SPEC.md) for the full milestone-by-milestone log, including
 honest notes on where an original plan changed after something was
 actually measured.
 
-Still not built: **FSDP/model parallelism** (and so `xl_1b` remains a
-shape-verified config — 1.23B parameters need ~20GB for
-weights+gradients+AdamW state against 22.6GB across two 11.3GB cards with
-no NVLink, which is not a real training run), and a **browser frontend**
-for the inference API.
+Still not built:
 
-Not built on the fine-tuning side ([§10](#10-instruction-tuning)):
-
-- **Preference tuning** — no RLHF, no DPO, no reward model. The model is
-  supervised-fine-tuned only, so it has been shown what a good answer looks
-  like but never told which of two answers is better.
-- **Multi-turn chat.** The template is single-turn instruction/response;
-  there is no conversation history, no system prompt, and no role tokens.
+- **RLHF proper** — no reward model and no PPO. Preference learning here is
+  DPO ([§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)),
+  which reaches the same objective without either, and that is a deliberate
+  stopping point rather than a step on the way to one.
 - **Model-judged evaluation.** Everything reported in §10 is computable
-  exactly from a held-out split — loss, stop rate, answer length, loop rate.
-  Nothing here scores helpfulness or correctness, and the samples make it
-  very clear that fluent format and correct content are separate axes.
+  exactly from a held-out split — loss, stop rate, answer length, loop rate,
+  preference ranking. Nothing here scores helpfulness or correctness, and the
+  samples make it very clear that fluent format and correct content are
+  separate axes.
+- **A trained `xl_1b`.** It fits and it steps, under FSDP with CPU offload
+  ([§12](#12-scaling-to-billion-parameter-architectures)); nobody has paid for
+  the run.
+- **A chat *run*.** The multi-turn format, its config and its tests are built
+  ([§10.7](#107-multi-turn-chat--a-conversation-not-a-question)), and no
+  checkpoint has been trained with them yet.
 
-Built on 2026-08-20, after §10's runs had already shipped:
+Built on 2026-08-21:
+
+- **Preference tuning** — the item that used to head this list. Every stage
+  before it learns by imitation and cannot be told that one answer is better
+  than another. DPO can: `ashugpt/training/dpo.py` is the loss and the frozen
+  reference, `ashugpt/data/preference.py` is the paired data, and the run
+  reuses the ordinary training loop whole
+  ([§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)).
+
+Built on 2026-08-20:
+
+- **FSDP / model parallelism** — `xl_1b` used to be a shape-verified config,
+  because 1.23B parameters need ~20GB for weights+gradients+AdamW state
+  against two 11.3GB cards with no NVLink. Sharded across both, with
+  parameters and optimizer state offloaded to host RAM, it takes real
+  optimizer steps at 2.04GB/GPU
+  ([§12](#12-scaling-to-billion-parameter-architectures)).
+- **A browser frontend** for the inference API — one file, no build step, no
+  external requests, streaming tokens as they decode
+  ([§11.3](#113-inference-api-fastapi)).
+- **Multi-turn chat format** — conversation history, a system turn, role
+  markers, and every assistant turn supervised
+  ([§10.7](#107-multi-turn-chat--a-conversation-not-a-question)).
+
+Also built on 2026-08-20, after §10's runs had already shipped:
 
 - **Sequence packing** — the item that used to head this list. Every
   instruction example was padded to its own 512-token window, so ~89% of both

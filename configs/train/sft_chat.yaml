@@ -36,12 +36,18 @@
 # sequence packing (section 10.6) is not wired up for it -- there is very
 # little empty window left to reclaim.
 #
-# ---- Why max_lr is 4.0e-5 ----
-# Chosen by sweep, not by analogy -- the same lesson section 10.6 learned
-# the hard way. A step here carries ~8,900 supervised tokens against the
-# Dolly stage's ~1,850, so the learning rate that stage used cannot be
-# inherited; what actually settled it is the held-out curve, and the sweep
-# runs are kept in logs/sft_chat_lr*.csv.
+# ---- Why max_lr is 4.0e-5, and why that is the weakest number here ----
+# Everything above this line is measured. This is not: it is the one value
+# in the file that is still an argument. A step here carries ~8,900
+# supervised tokens against the Dolly stage's ~1,850, so that stage's
+# 1.0e-5 cannot simply be inherited -- section 10.6 spent an entire sweep
+# learning that a learning rate does not survive a change in what one step
+# contains. 4.0e-5 is roughly 1.0e-5 scaled by that ratio, which is
+# reasoning by analogy: exactly the move packing refuted.
+#
+# No chat run has been made yet. When one is, the first thing to do is
+# sweep this, put the runs in logs/sft_chat_lr*.csv, and replace this
+# comment with the table -- the way §10.6 and sft_dolly.yaml did.
 #
 # ---- Steps ----
 # One epoch. 17,672 examples / (4 * 4 per step) = ~1,105 steps. One epoch
