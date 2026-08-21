@@ -29,8 +29,9 @@ def evaluate(
     amp_dtype: torch.dtype | None,
     max_batches: int | None = None,
 ) -> dict[str, float]:
-    """Runs the validation loop: average cross-entropy loss + perplexity
-    over up to `max_batches` batches of val_loader. Leaves the model in
+    """Runs the validation loop: average loss over up to `max_batches`
+    batches of val_loader, plus perplexity when the loss is a
+    cross-entropy (see the end of this function). Leaves the model in
     eval() mode -- callers resuming training should call model.train()
     themselves afterward (kept explicit rather than an automatic side
     effect of this function).
@@ -65,4 +66,13 @@ def evaluate(
         raise ValueError("val_loader produced no batches to evaluate")
 
     avg_loss = total_loss / num_batches
-    return {"loss": avg_loss, "perplexity": perplexity_from_loss(avg_loss)}
+    metrics = {"loss": avg_loss}
+    # Perplexity is exp(cross-entropy loss), so it only means anything when
+    # the loss *is* a cross-entropy. A preference model's loss is a ranking
+    # (ashugpt/training/dpo.py), and exponentiating it would produce a
+    # confident-looking number between 1 and 2 that describes nothing --
+    # so such a model declares itself here and the key is simply absent
+    # rather than filled with a plausible lie.
+    if getattr(model, "loss_is_cross_entropy", True):
+        metrics["perplexity"] = perplexity_from_loss(avg_loss)
+    return metrics

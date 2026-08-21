@@ -318,8 +318,13 @@ def train(
             if val_loader is not None and (step % config.eval_interval == 0 or step == config.max_steps):
                 metrics = evaluate(raw_model, val_loader, amp_dtype, max_batches=config.eval_steps)
                 model.train()  # evaluate() leaves the model in eval() mode; resume training explicitly
-                print(f"step {step:6d} | val_loss {metrics['loss']:.4f} | val_ppl {metrics['perplexity']:.2f}")
-                val_row = {"step": step, "val_loss": metrics["loss"], "val_perplexity": metrics["perplexity"]}
+                # No perplexity when the loss is not a cross-entropy -- see
+                # ashugpt/eval/perplexity.py. The column is then written empty
+                # rather than filled with exp() of something that is not one.
+                val_ppl = metrics.get("perplexity")
+                ppl_text = "" if val_ppl is None else f" | val_ppl {val_ppl:.2f}"
+                print(f"step {step:6d} | val_loss {metrics['loss']:.4f}{ppl_text}")
+                val_row = {"step": step, "val_loss": metrics["loss"], "val_perplexity": val_ppl}
                 history.append(val_row)
                 if log_path is not None:
                     _append_csv_row(log_path, val_row)

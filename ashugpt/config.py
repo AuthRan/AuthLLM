@@ -105,6 +105,14 @@ class TrainConfig:
     # learning rate do not carry over unexamined -- see README.md section 10.6.
     pack_sequences: bool = False
 
+    # Preference tuning only (scripts/preference_tune.py). How far the policy
+    # is allowed to drift from the frozen reference: small beta permits more
+    # divergence, large beta holds it close. It lives here rather than on the
+    # command line because it changes what the run optimizes as surely as the
+    # learning rate does, and a run should be reproducible from its config
+    # file alone. See README.md section 10.8.
+    dpo_beta: float = 0.1
+
     # Data windowing. None means "let the dataset decide" -- TokenizedDataset
     # defaults to 1 (every start position, maximally overlapping) and
     # ShardedTokenDataset to seq_len (disjoint). Set explicitly to override;
@@ -151,6 +159,8 @@ class TrainConfig:
             raise ValueError(f"num_workers must be >= 0, got {self.num_workers}")
         if self.warmup_steps > self.max_steps:
             raise ValueError(f"warmup_steps ({self.warmup_steps}) must be <= max_steps ({self.max_steps})")
+        if self.dpo_beta <= 0:
+            raise ValueError(f"dpo_beta must be positive, got {self.dpo_beta}")
         if self.optimizer not in ("adamw", "sgd"):
             raise ValueError(f"optimizer must be 'adamw' or 'sgd', got '{self.optimizer}'")
 
