@@ -45,6 +45,59 @@ PROMPT_NO_INPUT = (
 )
 
 
+def encode_supervised(tokenizer, prompt: str, response: str, seq_len: int) -> tuple[list[int], int] | None:
+    """Tokenize one prompt/response pair, or None if it cannot be used.
+
+    Returns `(ids, n_prompt)`: the whole token sequence, and how many of its
+    leading tokens are prompt. Every supervised dataset in this package --
+    padded, packed, and the preference pairs in preference.py -- encodes
+    through here, so "where does the response start" and "what is too long"
+    have one definition instead of one per class.
+
+    The length limit is `seq_len + 1` raw tokens rather than `seq_len`: a
+    window is sliced into `seq_len` inputs and `seq_len` labels offset by
+    one, which needs one more token than there are positions. Examples over
+    that are refused rather than truncated -- a truncated example ends
+    mid-response, which teaches the model to stop abruptly at exactly the
+    point the window runs out.
+
+    An empty response is refused too. It would encode to a lone EOS and
+    produce a single supervised position meaning "answer nothing at all",
+    which is worse than not training on the example.
+    """
+    if not response.strip():
+        return None
+
+    prompt_ids = tokenizer.encode(prompt, add_bos=True)
+    response_ids = tokenizer.encode(response.strip(), add_eos=True)
+    ids = prompt_ids + response_ids
+    if len(ids) > seq_len + 1:
+        return None
+    return ids, len(prompt_ids)
+
+
+def render_window(
+    ids: list[int], n_prompt: int, seq_len: int, pad_id: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """One encoded example as (input_ids, labels), right-padded to seq_len.
+
+    The one-token shift and the prompt mask both live here. `labels[t]`
+    predicts `ids[t + 1]`, so the first position whose target is a response
+    token is `t = n_prompt - 1`; everything before that is the prompt
+    predicting itself, and is masked. So is the padding past the end.
+    """
+    input_ids = torch.full((seq_len,), pad_id, dtype=torch.long)
+    labels = torch.full((seq_len,), IGNORE_INDEX, dtype=torch.long)
+
+    body = torch.tensor(ids, dtype=torch.long)
+    n_in = min(len(ids) - 1, seq_len)
+    input_ids[:n_in] = body[:n_in]
+    labels[:n_in] = body[1 : n_in + 1]
+    labels[: n_prompt - 1] = IGNORE_INDEX
+
+    return input_ids, labels
+
+
 @dataclass
 class InstructionExample:
     instruction: str
@@ -78,36 +131,18 @@ class InstructionDataset(Dataset):
         self.encoded: list[tuple[list[int], int]] = []
         self.dropped = 0
         for ex in examples:
-            prompt_ids = tokenizer.encode(ex.prompt(), add_bos=True)
-            response_ids = tokenizer.encode(ex.output.strip(), add_eos=True)
-            ids = prompt_ids + response_ids
-            # +1 because the window is sliced into seq_len inputs and seq_len
-            # labels, which needs seq_len + 1 tokens.
-            if len(ids) > seq_len + 1 or not response_ids:
+            encoded = encode_supervised(tokenizer, ex.prompt(), ex.output, seq_len)
+            if encoded is None:
                 self.dropped += 1
                 continue
-            self.encoded.append((ids, len(prompt_ids)))
+            self.encoded.append(encoded)
 
     def __len__(self) -> int:
         return len(self.encoded)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         ids, n_prompt = self.encoded[idx]
-
-        input_ids = torch.full((self.seq_len,), self.pad_id, dtype=torch.long)
-        labels = torch.full((self.seq_len,), IGNORE_INDEX, dtype=torch.long)
-
-        body = torch.tensor(ids, dtype=torch.long)
-        n_in = min(len(ids) - 1, self.seq_len)
-        input_ids[:n_in] = body[:n_in]
-        labels[:n_in] = body[1 : n_in + 1]
-
-        # labels[t] predicts ids[t + 1], so the first position whose target is
-        # a response token is t = n_prompt - 1. Everything before that is the
-        # prompt predicting itself, and is masked.
-        labels[: n_prompt - 1] = IGNORE_INDEX
-
-        return input_ids, labels
+        return render_window(ids, n_prompt, self.seq_len, self.pad_id)
 
 
 class PackedInstructionDataset(Dataset):
@@ -166,16 +201,14 @@ class PackedInstructionDataset(Dataset):
         encoded: list[tuple[list[int], int]] = []
         self.dropped = 0
         for ex in examples:
-            prompt_ids = tokenizer.encode(ex.prompt(), add_bos=True)
-            response_ids = tokenizer.encode(ex.output.strip(), add_eos=True)
-            ids = prompt_ids + response_ids
             # An example of L tokens costs L - 1 positions once shifted, so the
-            # limit is seq_len + 1 raw tokens -- same rule as the unpacked
-            # class, which needs seq_len inputs and seq_len labels from them.
-            if len(ids) > seq_len + 1 or not response_ids:
+            # limit encode_supervised applies -- seq_len + 1 raw tokens -- is
+            # the right one here too.
+            result = encode_supervised(tokenizer, ex.prompt(), ex.output, seq_len)
+            if result is None:
                 self.dropped += 1
                 continue
-            encoded.append((ids, len(prompt_ids)))
+            encoded.append(result)
 
         self.encoded = encoded
         self.bins = _pack_bins([len(ids) - 1 for ids, _ in encoded], seq_len)
