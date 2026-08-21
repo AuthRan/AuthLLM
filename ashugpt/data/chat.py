@@ -21,9 +21,20 @@ three supervised spans to one training example.
 "stop" and "the document is over" are the same event and the model cannot
 tell them apart. Here a document contains several of them, each followed
 by more conversation, so the token means "my turn is finished" -- which is
-what a chat model actually needs it to mean. This is the only reason a
-multi-turn model stops at the end of *its* turn instead of cheerfully
-writing the user's next message too.
+what a chat model actually needs it to mean.
+
+The obvious prediction from that -- a model without this training would
+run past its own turn and write the user's next message -- turned out to be
+wrong, and it is worth recording that it was measured rather than assumed.
+`scripts/eval_chat.py` reports a turn leak rate, and it is 0% both before
+and after this stage: the instruction-tuned model never invents the user's
+next turn, because it has been taught to emit EOS after a single answer
+and it does so promptly. What it does instead is answer a 222-token
+question in 57 tokens -- it treats the conversation as a one-shot prompt.
+So the thing multi-turn training buys here is not "stops in the right
+place" but "answers at the length and in the register the conversation
+calls for", which is a smaller and less dramatic claim than the one this
+docstring used to make. See README section 10.7.
 
 Roles are marked with plain text (`### User:` / `### Assistant:`), not new
 special tokens. A real role token would be cleaner -- one id, unambiguous,

@@ -1,0 +1,77 @@
+=== chat sweep 25e4 starting 2026-08-21T23:51:10+05:30 ===
+Data: 17,672 train / 367 val examples (1,961 dropped as longer than 1024 tokens)
+Model: medium (123,587,328 parameters), initialized from checkpoints/sft_dolly_packed3e5/step_940.pt (step 940)
+step      5 | train_loss 2.6020 | lr 5.00e-05
+step     10 | train_loss 2.2598 | lr 1.00e-04
+step     15 | train_loss 2.1792 | lr 1.50e-04
+step     20 | train_loss 2.3489 | lr 2.00e-04
+step     25 | train_loss 2.3053 | lr 2.50e-04
+step     30 | train_loss 2.2965 | lr 2.50e-04
+step     35 | train_loss 2.2395 | lr 2.49e-04
+step     40 | train_loss 2.2881 | lr 2.49e-04
+step     45 | train_loss 2.1932 | lr 2.47e-04
+step     50 | train_loss 2.3748 | lr 2.46e-04
+step     50 | val_loss 2.2371 | val_ppl 9.37
+step     55 | train_loss 2.1672 | lr 2.44e-04
+step     60 | train_loss 2.3480 | lr 2.42e-04
+step     65 | train_loss 2.4353 | lr 2.39e-04
+step     70 | train_loss 2.2113 | lr 2.36e-04
+step     75 | train_loss 2.1447 | lr 2.33e-04
+step     80 | train_loss 2.1827 | lr 2.29e-04
+step     85 | train_loss 2.2707 | lr 2.25e-04
+step     90 | train_loss 2.1735 | lr 2.21e-04
+step     95 | train_loss 2.0852 | lr 2.17e-04
+step    100 | train_loss 2.2174 | lr 2.12e-04
+step    100 | val_loss 2.1971 | val_ppl 9.00
+step    105 | train_loss 2.1938 | lr 2.07e-04
+step    110 | train_loss 2.0850 | lr 2.02e-04
+step    115 | train_loss 2.1528 | lr 1.97e-04
+step    120 | train_loss 2.1909 | lr 1.91e-04
+step    125 | train_loss 2.3245 | lr 1.85e-04
+step    130 | train_loss 1.9749 | lr 1.80e-04
+step    135 | train_loss 2.1842 | lr 1.73e-04
+step    140 | train_loss 2.1683 | lr 1.67e-04
+step    145 | train_loss 2.0486 | lr 1.61e-04
+step    150 | train_loss 2.1139 | lr 1.55e-04
+step    150 | val_loss 2.1523 | val_ppl 8.60
+step    155 | train_loss 2.0924 | lr 1.48e-04
+step    160 | train_loss 1.9824 | lr 1.42e-04
+step    165 | train_loss 2.2719 | lr 1.36e-04
+step    170 | train_loss 2.2369 | lr 1.29e-04
+step    175 | train_loss 2.1541 | lr 1.23e-04
+step    180 | train_loss 2.3010 | lr 1.16e-04
+step    185 | train_loss 2.0361 | lr 1.10e-04
+step    190 | train_loss 2.0394 | lr 1.04e-04
+step    195 | train_loss 2.1965 | lr 9.79e-05
+step    200 | train_loss 2.0802 | lr 9.19e-05
+step    200 | val_loss 2.1047 | val_ppl 8.20
+step    205 | train_loss 2.0698 | lr 8.61e-05
+step    210 | train_loss 2.2751 | lr 8.05e-05
+step    215 | train_loss 2.1294 | lr 7.51e-05
+step    220 | train_loss 2.1462 | lr 6.98e-05
+step    225 | train_loss 1.9262 | lr 6.48e-05
+step    230 | train_loss 2.2990 | lr 6.00e-05
+step    235 | train_loss 2.2212 | lr 5.55e-05
+step    240 | train_loss 2.1131 | lr 5.12e-05
+step    245 | train_loss 2.0608 | lr 4.72e-05
+step    250 | train_loss 2.1622 | lr 4.36e-05
+step    250 | val_loss 2.0713 | val_ppl 7.93
+step    255 | train_loss 1.9861 | lr 4.02e-05
+step    260 | train_loss 1.9188 | lr 3.71e-05
+step    265 | train_loss 2.1204 | lr 3.44e-05
+step    270 | train_loss 2.1612 | lr 3.20e-05
+step    275 | train_loss 2.2175 | lr 2.99e-05
+step    280 | train_loss 2.0363 | lr 2.82e-05
+step    285 | train_loss 2.0952 | lr 2.69e-05
+step    290 | train_loss 2.2692 | lr 2.59e-05
+step    295 | train_loss 1.9667 | lr 2.53e-05
+step    300 | train_loss 1.9160 | lr 2.50e-05
+step    300 | val_loss 2.0545 | val_ppl 7.80
+Saved checkpoint to checkpoints/sft_chat_lr25e4/step_300.pt
+=== chat sweep 25e4 done 2026-08-21T23:55:24+05:30; cooling 120s ===
+=== multi-turn chat eval, 400-token cap 2026-08-21T23:57:24+05:30 ===
+400 held-out conversations, 367 usable (52.4% of positions supervised)
+       sft: loss 2.8262 | stop 100% | turn leak 0% | 57 tokens (reference 222) | loop 5%  (40 prompts)
+ chat_15e6: loss 2.1187 | stop 88% | turn leak 0% | 211 tokens (reference 222) | loop 48%  (40 prompts)
+  chat_4e5: loss 2.0630 | stop 88% | turn leak 0% | 183 tokens (reference 222) | loop 30%  (40 prompts)
+  chat_1e4: loss 2.0333 | stop 98% | turn leak 0% | 182 tokens (reference 222) | loop 35%  (40 prompts)

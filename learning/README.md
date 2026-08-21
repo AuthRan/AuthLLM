@@ -23,6 +23,9 @@ Read in order:
 7. **[Teaching it to prefer](07-preference-tuning.md)** — the first stage that
    is shown a *bad* answer, and the four ways its own headline metric
    flattered it.
+8. **[Holding a conversation](08-holding-a-conversation.md)** — multi-turn
+   training, and the evaluation I nearly published backwards because I copied
+   a constant from a script written for a corpus three times shorter.
 
 ## The 30-second version
 
@@ -47,7 +50,12 @@ Then I packed the fine-tuning windows, because ~89% of both stages was padding.
 It came out 4.4x faster and, once the learning rate was re-tuned for a step
 that now means something different, better as well. That's file 6.
 
-Then I gave it preferences — pairs of answers with a human's ranking, trained
+Then conversations instead of questions, which took a `seq_len` of 1024 to be
+multi-turn at all and cost the single-turn model 0.08-0.17 nats to gain — the
+same relocation trade file 5 found. That's file 8, and the more useful half of
+it is the metric I nearly got backwards.
+
+And preferences — pairs of answers with a human's ranking, trained
 with DPO. The objective learned what it was asked to learn, and almost none of
 that was what I wanted: measured without reference to the model it started
 from, its preference for the better answer moved half a percentage point, and

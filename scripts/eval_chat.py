@@ -29,6 +29,13 @@ terse. A `mean reference tokens` column is reported beside the model's own
 length for the same reason: an answer length only means something next to the
 length the data actually has.
 
+The table's last row is the **human-written reference answers**, scored by the
+identical loop detector. Loop rate counts a repeated ten-token window anywhere
+in a generation, so a model whose answers are four times longer has four times
+the opportunity to trip it -- and on this corpus 15% of the real answers do.
+Without that row, "2% before tuning, 48% after" reads as catastrophic
+degeneration when most of the change is length.
+
 The prompt is always the conversation's **last** assistant turn with all of
 its history in front of it -- the hardest and most representative case, and
 the one a first-turn-only evaluation would never exercise.
@@ -107,6 +114,7 @@ def measure_generation(model, tokenizer, conversations, args) -> tuple[dict[str,
         # another one. Measured on the text *before* any cleanup, because
         # scripts/sample.py cuts at the marker for display and that cut is
         # exactly what would hide this.
+        reference_ids = tokenizer.encode(reference)
         leaked = next((m for m in MARKERS if m in raw_answer), None)
         answer = raw_answer.split(leaked, 1)[0].strip() if leaked else raw_answer.strip()
 
@@ -119,7 +127,8 @@ def measure_generation(model, tokenizer, conversations, args) -> tuple[dict[str,
                 "stopped": stopped,
                 "leaked": leaked,
                 "tokens": len(answer_ids),
-                "reference_tokens": len(tokenizer.encode(reference)),
+                "reference_tokens": len(reference_ids),
+                "reference_looped": has_repeated_window(reference_ids),
                 "looped": has_repeated_window(answer_ids),
             }
         )
@@ -136,6 +145,7 @@ def measure_generation(model, tokenizer, conversations, args) -> tuple[dict[str,
             "leak_rate": sum(r["leaked"] is not None for r in records) / n,
             "mean_tokens": sum(r["tokens"] for r in records) / n,
             "mean_reference_tokens": sum(r["reference_tokens"] for r in records) / n,
+            "reference_loop_rate": sum(r["reference_looped"] for r in records) / n,
             "loop_rate": sum(r["looped"] for r in records) / n,
             "prompts": n,
         },
@@ -193,7 +203,8 @@ def main() -> None:
             f"{name:>10}: loss {loss['loss']:.4f} | stop {summary['stop_rate']:.0%} | "
             f"turn leak {summary['leak_rate']:.0%} | {summary['mean_tokens']:.0f} tokens "
             f"(reference {summary['mean_reference_tokens']:.0f}) | "
-            f"loop {summary['loop_rate']:.0%}  ({summary['prompts']} prompts)"
+            f"loop {summary['loop_rate']:.0%} (reference {summary['reference_loop_rate']:.0%})"
+            f"  ({summary['prompts']} prompts)"
         )
         del model
         if args.device.startswith("cuda"):
@@ -216,9 +227,11 @@ def main() -> None:
         "marker-cut that `scripts/sample.py` applies for display, because that cut is exactly what would "
         "hide it.",
         "",
-        f"The reference answers these are compared against average "
-        f"{next(iter(rows.values()))['mean_reference_tokens']:.0f} tokens, which is what the mean-tokens "
-        f"column should be read against -- an answer length means nothing on its own.",
+        f"The last row is the human-written reference answers, scored the same way. It is there because "
+        f"neither of the two right-hand columns means anything on its own: an answer length has to be read "
+        f"against the length the data actually has, and loop rate counts a repeated ten-token window "
+        f"anywhere in a generation, so a model answering four times longer gets four times the chance to "
+        f"trip it.",
         "",
         "| checkpoint | held-out loss | stop rate | turn leak rate | mean tokens | loop rate |",
         "| --- | ---: | ---: | ---: | ---: | ---: |",
@@ -228,6 +241,11 @@ def main() -> None:
             f"| `{name}` | {metrics['loss']:.4f} | {metrics['stop_rate']:.0%} | "
             f"{metrics['leak_rate']:.0%} | {metrics['mean_tokens']:.0f} | {metrics['loop_rate']:.0%} |"
         )
+    reference = next(iter(rows.values()))
+    lines.append(
+        f"| *the human answers themselves* | — | — | — | "
+        f"{reference['mean_reference_tokens']:.0f} | {reference['reference_loop_rate']:.0%} |"
+    )
 
     for name, records in all_records.items():
         lines += ["", f"## {name}", ""]

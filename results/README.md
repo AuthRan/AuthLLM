@@ -6,7 +6,10 @@
 > with held-out measurements rather than impressions. Later still it was
 > preference-tuned with DPO, which moved the objective it was given ten points
 > and the thing anyone cares about half a point —
-> [preference-tuning.md](preference-tuning.md) has that one.
+> [preference-tuning.md](preference-tuning.md) has that one. It was also given
+> conversations rather than questions, which is
+> [chat-tuning.md](chat-tuning.md), and where the first metric I reached for
+> turned out to be measuring the wrong thing.
 
 The run finished. Perplexity 23.53. That number tells you almost nothing about
 what the thing sounds like, so I sat down and generated a pile of text from the
