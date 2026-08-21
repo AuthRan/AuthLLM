@@ -36,18 +36,33 @@
 # sequence packing (section 10.6) is not wired up for it -- there is very
 # little empty window left to reclaim.
 #
-# ---- Why max_lr is 4.0e-5, and why that is the weakest number here ----
-# Everything above this line is measured. This is not: it is the one value
-# in the file that is still an argument. A step here carries ~8,900
-# supervised tokens against the Dolly stage's ~1,850, so that stage's
-# 1.0e-5 cannot simply be inherited -- section 10.6 spent an entire sweep
-# learning that a learning rate does not survive a change in what one step
-# contains. 4.0e-5 is roughly 1.0e-5 scaled by that ratio, which is
-# reasoning by analogy: exactly the move packing refuted.
+# ---- Why max_lr is 1.0e-4 ----
+# This file used to say 4.0e-5, reasoned by analogy: a step here carries
+# ~8,900 supervised tokens against the Dolly stage's ~1,850, so scale that
+# stage's 1.0e-5 by the ratio. Section 10.6 spent an entire sweep refuting
+# exactly that move, so this one was swept too -- four points, 300 steps each,
+# each a complete cosine cycle so the endpoints compare fairly, in
+# logs/sft_chat_lr*.csv. Scored by scripts/eval_chat.py on the held-out split:
 #
-# No chat run has been made yet. When one is, the first thing to do is
-# sweep this, put the runs in logs/sft_chat_lr*.csv, and replace this
-# comment with the table -- the way §10.6 and sft_dolly.yaml did.
+#   max_lr    held-out loss   stop rate   mean tokens   loop rate
+#   1.5e-5       2.1187          88%          211          48%
+#   4.0e-5       2.0630          88%          183          30%
+#   1.0e-4     **2.0333**        98%          182          35%
+#   2.5e-4       2.0545         100%          153          38%
+#
+#   the model this starts from   100%           57           5%   (loss 2.8262)
+#   the human-written answers     --           222          15%
+#
+# 1.0e-4 has the best held-out loss and the second-best stop rate, and its
+# answers land closest to the length the data actually has. 2.5e-4 is past the
+# optimum -- worse loss, and the shortest answers of any chat checkpoint --
+# which is what makes 1.0e-4 a bracketed minimum rather than the edge of the
+# range I happened to try. The old 4.0e-5 guess was low by 2.5x.
+#
+# Read the last two rows before reading the last two columns. The untuned
+# model "wins" stop rate by answering a 222-token question in 57 tokens, which
+# is not concision, and loop rate scales with answer length -- 15% of the real
+# answers trip the same detector. See README.md section 10.7.
 #
 # ---- Steps ----
 # One epoch. 17,672 examples / (4 * 4 per step) = ~1,105 steps. One epoch

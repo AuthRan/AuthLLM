@@ -75,3 +75,6 @@ Saved checkpoint to checkpoints/sft_chat_lr25e4/step_300.pt
  chat_15e6: loss 2.1187 | stop 88% | turn leak 0% | 211 tokens (reference 222) | loop 48%  (40 prompts)
   chat_4e5: loss 2.0630 | stop 88% | turn leak 0% | 183 tokens (reference 222) | loop 30%  (40 prompts)
   chat_1e4: loss 2.0333 | stop 98% | turn leak 0% | 182 tokens (reference 222) | loop 35%  (40 prompts)
+ chat_25e4: loss 2.0545 | stop 100% | turn leak 0% | 153 tokens (reference 222) | loop 38%  (40 prompts)
+Wrote results/chat_eval_sweep.md
+=== chat stage 2 complete 2026-08-22T00:04:10+05:30 ===

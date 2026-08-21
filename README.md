@@ -1179,14 +1179,77 @@ gradient. So this stage is not padding-bound, and
 [§10.6](#106-sequence-packing--the-89-that-was-padding)'s 4.4x is not
 available to win — which is why packing is not wired up for conversations.
 
-**Status: implemented, configured, not yet run.**
-[`configs/train/sft_chat.yaml`](configs/train/sft_chat.yaml) is complete and
-the data pipeline is tested
-([`tests/unit/test_chat_dataset.py`](tests/unit/test_chat_dataset.py)), but no
-chat checkpoint exists yet, so there are no held-out numbers and no samples in
-this section. The config's learning rate is the one value in it derived by
-analogy rather than measurement, and it says so in place: sweeping it is the
-first thing the run should do, for the reason §10.6 already paid for once.
+#### The learning rate, swept rather than argued
+
+This config used to carry 4.0e-5, reasoned by analogy: a step here supervises
+~8,900 tokens against the Dolly stage's ~1,850, so scale that stage's 1.0e-5 by
+the ratio. §10.6 spent a whole sweep refuting exactly that move, so this one
+was swept too — four points, 300 steps each, complete cosine cycles
+(`logs/sft_chat_lr*.csv`), scored by
+[`scripts/eval_chat.py`](scripts/eval_chat.py):
+
+| max_lr | held-out loss | stop rate | mean tokens | loop rate |
+|---|---:|---:|---:|---:|
+| 1.5e-5 | 2.1187 | 88% | 211 | 48% |
+| 4.0e-5 | 2.0630 | 88% | 183 | **30%** |
+| **1.0e-4** | **2.0333** | 98% | 182 | 35% |
+| 2.5e-4 | 2.0545 | **100%** | 153 | 38% |
+| *the model this starts from* | *2.8262* | *100%* | *57* | *5%* |
+| *the human-written answers* | — | — | *222* | *15%* |
+
+1.0e-4 — 2.5x the value argued for — takes the best held-out loss with the
+second-best stop rate and answers closest to the length the data has. 2.5e-4 is
+past the optimum on both loss and length, which is what makes this a bracketed
+minimum rather than the top of a range I happened to pick.
+
+#### Read the last two rows before the last two columns
+
+Both of those bottom rows are there because the first version of this table was
+wrong in a way nothing in it could show.
+
+**The generation cap.** `eval_chat.py` initially reused the single-turn eval's
+200-token cap, and reported that chat training had *broken* stopping: 100%
+before, 57-65% after. UltraChat's held-out answers average 296 tokens and 71%
+of them exceed 200. At that cap "stop rate" is not measuring whether a model
+finishes its turn, it is measuring whether it writes answers shorter than most
+real ones — which the instruction-tuned model passes by answering a 222-token
+question in 57 tokens. At a 400-token cap the same checkpoints stop 88-100% of
+the time.
+
+**Loop rate scales with length.** It counts a repeated ten-token window
+anywhere in a generation, so an answer four times longer gets four times the
+chances. 15% of the *human-written* UltraChat answers trip it; 0% of Dolly's
+59-token ones do. The chat models' 30-48% is genuinely elevated, and it is not
+the 10x jump that comparing against the untuned model's 5% suggests.
+
+**Turn leak rate is 0% everywhere**, before and after — which refutes the
+prediction this section was originally built on. The instruction-tuned model
+does not run past its turn and write the user's next message; it emits EOS
+promptly, because that is exactly what one-answer-per-document taught it. Its
+failure on a conversation is subtler: it answers as though the dialogue were a
+one-shot prompt. What this stage buys is answering at the length and in the
+register a conversation calls for, which is a smaller claim than the one the
+format's design implies, and it is the one the numbers support.
+
+#### What it costs the model that already worked
+
+Same held-out Dolly split, same script and settings as every row in §10.4:
+
+| checkpoint | Dolly held-out loss | stop rate | mean tokens | loop rate |
+| --- | ---: | ---: | ---: | ---: |
+| `sft` — before chat training | **2.7444** | 92% | **62** | **20%** |
+| chat, 1.5e-5 | 2.8244 | 80% | 102 | 28% |
+| chat, 4.0e-5 | 2.8530 | 75% | 109 | 38% |
+| chat, 1.0e-4 | 2.9178 | 88% | 97 | 22% |
+
+0.08 to 0.17 nats, and single-turn answers 50-75% longer. That is §10.4's
+relocation effect again: a stage does not make the model better, it moves where
+the model is good, and UltraChat's idiom is long and discursive where Dolly's
+is short. Whether that is a cost or the point depends on which distribution you
+meant to serve — and unlike everything else in this section, that question has
+no measurement attached to it.
+
+Full narrative in [`results/chat-tuning.md`](results/chat-tuning.md).
 
 
 ### 10.8 Preference tuning — the first stage that is shown a bad answer
