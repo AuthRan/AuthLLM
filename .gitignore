@@ -42,3 +42,4 @@ __pycache__/
 # the tables they print are committed in results/preference_eval_*.md and
 # results/instruction_eval_dpo*.md, with every generation behind them
 /logs/dpo_*_eval.log
+/logs/chat_eval*.log

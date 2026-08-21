@@ -113,6 +113,17 @@ class TrainConfig:
     # file alone. See README.md section 10.8.
     dpo_beta: float = 0.1
 
+    # Preference tuning only. Divides each sequence's log-probability by its
+    # own supervised token count, so the objective ranks answers per token
+    # rather than in total. It is a different algorithm, not a scaling
+    # detail: summed log-probabilities punish an answer for being long, and
+    # on this repo's preference data that effect is larger than any
+    # difference in content -- see README.md section 10.8. Its beta does not
+    # mean what the standard one's beta means, since the margins are ~L times
+    # smaller, so a run under this flag is not comparable to one without it
+    # except through the reference-free metrics.
+    dpo_length_normalized: bool = False
+
     # Data windowing. None means "let the dataset decide" -- TokenizedDataset
     # defaults to 1 (every start position, maximally overlapping) and
     # ShardedTokenDataset to seq_len (disjoint). Set explicitly to override;

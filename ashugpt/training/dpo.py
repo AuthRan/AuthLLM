@@ -38,14 +38,35 @@ algebra rather than by adding a penalty term.
 lets the policy move further, large beta keeps it close. 0.1 is the usual
 starting point and what this repo's runs use.
 
+## Length normalization, and why it is an option here
+
+Summed log-probabilities are all negative, so a longer answer scores lower
+for being longer -- typically another 2-3 nats per token. On this repo's
+preference data that dwarfs any difference in content: HH-RLHF's chosen
+answers average 80 tokens against the rejected answers' 73, and the
+instruction-tuned model ranks the chosen answer first 92.8% of the time
+when it is shorter and 8.3% when it is longer. It is a length detector,
+and standard DPO left that untouched (README section 10.8).
+
+`length_normalized=True` divides each sequence's log-probability by its own
+number of supervised tokens, so every term in the objective is a per-token
+average and the length signal cancels. This is a real change of algorithm,
+not a scaling detail -- the implicit reward it defines is a different
+quantity, and its `beta` does not mean the same thing as the standard
+one's, because the margins it produces are ~L times smaller. Runs made
+under the two settings are not comparable except through the
+reference-free metrics in `ashugpt/eval/preference.py`.
+
 Implementation notes:
 
 - **Log-probabilities are summed over the response, not averaged.** The
   quantity in the loss is log pi(y|x) for a whole sequence, which is a sum.
-  Averaging would silently make the objective length-normalized, which is a
-  different (and defensible, and much-debated) algorithm -- but not this
-  one, and the difference shows up as a systematic preference for short
-  answers rather than as an error.
+  Averaging makes the objective length-normalized, which is a different
+  (and defensible, and much-debated) algorithm; the failure mode being
+  avoided is doing it *silently*, since the difference shows up as a
+  systematic drift in answer length rather than as an error. It is
+  available deliberately, as `length_normalized=True` -- see below for
+  what measurement argued for having it at all.
 - **The prompt is masked exactly as in supervised fine-tuning.** Only the
   response tokens count toward log pi(y|x); the prompt is conditioning.
 - **log_softmax runs in fp32 even under fp16 autocast.** These are sums of
@@ -238,11 +259,18 @@ class DPOModel(nn.Module):
     # the validation log grows a column of exp(DPO loss).
     loss_is_cross_entropy = False
 
-    def __init__(self, policy: nn.Module, reference: nn.Module, beta: float = 0.1) -> None:
+    def __init__(
+        self,
+        policy: nn.Module,
+        reference: nn.Module,
+        beta: float = 0.1,
+        length_normalized: bool = False,
+    ) -> None:
         super().__init__()
         self.policy = policy
         self.reference = reference
         self.beta = beta
+        self.length_normalized = length_normalized
 
         # Frozen, and frozen in two senses: no gradients (which also keeps
         # it out of build_optimizer, which filters on requires_grad), and
@@ -319,6 +347,17 @@ class DPOModel(nn.Module):
 
         supervised = (flat_labels != IGNORE_INDEX).sum(dim=-1).view(batch, 2)
         chosen_tokens, rejected_tokens = supervised.unbind(dim=1)
+
+        if self.length_normalized:
+            # Every term becomes a per-token average, so an answer is no
+            # longer penalized for being long. Both the policy's and the
+            # reference's log-probability for one answer are divided by the
+            # same count -- they score the identical tokens -- so the
+            # implicit reward stays a difference of comparable quantities.
+            policy_chosen = policy_chosen / chosen_tokens
+            policy_rejected = policy_rejected / rejected_tokens
+            reference_chosen = reference_chosen / chosen_tokens
+            reference_rejected = reference_rejected / rejected_tokens
 
         metrics = dpo_loss(
             policy_chosen,

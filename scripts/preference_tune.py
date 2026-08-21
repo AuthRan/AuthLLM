@@ -149,12 +149,14 @@ def main() -> None:
         policy=load_weights(args.init_from, model_config),
         reference=load_weights(reference_path, model_config),
         beta=train_config.dpo_beta,
+        length_normalized=train_config.dpo_length_normalized,
     )
 
     if _IS_MAIN_PROCESS:
         print(
             f"Model: {model_config.name} ({model.num_parameters():,} parameters), policy from "
             f"{args.init_from}, reference frozen from {reference_path}, beta {train_config.dpo_beta}"
+            + (", length-normalized" if train_config.dpo_length_normalized else "")
         )
 
     # Before the first step, on the main process only: no collective has run

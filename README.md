@@ -1955,7 +1955,11 @@ authLLM/
 ├── configs/
 │   ├── model/                 # tiny / small / medium / xl_1b presets (§4)
 │   └── train/                 # pretraining presets + sft_alpaca / sft_dolly fine-tuning presets (§10), packed and not (§10.6), sft_chat (§10.7), dpo_hh (§10.8)
-├── scripts/                   # CLI entry points (train_tokenizer, train, finetune, preference_tune, prepare_*_data, evaluate, eval_instruction_following, sample, serve, benchmark_*, demo_pretrained_loading)
+├── scripts/                   # CLI entry points, in pipeline order:
+│                              #   prepare_data / prepare_instruction_data / prepare_chat_data / prepare_preference_data
+│                              #   train_tokenizer → train → finetune (--format instruction|chat) → preference_tune
+│                              #   evaluate (perplexity) · eval_instruction_following (§10.4) · eval_chat (§10.7) · eval_preference (§10.8)
+│                              #   sample · serve · benchmark_{memory,packing,fsdp,server} · demo_pretrained_loading
 ├── logs/                      # metrics CSVs and run logs for every real training run
 ├── results/                   # unedited samples + what the model did and didn't learn
 ├── learning/                  # the build diary: what broke, what fixed it
@@ -1969,7 +1973,7 @@ authLLM/
 │   ├── tokenizer/                # from-scratch BPE (§5)
 │   ├── data/                     # tokenized-dataset loading/chunking (§7), instruction.py (§10.1, §10.6), chat.py (§10.7), preference.py (§10.8)
 │   ├── training/                 # optim, amp, checkpoint, ddp, trainer (§8-9), dpo.py (§10.8)
-│   ├── eval/                     # perplexity (§8), preference.py (§10.8)
+│   ├── eval/                     # perplexity (§8), generation.py (behavioural checks), preference.py (§10.8)
 │   ├── inference/                # generate.py (§11), pretrained_loader.py (§13)
 │   └── utils/                    # memory.py, the memory estimator (§12)
 └── tests/

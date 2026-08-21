@@ -434,3 +434,69 @@ def test_the_length_split_separates_a_length_detector_from_a_ranker() -> None:
     assert metrics["raw_accuracy_chosen_shorter"] == 1.0
     assert metrics["raw_accuracy_chosen_longer"] == 0.0
     assert metrics["length_normalized_accuracy"] == pytest.approx(0.5)  # every token scores alike
+
+
+def test_length_normalization_is_off_unless_asked_for() -> None:
+    """The default has to stay the standard algorithm: a flag that silently
+    changed the objective would make every previous run incomparable."""
+    from ashugpt.config import TrainConfig
+
+    config = TrainConfig(batch_size=1, seq_len=8, max_steps=1, warmup_steps=0, max_lr=1e-4, min_lr=1e-5)
+    assert config.dpo_length_normalized is False
+    assert _dpo_model().length_normalized is False
+
+
+def test_length_normalization_divides_every_term_by_its_own_length() -> None:
+    """Both models score the identical tokens, so both are divided by the same
+    count and the implicit reward stays a difference of comparable quantities."""
+    config = _model_config()
+    torch.manual_seed(0)
+    policy = AshuGPT(config)
+    reference = AshuGPT(config)
+    reference.load_state_dict(policy.state_dict())
+
+    input_ids, labels = _pair_batch()
+    # Make the two sides different lengths, which is the whole point.
+    labels[:, 1, 4:6] = IGNORE_INDEX
+
+    plain = DPOModel(policy, reference, beta=0.1)
+    plain(input_ids, labels=labels)
+    summed = plain.last_metrics
+
+    normalized = DPOModel(policy, reference, beta=0.1, length_normalized=True)
+    normalized(input_ids, labels=labels)
+    per_token = normalized.last_metrics
+
+    # Policy is the reference in both, so every reward is zero either way --
+    # the flag must not disturb that.
+    assert summed.loss.item() == pytest.approx(LOG2, abs=1e-5)
+    assert per_token.loss.item() == pytest.approx(LOG2, abs=1e-5)
+
+    # But the policy log-probabilities it reports are now per-token averages,
+    # which is what removes the length penalty.
+    assert torch.allclose(
+        per_token.policy_chosen_logps,
+        summed.policy_chosen_logps / summed.chosen_tokens,
+        atol=1e-4,
+    )
+    assert torch.allclose(
+        per_token.policy_rejected_logps,
+        summed.policy_rejected_logps / summed.rejected_tokens,
+        atol=1e-4,
+    )
+
+
+def test_length_normalization_changes_which_answer_the_objective_prefers() -> None:
+    """A long, per-token-better answer loses under the summed objective and
+    wins under the normalized one. That difference is the entire reason the
+    flag exists."""
+    # chosen: 20 tokens at -2.0 each. rejected: 5 tokens at -3.0 each.
+    chosen_logps, rejected_logps = torch.tensor([-40.0]), torch.tensor([-15.0])
+    chosen_tokens, rejected_tokens = torch.tensor([20.0]), torch.tensor([5.0])
+
+    summed = dpo_loss(
+        chosen_logps, rejected_logps, chosen_logps, rejected_logps,
+        chosen_tokens=chosen_tokens, rejected_tokens=rejected_tokens,
+    )
+    assert summed.raw_accuracy.item() == 0.0  # the longer answer "loses"
+    assert summed.length_normalized_accuracy.item() == 1.0  # per token it wins
