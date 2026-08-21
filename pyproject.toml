@@ -17,5 +17,16 @@ dependencies = [
     "uvicorn",
 ]
 
+[project.optional-dependencies]
+# The production tokenizer (README section 5). Optional because
+# ashugpt.tokenizer.bpe_scratch is the from-scratch path and needs nothing but
+# the standard library -- but every real run in this repo, and every test that
+# touches instruction, chat or preference data, goes through tiktoken.
+tokenizer = ["tiktoken"]
+# Corpus preparation only. scripts/prepare_*_data.py stream public datasets
+# from the Hugging Face Hub; nothing under ashugpt/ imports this, which is why
+# a training run needs it and an inference deployment does not.
+data = ["datasets"]
+
 [tool.setuptools.packages.find]
 include = ["ashugpt*"]

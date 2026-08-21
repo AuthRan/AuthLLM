@@ -2,10 +2,11 @@
 
 **An educational, from-scratch GPT-style decoder-only language model.**
 Tokenizer, Transformer architecture (RoPE, RMSNorm, SwiGLU, causal
-attention), training loop, distributed training, memory optimization,
-autoregressive generation, and an inference API — implemented directly
-against PyTorch tensor/autograd primitives, not assembled from
-`transformers.AutoModel`. Built as a from-the-ground-up study of the
+attention), training loop, distributed training (DDP and FSDP), memory
+optimization, instruction tuning, preference tuning with DPO, autoregressive
+generation, and a streaming inference API with a browser frontend —
+implemented directly against PyTorch tensor/autograd primitives, not assembled
+from `transformers.AutoModel`. Built as a from-the-ground-up study of the
 complete LLM stack, following the trajectory of Sebastian Raschka's
 *Build a Large Language Model (From Scratch)*.
 
@@ -54,7 +55,7 @@ what fixed them.
 > | Claim | Means | True here for |
 > |---|---|---|
 > | **"I implemented this architecture"** | Code exists that can construct it; weights would be random | `tiny`, `small`, `medium`, `xl_1b` — all four presets |
-> | **"I trained this checkpoint"** | Real gradient descent ran, on real data, producing a real checkpoint file | `tiny` and `small` on the small demo corpora in `tests/fixtures/`; `medium` (124M) **trained to completion** on FineWeb-Edu — 20,000 steps, 2.46B tokens, final validation perplexity 23.53 — see the status block above, then **instruction-tuned** on Alpaca and Dolly ([§10](#10-instruction-tuning)) |
+> | **"I trained this checkpoint"** | Real gradient descent ran, on real data, producing a real checkpoint file | `tiny` and `small` on the small demo corpora in `tests/fixtures/`; `medium` (124M) **trained to completion** on FineWeb-Edu — 20,000 steps, 2.46B tokens, final validation perplexity 23.53 — see the status block above, then **instruction-tuned** on Alpaca and Dolly ([§10](#10-instruction-tuning)) and **preference-tuned** on HH-RLHF with DPO ([§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)) |
 > | **"I loaded this pretrained checkpoint for inference"** | Someone else's trained weights, used without training or fine-tuning them here | **Not true of anything in this repo.** GPT-2's weights were compared against, never loaded successfully — see [§13](#13-pretrained-checkpoints-comparison-not-loading) — and never claimed as trained by this project |
 
 See [§14](#14-provenance-trained--implemented--loaded) for the full,
@@ -1544,8 +1545,15 @@ The full version of the table at the top of this document:
    instruction-tuned checkpoints ([§10](#10-instruction-tuning)): the same
    trainer, the same gradient descent, started from this project's own
    pretrained weights rather than anyone else's, on the public Alpaca and
-   Dolly instruction sets. Still **never true of GPT-2's weights**, and still
-   not true at `xl_1b` scale.
+   Dolly instruction sets. And of the preference-tuned checkpoint
+   ([§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)),
+   which is the same trainer again, started from this project's own
+   instruction-tuned weights, on the public HH-RLHF preference pairs — the
+   labels are Anthropic's, the gradients are this project's. Still **never
+   true of GPT-2's weights**, and still not true at `xl_1b` scale — that
+   config now takes real optimizer steps under FSDP
+   ([§12](#12-scaling-to-billion-parameter-architectures)), which is a
+   different claim from having been trained.
 3. **"I loaded this publicly available pretrained checkpoint for
    inference."** Would be true if a checkpoint's *own* architecture were
    reimplemented and its weights genuinely loaded for inference-only use
@@ -1567,9 +1575,17 @@ The full version of the table at the top of this document:
 ```
 python -m venv .venv
 .venv\Scripts\activate            # Windows; `source .venv/bin/activate` on Linux/Mac
-pip install -e .                  # torch, pyyaml, fastapi, uvicorn
-pip install -r requirements.txt   # + pytest, psutil, httpx (dev/test only)
+pip install -e .                  # torch, pyyaml, fastapi, uvicorn -- enough to build and serve a model
+pip install -r requirements.txt   # + tiktoken, datasets, pytest, psutil, httpx
 ```
+
+`pip install -e .` alone is the inference-shaped install: it builds models,
+loads checkpoints and runs the API. Reproducing anything in §10 needs the two
+extras `requirements.txt` pulls in — `tiktoken`, the production tokenizer every
+real run in this repo uses (§5), and `datasets`, which only
+`scripts/prepare_*_data.py` imports. The test suite needs `tiktoken` too, since
+the instruction, chat and preference datasets are tested against the real
+vocabulary rather than a stub.
 
 **Seeding**: `TrainConfig.seed` is passed to `torch.manual_seed()` before
 model construction and before the training loop starts; `DistributedSampler`
