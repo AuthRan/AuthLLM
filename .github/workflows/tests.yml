@@ -1,0 +1,53 @@
+# Runs the test suite on a machine that is not mine.
+#
+# The point is not that the tests pass -- they pass locally, that is what
+# "passing" means -- but that they pass from a clean checkout, on CPU, with
+# nothing installed except what pyproject.toml and requirements.txt declare.
+# Two dependencies in this repo were undeclared for months (tiktoken and
+# datasets) purely because they happened to be present in my environment, and
+# nothing here could have noticed.
+#
+# The whole suite runs, integration tests included: they are CPU-only by
+# design -- tests/integration/test_ddp.py and test_fsdp.py launch real
+# multi-process runs over gloo rather than NCCL, so a runner with no GPU is a
+# supported configuration rather than a degraded one.
+
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install torch (CPU wheel)
+        # Explicitly, and before everything else: the default index resolves
+        # torch to a CUDA build that pulls ~2.5GB of nvidia-* wheels a runner
+        # with no GPU will never load.
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install the package and its test dependencies
+        run: pip install -r requirements.txt
+
+      - name: Show what got installed
+        # Cheap, and the first thing worth reading when a run fails for a
+        # reason that is not the code.
+        run: pip list
+
+      - name: Run the tests
+        # -rs lists skipped tests with their reasons, so a test that quietly
+        # stops running is visible in the log rather than absent from it.
+        run: pytest -q -rs
