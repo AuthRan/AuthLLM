@@ -8,6 +8,19 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class ChatMessage(BaseModel):
+    """One prior turn of a conversation.
+
+    Only `user` and `assistant` are accepted from a client: a `system` turn
+    is legal in the training format but must come first, and letting a
+    client interleave one anywhere is the quickest way to send the model a
+    document shape it was never trained on.
+    """
+
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str = Field(..., min_length=1)
+
+
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, description="Text to continue")
     max_new_tokens: int = Field(default=100, gt=0, le=2048, description="How many new tokens to generate")
@@ -21,6 +34,24 @@ class GenerateRequest(BaseModel):
             "Required for checkpoints from scripts/finetune.py, wrong for base ones: "
             "an instruction-tuned model answers inside that template, and a base model "
             "handed it just writes more instructions."
+        ),
+    )
+    chat: bool = Field(
+        default=False,
+        description=(
+            "Wrap the prompt and `history` in the multi-turn chat template "
+            "(README section 10.7) before generating. Required for a checkpoint "
+            "trained with scripts/finetune.py --format chat. Mutually exclusive "
+            "with `instruct`: the two are different document formats, and a "
+            "request asking for both is a bug rather than a preference."
+        ),
+    )
+    history: list[ChatMessage] = Field(
+        default_factory=list,
+        description=(
+            "Turns already exchanged, oldest first, excluding the current `prompt`. "
+            "Ignored unless `chat` is true. The server is stateless -- a client that "
+            "wants the model to remember the conversation sends it back every time."
         ),
     )
 

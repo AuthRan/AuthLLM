@@ -114,6 +114,8 @@ def generate_stream_endpoint(request: GenerateRequest) -> StreamingResponse:
             top_k=request.top_k,
             top_p=request.top_p,
             instruct=request.instruct,
+            chat=request.chat,
+            history=[(m.role, m.content) for m in request.history],
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -150,6 +152,8 @@ def generate_endpoint(request: GenerateRequest) -> GenerateResponse:
             top_k=request.top_k,
             top_p=request.top_p,
             instruct=request.instruct,
+            chat=request.chat,
+            history=[(m.role, m.content) for m in request.history],
         )
     except ValueError as e:
         # A request the model itself rejects (e.g. prompt + max_new_tokens

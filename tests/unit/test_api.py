@@ -348,3 +348,132 @@ def test_instruct_mode_wraps_and_unwraps_end_to_end(checkpoint_and_tokenizer, tm
         )
     )
     assert "### Instruction:" not in streamed
+
+
+# The chat template (header + role markers + replayed turns) is longer than
+# CONTEXT_LENGTH on its own, so chat mode gets a checkpoint with room for it.
+CHAT_CONTEXT_LENGTH = 512
+
+
+@pytest.fixture(scope="module")
+def chat_checkpoint_and_tokenizer(tmp_path_factory) -> tuple[Path, Path]:
+    tmp_path = tmp_path_factory.mktemp("api_chat_fixture")
+
+    corpus = "the quick fox jumps over the lazy dog. " * 20
+    tokenizer = BPETokenizer.train(corpus, vocab_size=300)
+    tokenizer_path = tmp_path / "tokenizer.json"
+    tokenizer.save(tokenizer_path)
+
+    model_config = ModelConfig(
+        name="api-chat-test",
+        vocab_size=tokenizer.vocab_size,
+        d_model=16,
+        n_layers=2,
+        n_heads=2,
+        n_kv_heads=2,
+        d_ff=32,
+        context_length=CHAT_CONTEXT_LENGTH,
+    )
+    train_config = TrainConfig(batch_size=2, seq_len=8, max_steps=1, warmup_steps=1, max_lr=1e-3, min_lr=1e-4)
+
+    torch.manual_seed(0)
+    model = AshuGPT(model_config)
+    optimizer = build_optimizer(model, lr=1e-3, weight_decay=0.0)
+    checkpoint_path = tmp_path / "model.pt"
+    save_checkpoint(checkpoint_path, model, optimizer, step=0, model_config=model_config, train_config=train_config)
+
+    return checkpoint_path, tokenizer_path
+
+
+@pytest.fixture
+def chat_client(chat_checkpoint_and_tokenizer: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch):
+    checkpoint_path, tokenizer_path = chat_checkpoint_and_tokenizer
+    monkeypatch.setenv("ASHUGPT_CHECKPOINT", str(checkpoint_path))
+    monkeypatch.setenv("ASHUGPT_TOKENIZER", str(tokenizer_path))
+
+    from ashugpt.api.app import app
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+# --- Chat mode (README section 10.7) ----------------------------------------
+# The three prompt formats in this repo are different *document shapes*, and
+# a checkpoint answers only in the one it was trained on. These tests pin the
+# shape the server builds, because getting it wrong does not raise -- it
+# produces fluent text from a format the model never saw, which is the
+# failure mode hardest to notice from the outside.
+
+
+def test_chat_renders_history_into_the_training_template(client: TestClient) -> None:
+    from ashugpt.data.chat import ASSISTANT_MARKER, CHAT_HEADER, USER_MARKER
+
+    service = client.app.state.service
+    _, text = service._encode_prompt(
+        "second question",
+        instruct=False,
+        chat=True,
+        history=[("user", "first question"), ("assistant", "first answer")],
+    )
+
+    assert text.startswith(CHAT_HEADER)
+    assert text.count(USER_MARKER) == 2
+    # Every prior turn is replayed, and the prompt ends with an *open*
+    # assistant marker -- that trailing marker is what tells the model the
+    # next turn is its own rather than leaving it to guess.
+    assert "first question" in text and "first answer" in text and "second question" in text
+    assert text.endswith(ASSISTANT_MARKER)
+
+
+def test_chat_and_instruct_together_is_rejected(client: TestClient) -> None:
+    response = client.post("/generate", json={"prompt": "hi", "instruct": True, "chat": True})
+    assert response.status_code == 400
+    assert "at most one" in response.json()["detail"]
+
+
+def test_chat_history_rejects_unknown_roles(client: TestClient) -> None:
+    response = client.post(
+        "/generate",
+        json={"prompt": "hi", "chat": True, "history": [{"role": "system", "content": "be nice"}]},
+    )
+    # A system turn is legal in the training format but only as the first
+    # turn, so the API declines to take one from a client at all.
+    assert response.status_code == 422
+
+
+def test_chat_generation_returns_only_the_new_answer(chat_client: TestClient) -> None:
+    response = chat_client.post(
+        "/generate",
+        json={
+            "prompt": "hello",
+            "chat": True,
+            "max_new_tokens": 8,
+            "history": [{"role": "user", "content": "earlier"}, {"role": "assistant", "content": "reply"}],
+        },
+    )
+    assert response.status_code == 200
+    text = response.json()["generated_text"]
+    # The transcript that was fed in must not come back out with the answer.
+    assert "### User:" not in text
+    assert "### Assistant:" not in text
+    assert "earlier" not in text
+
+
+def test_chat_stream_matches_the_non_streaming_path(chat_client: TestClient) -> None:
+    body = {"prompt": "hello", "chat": True, "max_new_tokens": 6, "temperature": 0.0}
+
+    streamed = ""
+    with chat_client.stream("POST", "/generate/stream", json=body) as response:
+        assert response.status_code == 200
+        for line in response.iter_lines():
+            if not line.startswith("data: "):
+                continue
+            payload = json.loads(line[len("data: ") :])
+            if payload.get("done"):
+                break
+            streamed += payload["text"]
+
+    whole = chat_client.post("/generate", json=body).json()["generated_text"]
+    # Greedy decoding, so the two paths must agree token for token; they are
+    # the same sampling loop and this is what keeps them that way.
+    assert streamed.strip() == whole.strip()

@@ -12,12 +12,14 @@
   :root {
     --bg: #fbfbfa; --panel: #ffffff; --ink: #1a1a19; --muted: #6b6b66;
     --line: #e4e4e0; --accent: #7a5cff; --accent-ink: #ffffff; --warn: #b45309;
+    --bubble: #f1f3f7;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #16161a; --panel: #1e1e23; --ink: #ececf0; --muted: #9a9aa4;
       --line: #2e2e36; --accent: #9b82ff; --accent-ink: #14141a; --warn: #fbbf24;
+      --bubble: #26262e;
     }
   }
   * { box-sizing: border-box; }
@@ -69,6 +71,12 @@
     vertical-align: text-bottom; animation: blink 1.05s steps(2) infinite;
   }
   @keyframes blink { 50% { opacity: 0; } }
+  #transcript { display: flex; flex-direction: column; gap: 10px; }
+  .msg { padding: 10px 13px; border-radius: 10px; max-width: 88%; white-space: pre-wrap;
+         font-size: 14.5px; line-height: 1.55; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); }
+  .msg.bot { align-self: flex-start; background: var(--bubble); color: var(--ink); border: 1px solid var(--line); }
+  .msg .who { display: block; font-family: var(--mono); font-size: 11px; opacity: .72; margin-bottom: 4px; }
   .status { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px;
             font-family: var(--mono); font-size: 12px; color: var(--muted); }
   .err { color: var(--warn); font-family: var(--mono); font-size: 12.5px; }
@@ -88,6 +96,7 @@
     <div class="mode" role="group" aria-label="Prompt mode">
       <button id="m-continue" aria-pressed="true">Continue text</button>
       <button id="m-instruct" aria-pressed="false">Answer instruction</button>
+      <button id="m-chat" aria-pressed="false">Chat</button>
     </div>
     <p class="sub" id="mode-hint" style="margin:10px 0 12px;font-size:12.5px"></p>
 
@@ -115,10 +124,12 @@
     <div class="row">
       <button id="go">Generate</button>
       <button id="stop" class="ghost" disabled>Stop</button>
+      <button id="reset" class="ghost" hidden>New conversation</button>
     </div>
   </div>
 
   <div class="panel">
+    <div id="transcript" hidden></div>
     <p id="out" class="empty">Output appears here, one token at a time.</p>
     <div class="status"><span id="stat"></span><span id="rate"></span></div>
     <p class="err" id="err" hidden></p>
@@ -135,25 +146,65 @@
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const out = $("out"), errBox = $("err");
-  let instruct = false, controller = null;
+  const out = $("out"), errBox = $("err"), transcript = $("transcript");
+  let mode = "continue", controller = null;
+
+  // The conversation so far, as the API wants it: oldest first, excluding
+  // whatever is currently in the textarea. The server is stateless, so this
+  // array *is* the model's memory -- it is replayed in full on every turn.
+  let history = [];
 
   const HINTS = {
     continue: "The model continues your text. This is what a base checkpoint does, and the only thing it can do well.",
-    instruct: "Your text is wrapped in the ### Instruction / ### Response template before it reaches the model. Use this for a checkpoint from scripts/finetune.py; on a base checkpoint it will just write more instructions."
+    instruct: "Your text is wrapped in the ### Instruction / ### Response template before it reaches the model. Use this for a checkpoint from scripts/finetune.py; on a base checkpoint it will just write more instructions.",
+    chat: "A multi-turn conversation: every previous turn is replayed to the model each time, in the ### User / ### Assistant format it was trained on. Use this for a checkpoint from scripts/finetune.py --format chat."
+  };
+  const SAMPLES = {
+    continue: "The process of photosynthesis",
+    instruct: "Explain why the sky is blue.",
+    chat: "What is photosynthesis?"
   };
 
-  function setMode(isInstruct) {
-    instruct = isInstruct;
-    $("m-continue").setAttribute("aria-pressed", String(!isInstruct));
-    $("m-instruct").setAttribute("aria-pressed", String(isInstruct));
-    $("mode-hint").textContent = isInstruct ? HINTS.instruct : HINTS.continue;
-    if (isInstruct && $("prompt").value === "The process of photosynthesis") {
-      $("prompt").value = "Explain why the sky is blue.";
+  function setMode(next) {
+    const previous = mode;
+    mode = next;
+    for (const m of ["continue", "instruct", "chat"]) {
+      $("m-" + m).setAttribute("aria-pressed", String(m === next));
     }
+    $("mode-hint").textContent = HINTS[next];
+    $("reset").hidden = next !== "chat";
+    transcript.hidden = next !== "chat";
+    out.hidden = next === "chat";
+    // Only swap the textarea when it still holds another mode's sample, so
+    // nothing a person actually typed is thrown away by clicking a tab.
+    if (Object.values(SAMPLES).includes($("prompt").value.trim())) {
+      $("prompt").value = SAMPLES[next];
+    }
+    if (previous === "chat" && next !== "chat") resetChat();
   }
-  $("m-continue").onclick = () => setMode(false);
-  $("m-instruct").onclick = () => setMode(true);
+
+  function resetChat() {
+    history = [];
+    transcript.replaceChildren();
+  }
+
+  function bubble(role, text) {
+    const el = document.createElement("div");
+    el.className = "msg " + (role === "user" ? "user" : "bot");
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = role === "user" ? "you" : "AshuGPT";
+    el.appendChild(who);
+    el.appendChild(document.createTextNode(text || ""));
+    transcript.appendChild(el);
+    el.scrollIntoView({ block: "nearest" });
+    return el;
+  }
+
+  $("m-continue").onclick = () => setMode("continue");
+  $("m-instruct").onclick = () => setMode("instruct");
+  $("m-chat").onclick = () => setMode("chat");
+  $("reset").onclick = resetChat;
 
   // Slider readouts. top-k 0 and top-p 1 both mean "off", which is worth
   // saying in words rather than making someone infer from the number.
@@ -176,16 +227,35 @@
       : "model still loading…";
   }).catch(() => { $("model").textContent = "API unreachable"; });
 
-  function body() {
+  // Takes the prompt rather than re-reading the textarea: chat mode clears
+  // the box as soon as the turn is on screen, so a second read here would
+  // send an empty prompt.
+  function body(prompt) {
     const topk = Number($("topk").value), topp = Number($("topp").value);
     return {
-      prompt: $("prompt").value,
+      prompt: prompt,
       max_new_tokens: Number($("tokens").value),
       temperature: Number($("temp").value),
       top_k: topk === 0 ? null : topk,
       top_p: topp >= 1 ? null : topp,
-      instruct: instruct,
+      instruct: mode === "instruct",
+      chat: mode === "chat",
+      history: mode === "chat" ? history : [],
     };
+  }
+
+  // A 400 carries `detail` as a string; a 422 carries it as a list of
+  // per-field objects. Rendering either with String() gives "[object
+  // Object]", which tells the person at the keyboard nothing at all.
+  function describeError(payload, status) {
+    const detail = payload && payload.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail
+        .map((e) => `${(e.loc || []).slice(1).join(".") || "request"}: ${e.msg || "invalid"}`)
+        .join("; ");
+    }
+    return `HTTP ${status}`;
   }
 
   function running(isRunning) {
@@ -198,21 +268,35 @@
     if (!prompt) return;
 
     errBox.hidden = true;
-    out.classList.remove("empty");
-    out.textContent = "";
-    if (!instruct) {
-      // Continuation mode only: showing the prompt greyed out in front of
-      // the completion is the clearest way to see where the model took over.
-      const span = document.createElement("span");
-      span.className = "prompt";
-      span.textContent = prompt;
-      out.appendChild(span);
-    }
-    const body_ = document.createTextNode("");
-    out.appendChild(body_);
     const caret = document.createElement("span");
     caret.className = "cursor";
-    out.appendChild(caret);
+    let body_, userBubble = null, replyBubble = null;
+
+    if (mode === "chat") {
+      // The user's turn is committed to the transcript before the request
+      // goes out, so the conversation reads in the order it happened even
+      // while the answer is still arriving.
+      userBubble = bubble("user", prompt);
+      $("prompt").value = "";
+      replyBubble = bubble("assistant", "");
+      body_ = document.createTextNode("");
+      replyBubble.appendChild(body_);
+      replyBubble.appendChild(caret);
+    } else {
+      out.classList.remove("empty");
+      out.textContent = "";
+      if (mode === "continue") {
+        // Continuation mode only: showing the prompt greyed out in front of
+        // the completion is the clearest way to see where the model took over.
+        const span = document.createElement("span");
+        span.className = "prompt";
+        span.textContent = prompt;
+        out.appendChild(span);
+      }
+      body_ = document.createTextNode("");
+      out.appendChild(body_);
+      out.appendChild(caret);
+    }
 
     running(true);
     $("stat").textContent = "generating…";
@@ -225,12 +309,12 @@
       const res = await fetch("generate/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body()),
+        body: JSON.stringify(body(prompt)),
         signal: controller.signal,
       });
       if (!res.ok) {
-        const detail = await res.json().catch(() => ({}));
-        throw new Error(detail.detail || `HTTP ${res.status}`);
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(describeError(payload, res.status));
       }
 
       // Server-sent events arrive as "data: {...}\n\n". A chunk boundary can
@@ -259,6 +343,12 @@
         }
       }
       $("stat").textContent = "done";
+      if (mode === "chat") {
+        // Committed only now: a turn that failed or was aborted must not
+        // enter the history, or every later turn replays a broken exchange.
+        history.push({ role: "user", content: prompt });
+        history.push({ role: "assistant", content: body_.data });
+      }
     } catch (e) {
       if (e.name === "AbortError") {
         $("stat").textContent = "stopped";
@@ -266,6 +356,14 @@
         errBox.textContent = String(e.message || e);
         errBox.hidden = false;
         $("stat").textContent = "failed";
+      }
+      if (mode === "chat") {
+        // The turn never entered `history`, so leaving its bubbles on screen
+        // would show a conversation the model is not going to remember.
+        // Roll the display back and hand the text back to the textarea.
+        userBubble && userBubble.remove();
+        replyBubble && replyBubble.remove();
+        $("prompt").value = prompt;
       }
     } finally {
       caret.remove();
@@ -279,7 +377,7 @@
   $("prompt").addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") generate();
   });
-  setMode(false);
+  setMode("continue");
 })();
 </script>
 </body>
