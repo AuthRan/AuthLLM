@@ -192,16 +192,59 @@ gap is worth more nats than any content signal in the set, and everything
 downstream gets measured through it. I wired up UltraFeedback in the prepare
 script as an alternative and did not run it.
 
-**Try the length-normalized variant.** It is three characters in
-`sequence_logprobs` and it targets exactly what the evaluation says is
-dominating. I deliberately didn't, this round: building the variant and the
-metric that detects the problem at the same time would have left me unable to
-tell which of the two I was fooling myself with.
+**~~Try the length-normalized variant.~~** I ran it after writing this, and it
+taught me something I did not expect — see the section below.
 
 **Raise beta before lowering the learning rate.** Both rewards going negative
 is a KL problem and beta is the knob for it. I swept the learning rate because
 that is the habit three previous stages built. beta = 0.2 is the experiment I
 should have run.
+
+## The variant that failed, and why that was the useful part
+
+So I ran it. Averaging each sequence's log-probability instead of summing it
+takes the length term out of the objective, which is precisely the thing my
+own evaluation said was dominating. Two betas, because normalizing shrinks the
+margins ~80x and 0.1 would have been an ~80x weaker pull: 8.0 to match, 1.0 to
+undershoot deliberately.
+
+Raw accuracy went from 46.3% to 46.5%. The split I had used to diagnose the
+whole problem — chosen-first 92.8% of the time when it is shorter, 8.3% when
+it is longer — came back 93.0% and 8.4%. Training with the length term
+removed made the length bias very slightly *worse*.
+
+I stared at that for a while before it landed, and when it did it was
+embarrassing in a useful way. Raw ranking accuracy scores a model by the
+summed log-probability of a sequence. That sum is negative and it grows with
+length no matter what the weights are. I had removed the length term from the
+objective and then gone on measuring with a ruler that still charged 2-3 nats
+a token. No training run, under any objective, was ever going to move that
+column — the shortcut was in my measurement at least as much as in the model.
+
+Which means the sentence I wrote three sections earlier, "it did not touch the
+length prior", was doing more work than it had earned. The length prior is
+partly just what summed log-probabilities *are*. The honest version
+is that the model has a length prior, my metric has one too, and I had been
+reading the second one as evidence about the first.
+
+The column that already divides length out is per-token accuracy, and there
+the variant did show up: 55.9% at beta 1.0 against standard DPO's 55.2%, off
+54.3% before any preference tuning. About 1.8x the movement, which is a real
+effect and a small one.
+
+And then the split I should have predicted by now. beta 8.0 wins the trained
+objective and is the worst of the three tuned checkpoints at ranking by
+content. beta 1.0 is the reverse, and it is also the one that damages the
+model — 88% stop rate against 92%, answers 39% longer. beta 8.0 costs 0.0015
+nats of Dolly loss, which is nothing, and is the only checkpoint in the whole
+stage whose answers got *shorter*. That is beta holding the policy near the
+reference, doing the job I had guessed it would do, while length normalization
+did not do the job I built it for.
+
+Both rewards still go negative under normalization at both betas, so the KL
+retreat is untouched too. Nothing from this experiment ships. It cost half an
+hour of GPU and it corrected a claim in my own writeup, which is a better
+trade than it sounds.
 
 ## The one-sentence version
 

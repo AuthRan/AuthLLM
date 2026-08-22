@@ -1490,6 +1490,93 @@ generations, so the honest claim is not "the long run is worse" but "the long
 run shows no benefit outside the objective it was trained on, at 3.7x the
 cost". That is enough to ship the short one.
 
+#### The length-normalized variant, which was supposed to fix this
+
+"The length column is the whole story" above says the model is a ruler and
+that DPO did not touch it. The obvious repair is to stop summing
+log-probabilities and start averaging them: divide each sequence by its own
+supervised-token count, and the length term drops out of the objective. It is
+one branch in `DPOModel.forward` (`length_normalized=True`), and it is a
+change of algorithm rather than a scaling detail — the implicit reward it
+defines is a different quantity.
+
+That also means `beta` does not carry over. Normalizing divides every term by
+~80 tokens, so the margins are ~80x smaller and 0.1 would be an ~80x weaker
+pull. Two points were run, 400 steps each, identical to the shipped run in
+every other respect: **8.0**, which is 0.1 × 80 and restores the gradient's
+size (`configs/train/dpo_hh_ln80.yaml`), and **1.0**, a deliberately gentler
+10x correction (`dpo_hh_ln10.yaml`), on the reasoning that a matched beta
+restores the size but not the shape, and two points bracket which mattered.
+
+All four checkpoints are then scored by one common ruler — the *standard*,
+un-normalized objective at beta 0.1 against the same frozen SFT reference, so
+this table compares weights rather than objectives:
+
+| checkpoint | raw accuracy | chosen shorter | chosen longer | per-token accuracy | DPO accuracy |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `sft` | 46.3% | 92.8% | 8.3% | 54.3% | 50.0% |
+| standard, beta 0.1 | 46.4% | 92.9% | 8.4% | 55.2% | 57.1% |
+| length-normalized, beta 1.0 | **46.5%** | 93.1% | 8.4% | **55.9%** | 56.5% |
+| length-normalized, beta 8.0 | **46.5%** | 93.0% | 8.4% | 54.9% | **57.9%** |
+
+**It did not fix the shortcut.** Raw accuracy moves 46.3% → 46.5%, and the
+split that diagnosed the problem — 92.8% when the chosen answer is shorter,
+8.3% when it is longer — ends at 93.0% and 8.4%. That is the same ruler,
+marginally more so, after training with the length term removed from the
+objective entirely.
+
+The reason is worth more than the experiment. Raw ranking accuracy scores a
+model by the summed log-probability it assigns a sequence, and that sum is
+negative and grows with length no matter what the weights are. Removing the
+length term from the *training objective* changes which direction the weights
+move; it cannot change the fact that the *metric* charges 2-3 nats a token.
+So the shortcut lives in the measurement at least as much as in the model, and
+no amount of training under any objective was going to move that column. What
+moves it is scoring differently, which is what the per-token column already
+does — and that reframes §10.8's own "DPO did not touch the length prior" a
+little, because part of what that sentence was reporting is a property of
+summed log-probabilities rather than a finding about the weights.
+
+Read that column instead and the variant did do something: 55.9% against
+standard DPO's 55.2%, off an SFT baseline of 54.3%. Ranking by content
+improved about 1.8x as much as standard DPO managed, which is a real effect
+and a small one.
+
+The two betas split, and they split the way this project keeps splitting.
+beta 8.0 wins the trained objective (57.9% DPO accuracy, the best of the four)
+and is the *worst* of the three tuned checkpoints at ranking by content
+(54.9%, below standard DPO). beta 1.0 is the reverse: best per-token accuracy,
+lowest DPO accuracy. The metric closest to what the run optimized ranks them
+in the reverse of the order that matters — the fifth time in this project,
+after the two in [§10.4](#104-what-it-changed-measured), stage 1's held-out
+loss in [§10.6](#106-sequence-packing--the-89-that-was-padding), and this
+section's own learning-rate sweep.
+
+Behaviour on the single-turn distribution, same script and settings as §10.4:
+
+| checkpoint | Dolly held-out loss | stop rate | mean tokens | loop rate |
+| --- | ---: | ---: | ---: | ---: |
+| `sft` | **2.7444** | 92% | **62** | 20% |
+| standard, beta 0.1 | 2.7504 | **98%** | 70 | **18%** |
+| length-normalized, beta 1.0 | 2.7561 | 88% | 86 | **18%** |
+| length-normalized, beta 8.0 | 2.7459 | **98%** | 58 | 22% |
+
+beta 1.0 — the one that ranks content best — is also the one that damages
+the model most: 88% stop rate against the SFT model's 92%, and answers 39%
+longer.
+beta 8.0 costs 0.0015 nats, which is nothing, and is the only checkpoint here
+whose answers get *shorter*. Holding the policy near the reference is what
+keeps the model intact, and that is beta doing its job rather than length
+normalization doing anything.
+
+**Nothing here ships.** `configs/train/dpo_hh.yaml` is still the default: the
+variant was run to fix a specific diagnosed failure, it did not fix it, and
+the metric it did improve moved 0.7 points at the cost of either behaviour
+(beta 1.0) or content ranking (beta 8.0). Both configs are in the tree so the
+runs reproduce, and both implicit rewards still go negative under
+normalization at both betas — the KL retreat two subsections up is a separate
+problem, and this variant does not touch it either.
+
 ## 11. Inference
 
 ### 11.1 KV Caching
@@ -1969,6 +2056,11 @@ python scripts/eval_preference.py --data data/preference/hh_test.jsonl \
     --output results/preference_eval_hh.md
 ```
 
+The length-normalized variant ([§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer))
+is the same command against `configs/train/dpo_hh_ln80.yaml` (beta 8.0) or
+`dpo_hh_ln10.yaml` (beta 1.0); `results/preference-tuning.md` has the scoring
+pass that puts all four checkpoints under one ruler.
+
 An instruction-tuned checkpoint must be prompted through the same template it
 was trained on, which `scripts/sample.py --instruct` does:
 
@@ -2034,7 +2126,7 @@ authLLM/
 ├── requirements.txt           # + pytest, psutil, httpx (dev/test only)
 ├── configs/
 │   ├── model/                 # tiny / small / medium / xl_1b presets (§4)
-│   └── train/                 # pretraining presets + sft_alpaca / sft_dolly fine-tuning presets (§10), packed and not (§10.6), sft_chat (§10.7), dpo_hh (§10.8)
+│   └── train/                 # pretraining presets + sft_alpaca / sft_dolly fine-tuning presets (§10), packed and not (§10.6), sft_chat (§10.7), dpo_hh + dpo_hh_ln* (§10.8)
 ├── scripts/                   # CLI entry points, in pipeline order:
 │                              #   prepare_data / prepare_instruction_data / prepare_chat_data / prepare_preference_data
 │                              #   train_tokenizer → train → finetune (--format instruction|chat) → preference_tune
@@ -2108,6 +2200,17 @@ Still not built:
 - **A trained `xl_1b`.** It fits and it steps, under FSDP with CPU offload
   ([§12](#12-scaling-to-billion-parameter-architectures)); nobody has paid for
   the run.
+
+Built on 2026-08-22:
+
+- **The length-normalized DPO variant**, which the preference stage's own
+  "what I would do differently" had called for. It was aimed at the length
+  shortcut in [§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)
+  and it does not fix it — raw ranking accuracy moves 46.3% → 46.5% — because
+  that metric scores a *summed* log-probability, which grows with length
+  whatever the weights do. The shortcut was partly in the ruler, so no
+  objective could have moved that column. Nothing from it ships; both configs
+  are in the tree so the two runs reproduce.
 
 Built on 2026-08-21:
 

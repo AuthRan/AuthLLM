@@ -1,0 +1,62 @@
+# Stage 4, variant: length-normalized DPO at beta 1.0.
+#
+# Everything about the data, the memory budget and the schedule is
+# configs/train/dpo_hh.yaml, which this file exists to be compared against.
+# The one change is dpo_length_normalized, and it is a change of algorithm
+# rather than a scaling detail -- see the block comment in
+# ashugpt/training/dpo.py.
+#
+# ---- Why this run exists ----
+# The standard run left a length shortcut untouched: the instruction-tuned
+# model ranks the chosen answer first 92.8% of the time when it is shorter
+# and 8.3% when it is longer, and DPO moved those to 92.9% / 8.4%. Summed
+# log-probabilities cost 2-3 nats per token, and HH-RLHF's chosen answers
+# average 80 tokens against the rejected answers' 73, so the shortcut pays.
+# Dividing each sequence's log-probability by its own supervised-token count
+# removes the length term from the objective, and this run is whether that
+# fixes the shortcut. It does not -- README.md section 10.8 has the table and
+# the reason, which is that raw ranking accuracy is a property of the ruler
+# used to score, not of the weights being scored.
+#
+# ---- Why beta is 1.0 and not 0.1 or 8.0 ----
+# Length normalization divides every term in the objective by ~80 tokens, so
+# the margins it produces are ~80x smaller and 0.1 would be an ~80x weaker
+# pull. The matched correction is 8.0 (configs/train/dpo_hh_ln80.yaml); this
+# file is the deliberately gentler 1.0, on the reasoning that a matched beta
+# restores the gradient's size but not the objective's shape, and the two
+# points bracket which of those mattered. They split: 8.0 wins the trained
+# objective, 1.0 wins ranking by content (per-token accuracy 55.9% against
+# 54.9%, the best of the four checkpoints scored) and is also the harshest on
+# behaviour -- 88% stop rate and 86-token answers against the SFT model's 92%
+# and 62. beta means a different thing here than in dpo_hh.yaml and the two
+# are not comparable through it; the reference-free metrics in
+# ashugpt/eval/preference.py are what compare.
+#
+# ---- What it cost ----
+# 400 steps, ~13 min on one 2080 Ti. logs/dpo_hh_ln10.csv, and the run's own
+# trace in logs/dpo_ln.log.
+batch_size: 4
+seq_len: 512
+grad_accum_steps: 8
+max_steps: 400
+warmup_steps: 30
+max_lr: 1.0e-6
+min_lr: 1.0e-7
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+log_interval: 5
+eval_interval: 100
+eval_steps: 40
+checkpoint_interval: 200
+amp_dtype: float16
+gradient_checkpointing: false
+use_efficient_attention: true
+pack_sequences: false
+dpo_beta: 1.0
+dpo_length_normalized: true
+# Irrelevant here -- PreferenceDataset emits whole pairs, not windows over a
+# stream -- but TrainConfig requires the field to be explicit or None.
+stride: null
+num_workers: 3
+pin_memory: true

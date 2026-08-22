@@ -75,6 +75,16 @@
 # rejected ones less likely faster. A larger beta would hold the policy closer
 # to the reference and is the first thing to try if a longer run degenerates.
 #
+# There is now evidence for that last sentence, from the length-normalized
+# runs (configs/train/dpo_hh_ln80.yaml): at the beta that holds the policy
+# tightest, Dolly held-out loss costs 0.0015 nats and the answers get
+# *shorter* -- the only checkpoint in this stage that does, against a stage
+# known to push the other way -- while the loosest setting is the one that
+# drops the stop rate to 88% and lengthens answers 39%. That is beta behaving
+# exactly as this comment guessed. It does not transfer to dpo_beta here
+# unchanged: those runs normalize, which makes their margins ~80x smaller and
+# their beta a different quantity from this one.
+#
 # ---- Why 400 steps and not the 1,495 that would be one epoch ----
 # One epoch over 47,829 pairs at 32 per step is 1,495 steps, and that run was
 # made: logs/dpo_hh.csv, a complete cosine cycle at this learning rate. Its

@@ -190,6 +190,80 @@ made the *preferred* answers about 12x less likely than the model it started
 from, and the rejected ones 45x less likely. The margin grows because the
 retreat is uneven, not because the model is getting better at anything.
 
+## The length-normalized variant, which was supposed to fix this
+
+If the model is a ruler, stop measuring in a unit that rewards brevity: divide
+each sequence's log-probability by its own supervised-token count and the
+length term leaves the objective. That is `length_normalized=True` in
+`DPOModel.forward`, and it is a different algorithm rather than a scaling
+detail — the implicit reward it defines is a different quantity.
+
+`beta` therefore does not carry over. Normalizing divides every term by ~80
+tokens, so the margins are ~80x smaller and 0.1 would be an ~80x weaker pull.
+Two points, 400 steps each, identical to the shipped run otherwise: **8.0**,
+which is 0.1 × 80 and restores the gradient's size
+(`configs/train/dpo_hh_ln80.yaml`), and **1.0**, a gentler 10x correction
+(`dpo_hh_ln10.yaml`), because a matched beta restores the size but not the
+shape and two points bracket which of those mattered.
+
+All four checkpoints are then scored by the *standard*, un-normalized
+objective at beta 0.1 against the same frozen reference — one ruler for
+everything, so the table compares weights rather than objectives:
+
+| checkpoint | raw accuracy | chosen shorter | chosen longer | per-token accuracy | DPO accuracy |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `sft` | 46.3% | 92.8% | 8.3% | 54.3% | 50.0% |
+| standard, beta 0.1 | 46.4% | 92.9% | 8.4% | 55.2% | 57.1% |
+| length-normalized, beta 1.0 | **46.5%** | 93.1% | 8.4% | **55.9%** | 56.5% |
+| length-normalized, beta 8.0 | **46.5%** | 93.0% | 8.4% | 54.9% | **57.9%** |
+
+It did not fix the shortcut. Raw accuracy moves 46.3% → 46.5%, and the split
+that diagnosed the problem ends at 93.0% / 8.4% against the SFT model's 92.8%
+/ 8.3% — the same ruler, marginally more so, after training with the length
+term removed from the objective entirely.
+
+The reason is worth more than the experiment, and I did not see it until the
+numbers came back. Raw ranking accuracy scores a model by the summed
+log-probability it assigns a sequence, and that sum is negative and grows with
+length regardless of the weights. Taking the length term out of the *training
+objective* changes where the weights go; it cannot change the fact that the
+*metric* charges 2-3 nats a token. The shortcut lives in the ruler, not in the
+model — so no objective was ever going to move that column, and the thing I
+called a failure of standard DPO in the section above is partly a property of
+how I chose to score it. Per-token accuracy is the column that already scores
+differently, and it is where the variant shows up: 55.9% against standard
+DPO's 55.2%, off an SFT baseline of 54.3% — about 1.8x the movement standard
+DPO managed, which is real and small.
+
+The two betas split, the way this project keeps splitting. beta 8.0 wins the
+trained objective (57.9%, best of the four) and is the worst of the three
+tuned checkpoints at ranking by content (54.9%, below standard DPO). beta 1.0
+is the exact reverse. The metric closest to what the run optimized ranks them
+backwards again — the fifth instance in this project.
+
+Behaviour, on the same held-out Dolly split every other stage is scored on:
+
+| checkpoint | Dolly held-out loss | stop rate | mean tokens | loop rate |
+| --- | ---: | ---: | ---: | ---: |
+| `sft` | **2.7444** | 92% | **62** | 20% |
+| standard, beta 0.1 | 2.7504 | **98%** | 70 | **18%** |
+| length-normalized, beta 1.0 | 2.7561 | 88% | 86 | **18%** |
+| length-normalized, beta 8.0 | 2.7459 | **98%** | 58 | 22% |
+
+beta 1.0 ranks content best and damages the model most — 88% stop rate against
+92%, answers 39% longer. beta 8.0 costs 0.0015 nats, which is nothing, and is
+the only checkpoint here whose answers get *shorter*, against a stage that is
+known to push the other way. That is beta holding the policy near the
+reference, not length normalization doing anything: both implicit rewards
+still go negative under normalization at both settings, so the KL retreat is
+untouched and remains a separate problem.
+
+Nothing here ships. `configs/train/dpo_hh.yaml` is still the default — the
+variant was run against a specific diagnosed failure, did not fix it, and the
+metric it did improve moved 0.7 points at the cost of either behaviour or
+content ranking depending on which beta you take. Both configs are in the tree
+so the runs reproduce.
+
 ## What I would do differently
 
 **Use a preference set whose chosen answers are not systematically longer.**
@@ -199,13 +273,9 @@ through it. UltraFeedback is already wired up in
 `scripts/prepare_preference_data.py` and has the opposite problem (very long
 answers on both sides), which is at least a different problem.
 
-**Try length-normalized DPO.** Dividing each sequence's log-probability by its
-length is a known variant, it is three characters in `sequence_logprobs`, and
-on this dataset it targets exactly the thing the evaluation says is dominating.
-I did not do it here because the standard objective is the one worth
-implementing first, and because implementing the variant *and* the metric that
-detects the problem at the same time would have made it impossible to tell
-which one I was fooling myself with.
+**~~Try length-normalized DPO.~~** Done, in the section above. It did not fix
+what it was aimed at, and the reason it could not is the more useful half of
+the result.
 
 **Raise beta before lowering the learning rate.** Both implicit rewards going
 negative is a KL problem, not a step-size problem, and beta is the knob that
@@ -244,3 +314,30 @@ The learning-rate sweep is `logs/dpo_hh_lr{1e6,5e6,2e5}.csv` — the same comman
 with `max_lr`/`min_lr` changed and `max_steps` left at 400 — and its scored
 output is [`preference_eval_sweep.md`](preference_eval_sweep.md) and
 [`instruction_eval_dpo_sweep.md`](instruction_eval_dpo_sweep.md).
+
+The length-normalized runs are the same training command against a different
+config, and the two are scored together with the standard checkpoint so that
+one ruler covers all four:
+
+```bash
+python scripts/preference_tune.py --model configs/model/medium.yaml \
+    --train configs/train/dpo_hh_ln80.yaml \
+    --init-from checkpoints/sft_dolly_packed3e5/step_940.pt \
+    --data data/preference/hh.jsonl \
+    --checkpoint-dir checkpoints/dpo_hh_ln80 --log-path logs/dpo_hh_ln80.csv
+
+python scripts/eval_preference.py --data data/preference/hh_test.jsonl \
+    --reference checkpoints/sft_dolly_packed3e5/step_940.pt \
+    --checkpoint sft=checkpoints/sft_dolly_packed3e5/step_940.pt \
+    --checkpoint dpo_standard=checkpoints/dpo_hh_lr1e6/step_400.pt \
+    --checkpoint dpo_ln_b1=checkpoints/dpo_hh_ln10/step_400.pt \
+    --checkpoint dpo_ln_b8=checkpoints/dpo_hh_ln80/step_400.pt \
+    --output results/preference_eval_length_normalized.md
+```
+
+`dpo_hh_ln10.yaml` is the beta 1.0 point, writing `logs/dpo_hh_ln10.csv`. Both
+runs' traces, and the two scoring passes, are in `logs/dpo_ln.log`; the scored
+tables are
+[`preference_eval_length_normalized.md`](preference_eval_length_normalized.md)
+and
+[`instruction_eval_length_normalized.md`](instruction_eval_length_normalized.md).
