@@ -27,6 +27,10 @@ tokenizer = ["tiktoken"]
 # from the Hugging Face Hub; nothing under ashugpt/ imports this, which is why
 # a training run needs it and an inference deployment does not.
 data = ["datasets"]
+# The README's figures (scripts/plot_results.py). Optional for the same
+# reason as the two above: ashugpt.viz is the only thing that imports it,
+# and nothing trains, evaluates or serves through that module.
+viz = ["matplotlib"]
 
 [tool.setuptools.packages.find]
 include = ["ashugpt*"]

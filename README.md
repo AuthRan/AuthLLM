@@ -43,6 +43,16 @@ Run log: [`logs/supervisor.log`](logs/supervisor.log)
 
 <!-- TRAINING-STATUS:END -->
 
+<p align="center">
+  <img src="resources/plots/01-pretraining-124m.png" alt="Training and validation loss for the 124M run over 20,000 steps, with a zoom inset on the last 18,500" width="900">
+</p>
+
+<p align="center">
+  <sub>Drawn from <a href="logs/medium_metrics.csv"><code>logs/medium_metrics.csv</code></a>
+  by <a href="scripts/plot_results.py"><code>scripts/plot_results.py</code></a> — every figure in
+  this README is built from a log in this tree, never from a remembered number.</sub>
+</p>
+
 **What the model actually writes**: [`results/`](results/) — unedited samples
 from the finished checkpoint, with notes on what it learned and what it didn't.
 **How the run went**: [`learning/`](learning/) — the build, the failures, and
@@ -68,37 +78,51 @@ itemized version of this table.
 ## Live Demo
 
 <p align="center">
-  <a href="https://huggingface.co/spaces/AuthRan/AshGPT">
-    <img src="resources/demo.gif" alt="AshuGPT generating a TinyStories completion, live" width="760">
-  </a>
+  <img src="resources/chat-demo.gif" alt="A two-turn conversation with the 124M chat model, streaming token by token in the repo's own web UI" width="660">
 </p>
 
 <p align="center">
-  <b><a href="https://huggingface.co/spaces/AuthRan/AshGPT">▶ Try it live on Hugging Face Spaces</a></b>
+  <b><a href="https://huggingface.co/spaces/AuthRan/AshGPT">▶ Try the base model live on Hugging Face Spaces</a></b>
 </p>
 
-Type a prompt and watch the `medium` (124M-parameter) model, pretrained from
-random initialization on 2.46B tokens of FineWeb-Edu, continue it token by
-token.
+That is the `medium` (124M-parameter) model — pretrained from random
+initialization on 2.46B tokens of FineWeb-Edu, then instruction-tuned, then
+chat-tuned ([§10.7](#107-multi-turn-chat--a-conversation-not-a-question)) —
+holding a two-turn conversation and streaming it token by token at ~80 tok/s
+on one 2080 Ti. The second question ("can you explain that more simply?")
+never names the subject: the model keeps it because every prior turn is
+replayed to it in the `### User:` / `### Assistant:` format it was trained on.
 
-The demo runs the exact code in this repo: the GPT-2 tiktoken vocabulary the
-`medium` weights were fitted to ([§5](#5-tokenization)) feeding the
-from-scratch transformer ([§3](#3-architecture-overview)), with KV-cached
-autoregressive decoding ([§11](#11-inference)). The served weights are the
-step-20,000 checkpoint (validation perplexity 23.53), exported without
-optimizer state by `scripts/export_inference.py`. It is a **base** model: it
-continues text, it does not answer questions — see
-[§10](#10-instruction-tuning) for the fine-tune that changes that. The Gradio
-app and deployment notes live in [`space/`](space/).
+Everything in that recording is this repo's own code: the GPT-2 tiktoken
+vocabulary the weights were fitted to ([§5](#5-tokenization)), the
+from-scratch transformer ([§3](#3-architecture-overview)), KV-cached decoding
+([§11](#11-inference)), the FastAPI server and its dependency-free frontend
+([§11.3](#113-inference-api-fastapi)). Reproduce it with:
 
-*(The GIF above was recorded in July, when the Space served the `small`
-TinyStories model, and has not been re-recorded since — the link goes to the
-live 124M demo, the animation shows its predecessor.)*
+```
+python scripts/serve.py --checkpoint checkpoints/sft_chat/step_1105.pt \
+    --tokenizer tokenizer_gpt2.json
+# then open http://127.0.0.1:8000 and pick the "Chat" tab
+```
+
+**Two things that recording is not.** It is not the Hugging Face Space: that
+link serves the **base** checkpoint, which continues text and does not answer
+questions, and the chat weights have not been deployed there. And it is not a
+model that knows things — the answer above is fluent and partly wrong, which
+is what 124M parameters and 2.46B tokens buy. The limits are measured rather
+than hedged: stop rate, loop rate and answer length for every stage are in
+[§10](#10-instruction-tuning), and the loop the second answer nearly falls
+into is the 40% loop rate
+[§10.7](#107-multi-turn-chat--a-conversation-not-a-question) reports.
+
+The older base-model GIF is still in [`resources/demo.gif`](resources/demo.gif),
+and the Gradio app behind the Space lives in [`space/`](space/).
 
 ---
 
 ## Table of Contents
 
+0. [The whole pipeline, end to end](#the-whole-pipeline-end-to-end)
 1. [Motivation](#1-motivation)
 2. [What Was Implemented From Scratch](#2-what-was-implemented-from-scratch)
 3. [Architecture Overview](#3-architecture-overview)
@@ -117,6 +141,59 @@ live 124M demo, the animation shows its predecessor.)*
 16. [Project Structure](#16-project-structure)
 17. [Testing](#17-testing)
 18. [What's Not Built](#18-whats-not-built)
+
+---
+
+## The whole pipeline, end to end
+
+Every box below is code in this repository, and every arrow is a run that
+happened on the two 2080 Tis under my desk. Nothing here starts from someone
+else's weights — the leftmost box is random initialization.
+
+```
+  BPE tokenizer                 the transformer                 4 size presets
+  from scratch      ────────>   from scratch        ────────>   one codebase
+  (§5)                          RoPE · RMSNorm                  tiny → xl_1b
+                                SwiGLU · KV cache               (§3, §4)
+                                (§3, §6)
+                                                                     │
+        ┌────────────────────────────────────────────────────────────┘
+        v
+  ┌───────────────┐   2.46B tokens of FineWeb-Edu, 20,000 steps, ~27 h
+  │ PRETRAIN 124M │   random init → val perplexity 23.53
+  └───────┬───────┘   (§8, the figure above)
+          │
+          v
+  ┌────────────────────┐  Alpaca 52k → Dolly 15k, prompt-masked, packed
+  │ INSTRUCTION TUNING │  stop rate 30% → 92%, loop rate 80% → 20%
+  └───────┬────────────┘  (§10, §10.6)
+          │
+          ├──────────────────────────┐         two branches from one
+          v                          v         checkpoint, not a chain
+  ┌───────────────┐          ┌────────────────┐
+  │ CHAT (§10.7)  │          │ DPO   (§10.8)  │
+  │ UltraChat     │          │ HH-RLHF pairs  │
+  │ multi-turn    │          │ first stage    │
+  │ −0.79 nats    │          │ shown a *bad*  │
+  │ largest move  │          │ answer         │
+  │ in the project│          │ 50% → 57.1%    │
+  └───────┬───────┘          └────────┬───────┘
+          │                           │
+          └─────────────┬─────────────┘
+                        v
+              ┌──────────────────┐
+              │ SERVE  (§11)     │  FastAPI + streaming web UI,
+              │ KV-cached decode │  ~80 tok/s on one 2080 Ti
+              └──────────────────┘  (the GIF at the top)
+```
+
+<p align="center">
+  <img src="resources/plots/02-scaling-ladder.png" alt="Parameter counts for the tiny, small, medium and xl_1b presets, marking which have been trained" width="900">
+</p>
+
+The same model code builds all four presets; only the config changes. One of
+them has been trained to completion, and this README is careful about which
+([§14](#14-provenance-trained--implemented--loaded)).
 
 ---
 
@@ -1198,6 +1275,10 @@ was swept too — four points, 300 steps each, complete cosine cycles
 | *the model this starts from* | — | *2.8262* | *100%* | *57* | *5%* |
 | *the human-written answers* | — | — | — | *222* | *15%* |
 
+<p align="center">
+  <img src="resources/plots/04-chat-lr-sweep.png" alt="Held-out chat loss for four learning rates over 300 steps, plus the full epoch at the winner" width="960">
+</p>
+
 1.0e-4 — 2.5x the value argued for — takes the best held-out loss of the sweep
 with the best stop rate, and 2.5e-4 is past the optimum on both loss and answer
 length, which is what makes this a bracketed minimum rather than the top of a
@@ -1453,6 +1534,10 @@ endpoint of a run that spent most of its length damaging the model.
 1.0e-6 — weakest margin, lowest DPO accuracy, the least impressive run in the
 sweep — is the only one that improves anything, and is what
 [`configs/train/dpo_hh.yaml`](configs/train/dpo_hh.yaml) ships.
+
+<p align="center">
+  <img src="resources/plots/05-dpo-metric-reversal.png" alt="The same three DPO checkpoints ranked by preference accuracy and by behavioural metrics, in opposite orders" width="960">
+</p>
 
 This is the fourth time in this project that the metric closest to the training
 objective has ordered checkpoints backwards, after the behavioural metrics in
