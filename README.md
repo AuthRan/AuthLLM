@@ -57,7 +57,7 @@ what fixed them.
 > | Claim | Means | True here for |
 > |---|---|---|
 > | **"I implemented this architecture"** | Code exists that can construct it; weights would be random | `tiny`, `small`, `medium`, `xl_1b` — all four presets |
-> | **"I trained this checkpoint"** | Real gradient descent ran, on real data, producing a real checkpoint file | `tiny` and `small` on the small demo corpora in `tests/fixtures/`; `medium` (124M) **trained to completion** on FineWeb-Edu — 20,000 steps, 2.46B tokens, final validation perplexity 23.53 — see the status block above, then **instruction-tuned** on Alpaca and Dolly ([§10](#10-instruction-tuning)) and **preference-tuned** on HH-RLHF with DPO ([§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)) |
+> | **"I trained this checkpoint"** | Real gradient descent ran, on real data, producing a real checkpoint file | `tiny` and `small` on the small demo corpora in `tests/fixtures/`; `medium` (124M) **trained to completion** on FineWeb-Edu — 20,000 steps, 2.46B tokens, final validation perplexity 23.53 — see the status block above, then **instruction-tuned** on Alpaca and Dolly ([§10](#10-instruction-tuning)), **chat-tuned** on UltraChat ([§10.7](#107-multi-turn-chat--a-conversation-not-a-question)) and **preference-tuned** on HH-RLHF with DPO ([§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)) |
 > | **"I loaded this pretrained checkpoint for inference"** | Someone else's trained weights, used without training or fine-tuning them here | **Not true of anything in this repo.** GPT-2's weights were compared against, never loaded successfully — see [§13](#13-pretrained-checkpoints-comparison-not-loading) — and never claimed as trained by this project |
 
 See [§14](#14-provenance-trained--implemented--loaded) for the full,
@@ -1188,19 +1188,30 @@ was swept too — four points, 300 steps each, complete cosine cycles
 (`logs/sft_chat_lr*.csv`), scored by
 [`scripts/eval_chat.py`](scripts/eval_chat.py):
 
-| max_lr | held-out loss | stop rate | mean tokens | loop rate |
-|---|---:|---:|---:|---:|
-| 1.5e-5 | 2.1187 | 88% | 211 | 48% |
-| 4.0e-5 | 2.0630 | 88% | 183 | **30%** |
-| **1.0e-4** | **2.0333** | 98% | 182 | 35% |
-| 2.5e-4 | 2.0545 | **100%** | 153 | 38% |
-| *the model this starts from* | *2.8262* | *100%* | *57* | *5%* |
-| *the human-written answers* | — | — | *222* | *15%* |
+| max_lr | steps | held-out loss | stop rate | mean tokens | loop rate |
+|---|---:|---:|---:|---:|---:|
+| 1.5e-5 | 300 | 2.1187 | 88% | 211 | 48% |
+| 4.0e-5 | 300 | 2.0630 | 88% | 183 | **30%** |
+| 1.0e-4 | 300 | 2.0333 | **98%** | 182 | 35% |
+| 2.5e-4 | 300 | 2.0545 | **100%** | 153 | 38% |
+| **1.0e-4** | **1,105** (one epoch, shipped) | **1.9506** | 90% | 195 | 40% |
+| *the model this starts from* | — | *2.8262* | *100%* | *57* | *5%* |
+| *the human-written answers* | — | — | — | *222* | *15%* |
 
-1.0e-4 — 2.5x the value argued for — takes the best held-out loss with the
-second-best stop rate and answers closest to the length the data has. 2.5e-4 is
-past the optimum on both loss and length, which is what makes this a bracketed
-minimum rather than the top of a range I happened to pick.
+1.0e-4 — 2.5x the value argued for — takes the best held-out loss of the sweep
+with the best stop rate, and 2.5e-4 is past the optimum on both loss and answer
+length, which is what makes this a bracketed minimum rather than the top of a
+range I happened to pick.
+
+The full epoch at that rate is what ships, and unlike the preference stage
+(§10.8, where a longer run bought nothing outside its own objective) it is a
+real improvement: 0.08 nats of held-out loss on top of the 300-step run, a
+monotone curve that was still falling at the last eval, and answers that land
+closest of anything here to the 222-token length the data actually has. It
+costs 8 points of stop rate — three generations in forty — and 5 of loop rate.
+Held-out loss overall falls **0.79 nats**, 2.8262 → 1.9506, the largest
+single-stage move anywhere in this project, which is what you would expect of a
+model that had never seen this document format at all.
 
 #### Read the last two rows before the last two columns
 
@@ -1238,16 +1249,21 @@ Same held-out Dolly split, same script and settings as every row in §10.4:
 | checkpoint | Dolly held-out loss | stop rate | mean tokens | loop rate |
 | --- | ---: | ---: | ---: | ---: |
 | `sft` — before chat training | **2.7444** | 92% | **62** | **20%** |
-| chat, 1.5e-5 | 2.8244 | 80% | 102 | 28% |
-| chat, 4.0e-5 | 2.8530 | 75% | 109 | 38% |
-| chat, 1.0e-4 | 2.9178 | 88% | 97 | 22% |
+| chat, 1.5e-5, 300 steps | 2.8244 | 80% | 102 | 28% |
+| chat, 4.0e-5, 300 steps | 2.8530 | 75% | 109 | 38% |
+| chat, 1.0e-4, 300 steps | 2.9178 | 88% | 97 | 22% |
+| chat, 1.0e-4, one epoch — shipped | 3.0139 | 85% | 105 | 30% |
 
-0.08 to 0.17 nats, and single-turn answers 50-75% longer. That is §10.4's
-relocation effect again: a stage does not make the model better, it moves where
-the model is good, and UltraChat's idiom is long and discursive where Dolly's
-is short. Whether that is a cost or the point depends on which distribution you
-meant to serve — and unlike everything else in this section, that question has
-no measurement attached to it.
+0.08 to 0.27 nats, and single-turn answers 50-70% longer. That is §10.4's
+relocation effect again — a stage does not make the model better, it moves
+where the model is good — and here it comes with a dose: the epoch that gains
+0.08 nats of chat loss over the 300-step run gives back 0.10 nats of Dolly
+loss. More chat training buys more chat and costs more of what came before, at
+roughly one for one.
+
+Whether that is a cost or the point depends on which distribution you meant to
+serve, and unlike everything else in this section, that question has no
+measurement attached to it.
 
 Full narrative in [`results/chat-tuning.md`](results/chat-tuning.md).
 
@@ -1797,7 +1813,8 @@ The full version of the table at the top of this document:
    instruction-tuned checkpoints ([§10](#10-instruction-tuning)): the same
    trainer, the same gradient descent, started from this project's own
    pretrained weights rather than anyone else's, on the public Alpaca and
-   Dolly instruction sets. And of the preference-tuned checkpoint
+   Dolly instruction sets, and of the chat-tuned one on UltraChat. And of the
+   preference-tuned checkpoint
    ([§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)),
    which is the same trainer again, started from this project's own
    instruction-tuned weights, on the public HH-RLHF preference pairs — the
@@ -2091,12 +2108,18 @@ Still not built:
 - **A trained `xl_1b`.** It fits and it steps, under FSDP with CPU offload
   ([§12](#12-scaling-to-billion-parameter-architectures)); nobody has paid for
   the run.
-- **A chat *run*.** The multi-turn format, its config and its tests are built
-  ([§10.7](#107-multi-turn-chat--a-conversation-not-a-question)), and no
-  checkpoint has been trained with them yet.
 
 Built on 2026-08-21:
 
+- **A chat model.** The multi-turn format shipped the day before with a config
+  and tests and no run behind it. Its learning rate is swept now, the epoch is
+  trained, and the stage moves held-out chat loss 0.79 nats — the largest
+  single-stage move in the project
+  ([§10.7](#107-multi-turn-chat--a-conversation-not-a-question)). Two of its
+  measurements corrected claims this README was making: the generation cap the
+  evaluation inherited was shorter than 71% of the answers it was scoring, and
+  the turn-leak failure the whole format was designed against does not occur in
+  either model.
 - **Preference tuning** — the item that used to head this list. Every stage
   before it learns by imitation and cannot be told that one answer is better
   than another. DPO can: `ashugpt/training/dpo.py` is the loss and the frozen

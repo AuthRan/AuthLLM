@@ -66,18 +66,25 @@ history up to its last assistant turn:
 | checkpoint | held-out loss | stop rate | turn leak | mean tokens | loop rate |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `sft` — before chat training | 2.8262 | 100% | 0% | 57 | 5% |
-| chat, 1.5e-5 | 2.1187 | 88% | 0% | 211 | 48% |
-| chat, 4.0e-5 | 2.0630 | 88% | 0% | 183 | **30%** |
-| **chat, 1.0e-4** | **2.0333** | 98% | 0% | 182 | 35% |
-| chat, 2.5e-4 | 2.0545 | **100%** | 0% | 153 | 38% |
+| chat, 1.5e-5, 300 steps | 2.1187 | 88% | 0% | 211 | 48% |
+| chat, 4.0e-5, 300 steps | 2.0630 | 88% | 0% | 183 | **30%** |
+| chat, 1.0e-4, 300 steps | 2.0333 | **98%** | 0% | 182 | 35% |
+| chat, 2.5e-4, 300 steps | 2.0545 | **100%** | 0% | 153 | 38% |
+| **chat, 1.0e-4, one epoch** — shipped | **1.9506** | 90% | 0% | 195 | 40% |
 | *the human-written answers* | — | — | — | *222* | *15%* |
 
-Held-out loss drops 0.79 nats, 2.8262 → 2.0333, which is the largest
+Held-out loss drops **0.79 nats**, 2.8262 → 1.9506, which is the largest
 single-stage improvement anywhere in this project — unsurprising, since the SFT
-model had never seen this document format at all. 1.0e-4 wins it, 2.5x the
-value the config originally argued for by analogy, and 2.5e-4 is past the
+model had never seen this document format at all. 1.0e-4 wins the sweep, 2.5x
+the value the config originally argued for by analogy, and 2.5e-4 is past the
 optimum on both loss and answer length, so the minimum is bracketed rather than
 sitting at the edge of the range I happened to try.
+
+The full epoch is worth the extra 25 minutes here, which is not what the
+preference stage found: 0.08 nats on top of the 300-step run, a curve still
+falling at the last eval, and answers 195 tokens long against 222-token
+references — closer than anything else in the table. It gives back 8 points of
+stop rate, which is three generations in forty.
 
 The two right-hand columns are the ones that need their bottom row. The chat
 models answer at 153-211 tokens against references averaging 222; the untuned
@@ -106,12 +113,15 @@ The same held-out Dolly split, the same script and settings as every row in
 | checkpoint | Dolly held-out loss | stop rate | mean tokens | loop rate |
 | --- | ---: | ---: | ---: | ---: |
 | `sft` — before any chat training | **2.7444** | 92% | **62** | **20%** |
-| chat, 1.5e-5 | 2.8244 | 80% | 102 | 28% |
-| chat, 4.0e-5 | 2.8530 | 75% | 109 | 38% |
-| chat, 1.0e-4 | 2.9178 | 88% | 97 | 22% |
+| chat, 1.5e-5, 300 steps | 2.8244 | 80% | 102 | 28% |
+| chat, 4.0e-5, 300 steps | 2.8530 | 75% | 109 | 38% |
+| chat, 1.0e-4, 300 steps | 2.9178 | 88% | 97 | 22% |
+| chat, 1.0e-4, one epoch — shipped | 3.0139 | 85% | 105 | 30% |
 
-Chat training costs 0.08 to 0.17 nats on the single-turn distribution and makes
-single-turn answers 50-75% longer. That is the same relocation effect
+Chat training costs 0.08 to 0.27 nats on the single-turn distribution and makes
+single-turn answers 50-70% longer. The trade has a dose to it, which is the
+part I find most useful: the full epoch gains 0.08 nats of chat loss over the
+300-step run and gives back 0.10 nats of Dolly loss. Roughly one for one. That is the same relocation effect
 [§10.4](../README.md#104-what-it-changed-measured) found between the Alpaca and
 Dolly stages: a stage does not make the model better, it moves where the model
 is good, and UltraChat's idiom is long and discursive where Dolly's is short.
