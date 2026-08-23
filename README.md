@@ -24,7 +24,7 @@
 | **Trained here** | `medium` — 123,587,328 params, 2.46B tokens of FineWeb-Edu, 20,000 steps |
 | **Validation** | loss 3.1583 · perplexity 23.53 |
 | **Stages** | pretrain → instruction tune → **chat** *and* **preference (DPO)** |
-| **Hardware** | 2x RTX 2080 Ti · ~27 h for the pretraining run |
+| **Hardware** | ~27 h on **one** RTX 2080 Ti · a second card is what DDP and FSDP were measured on |
 | **Tests** | 441, CPU-only, run on every push |
 
 </div>
