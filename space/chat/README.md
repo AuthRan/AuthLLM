@@ -28,8 +28,8 @@ honest read on what it did and did not learn:
 https://github.com/AuthRan/AuthLLM/tree/main/results
 
 **Want the base model** -- the pretrained checkpoint before any fine-tuning,
-which continues text rather than answering?
-https://huggingface.co/spaces/AuthRan/AshuGPT-base
+which continues text rather than answering? The weights are downloadable at
+https://huggingface.co/AuthRan/AshuGPT-124M-base
 
 Source: https://github.com/AuthRan/AuthLLM
 

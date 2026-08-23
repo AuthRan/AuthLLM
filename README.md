@@ -108,7 +108,8 @@ itemized version of this table.
 </p>
 
 <p align="center">
-  <b><a href="https://huggingface.co/spaces/AuthRan/AshGPT">▶ Try the base model live on Hugging Face Spaces</a></b>
+  <b><a href="https://huggingface.co/spaces/AuthRan/AshGPT">▶ Talk to the chat model live on Hugging Face Spaces</a></b><br>
+  <sub>or download the <a href="https://huggingface.co/AuthRan/AshuGPT-124M-base">base checkpoint</a> — the same weights before any fine-tuning, which continue text rather than answering</sub>
 </p>
 
 That is the `medium` (124M-parameter) model — pretrained from random
@@ -132,9 +133,7 @@ python scripts/serve.py --checkpoint checkpoints/sft_chat/step_1105.pt \
 # open on the Chat tab rather than on raw continuation
 ```
 
-**Two things that recording is not.** It is not the Hugging Face Space: that
-link serves the **base** checkpoint, which continues text and does not answer
-questions, and the chat weights have not been deployed there. And it is not a
+**What that recording is not.** It is not a
 model that knows things — the answer above is fluent and partly wrong, which
 is what 124M parameters and 2.46B tokens buy. The limits are measured rather
 than hedged: stop rate, loop rate and answer length for every stage are in

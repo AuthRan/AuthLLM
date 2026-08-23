@@ -20,7 +20,7 @@ validation perplexity 23.53, trained on a single RTX 2080 Ti.
 It is a base model -- it continues text rather than answering questions, and
 its facts are unreliable at this size. **If you want one that answers
 questions and holds a conversation**, the fine-tuned model is at
-https://huggingface.co/spaces/AuthRan/AshuGPT-chat -- same weights underneath,
+https://huggingface.co/spaces/AuthRan/AshGPT -- same weights underneath,
 plus instruction tuning, chat training and preference tuning. Sample output and an honest read on what
 it did and did not learn: https://github.com/AuthRan/AuthLLM/tree/main/results
 

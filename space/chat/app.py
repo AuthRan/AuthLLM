@@ -111,8 +111,8 @@ the repo measures both rather than hiding the gap. It is a demo of a training
 stack, not a source of facts.
 
 Want the **base model** — the pretrained checkpoint before any fine-tuning,
-which continues text rather than answering?
-👉 **[AshuGPT-base Space](https://huggingface.co/spaces/AuthRan/AshuGPT-base)**
+which continues text rather than answering? The weights are downloadable at
+👉 **[AuthRan/AshuGPT-124M-base](https://huggingface.co/AuthRan/AshuGPT-124M-base)**
 
 [Code](https://github.com/AuthRan/AuthLLM) ·
 [What it writes, unedited](https://github.com/AuthRan/AuthLLM/tree/main/results) ·
