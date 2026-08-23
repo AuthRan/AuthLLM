@@ -150,6 +150,7 @@ and the Gradio app behind the Space lives in [`space/`](space/).
 ## Table of Contents
 
 0. [The whole pipeline, end to end](#the-whole-pipeline-end-to-end)
+0. [How this got here](#how-this-got-here) — the month, in order
 1. [Motivation](#1-motivation)
 2. [What Was Implemented From Scratch](#2-what-was-implemented-from-scratch)
 3. [Architecture Overview](#3-architecture-overview)
@@ -225,6 +226,37 @@ else's weights — the leftmost box is random initialization.
 The same model code builds all four presets; only the config changes. One of
 them has been trained to completion, and this README is careful about which
 ([§14](#14-provenance-trained--implemented--loaded)).
+
+---
+
+## How this got here
+
+98 commits over one month, 2026-07-23 to 2026-08-23, in the order it actually
+happened. Nothing below is reconstructed: each row links to what was written
+down at the time, and the milestone-by-milestone log with the full detail —
+including every place a plan changed after something was measured — is
+[SPEC.md](SPEC.md).
+
+| When | What happened | Written up in |
+|---|---|---|
+| **Jul 23** | The architecture, in a day. From-scratch byte-level BPE, RMSNorm, RoPE, SwiGLU, causal attention, the assembled model, KV-cached generation, the memory estimator, a FastAPI server, and a GPT-2 loader that **refuses to succeed** rather than pretending the weights fit. CPU only; nothing trained past toy scale. | [SPEC M0–M15](SPEC.md#milestone-roadmap-implementation-order) |
+| **Jul 27–28** | Packaged and put somewhere public: MIT license, a data pipeline that could survive a multi-GB corpus, and a Hugging Face Space. | [`space/`](space/) |
+| **Aug 17–19** | **The run.** `medium`, 124M parameters, 2.46B tokens of FineWeb-Edu, 20,000 steps, ~27 hours on one 2080 Ti, final validation perplexity **23.53**. It took five failed launches, an OOM, a reboot that killed everything, and a status reporter that published a confidently wrong ETA. | [Where we started](learning/01-where-we-started.md) · [What we did](learning/02-what-we-did-and-why.md) · [**What went wrong**](learning/03-challenges.md) · [How it turned out](learning/04-results.md) |
+| **Aug 19–20** | Teaching it to *answer* rather than continue: Alpaca, then Dolly. 29 minutes of GPU against pretraining's 27 hours — and the first time a metric that looked like it measured instruction-following peaked on the checkpoint you least want. | [Teaching it to answer](learning/05-instruction-tuning.md) · [instruction-tuning.md](results/instruction-tuning.md) |
+| **Aug 20** | ~89% of both fine-tuning stages was padding. Packing the window recovered it: **4.4x** the supervised throughput — and a throughput change turned out to be a schedule change. | [Packing the window](learning/06-packing-the-window.md) |
+| **Aug 20** | `xl_1b` sharded under FSDP so it takes real optimizer steps at 2.04GB/GPU; a dependency-free browser frontend; and a chat format that makes a training document a conversation. | [§12](#12-scaling-to-billion-parameter-architectures) · [§11.3](#113-inference-api-fastapi) |
+| **Aug 21** | **Preference tuning** — the first stage ever shown a *bad* answer. DPO learned exactly what it was asked to, and almost none of that was what was wanted: what it was really ranking by was answer length. | [Teaching it to prefer](learning/07-preference-tuning.md) · [preference-tuning.md](results/preference-tuning.md) |
+| **Aug 21–22** | The chat stage swept, trained and scored — the largest single-stage move in the project (0.79 nats). Two of its measurements corrected claims this README was making. | [Holding a conversation](learning/08-holding-a-conversation.md) · [chat-tuning.md](results/chat-tuning.md) |
+| **Aug 22** | The length-normalized DPO variant, which **does not fix what it was built for** — because the shortcut was partly in the ruler. Then the first figures, drawn from the logs. | [preference-tuning.md](results/preference-tuning.md) |
+| **Aug 23** | Guards against the rot: figures checked against the tables they were drawn from, commands checked against the tree. Then a repetition penalty, and the sweep saying how far to turn it. | [repetition-penalty.md](results/repetition-penalty.md) · [§18](#18-whats-not-built) |
+
+**The thread running through it.** Six times now, the metric closest to the
+training objective has ranked checkpoints backwards against the metric that
+matters — in early stopping, in packing, in DPO's learning rate, in the chat
+sweep, and most recently in how far to turn a repetition penalty. That pattern
+is the most useful thing this project found, and every instance of it is
+written down rather than quietly dropped, including the ones that cost a
+result worth keeping.
 
 ---
 
