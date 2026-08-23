@@ -11,6 +11,7 @@ site: every plot needs the two series pulled apart the same way.
 from __future__ import annotations
 
 import csv
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -39,6 +40,19 @@ class TrainingLog:
     @property
     def final_val_loss(self) -> float | None:
         return self.val_loss[-1] if self.val_loss else None
+
+    @property
+    def final_val_perplexity(self) -> float | None:
+        """Perplexity at the last evaluated step, or None if it has none.
+
+        Not `val_perplexity[-1]`: that entry is NaN when the run's loss was
+        not a cross-entropy, and a NaN is truthy, so the obvious spelling
+        annotates a figure with the string "nan" rather than skipping it.
+        """
+        if not self.val_perplexity:
+            return None
+        last = self.val_perplexity[-1]
+        return None if math.isnan(last) else last
 
     @property
     def max_step(self) -> int:
@@ -86,7 +100,13 @@ def load_log(path: str | Path, name: str | None = None) -> TrainingLog:
             if val is not None:
                 log.val_steps.append(step)
                 log.val_loss.append(val)
+                # NaN rather than a skipped append, for the same reason lr
+                # pads above: a run whose loss is not a cross-entropy logs an
+                # empty perplexity (see trainer.py), and dropping those entries
+                # leaves val_perplexity shorter than val_steps, so index i
+                # stops meaning step i. Every DPO log in logs/ is that case --
+                # dpo_hh.csv has 15 evaluated steps and 0 perplexities -- and
+                # the misalignment is silent until something zips the two.
                 ppl = _to_float(row.get("val_perplexity", ""))
-                if ppl is not None:
-                    log.val_perplexity.append(ppl)
+                log.val_perplexity.append(ppl if ppl is not None else float("nan"))
     return log

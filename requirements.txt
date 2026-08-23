@@ -1,4 +1,4 @@
--e .[tokenizer,data]
+-e .[tokenizer,data,viz]  # viz: matplotlib, for tests/unit/test_viz_figures.py -- the guard that keeps a figure from disagreeing with the table it was copied from
 pytest>=7.4
 psutil>=5.9  # scripts/benchmark_memory.py only -- not a runtime dependency of ashugpt itself
 httpx>=0.27  # tests/unit/test_api.py's FastAPI TestClient only -- fastapi/uvicorn themselves are in pyproject.toml

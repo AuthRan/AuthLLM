@@ -287,8 +287,8 @@ print(model.num_parameters())  # exact count
 |---|---:|---:|---:|---:|---:|---:|---|
 | `tiny` | 4 | 128 | 4 | 50,304 | 256 | 7,292,032 | ✅ Yes — fast-iteration / demo scale |
 | `small` | 6 | 384 | 6 | 50,304 | 512 | 29,938,560 | ✅ Yes — the real "trained from scratch" target |
-| `medium` | 12 | 768 | 12 | 50,304 | 1,024 | 123,587,328 | ❌ No — shape/forward-pass tested only |
-| `xl_1b` | 22 | 2,048 | 32 | 50,304 | 2,048 | 1,233,479,680 | ❌ No — shape-tested only (see §12) |
+| `medium` | 12 | 768 | 12 | 50,304 | 1,024 | 123,587,328 | ✅ Yes — trained to completion: 20,000 steps, 2.46B tokens of FineWeb-Edu ([§8](#8-training-pipeline)) |
+| `xl_1b` | 22 | 2,048 | 32 | 50,304 | 2,048 | 1,233,479,680 | ❌ No — but it shards and takes real optimizer steps under FSDP ([§12](#12-scaling-to-billion-parameter-architectures)) |
 
 Every row's parameter count is *exact*, not estimated: `AshuGPT.num_parameters()`
 on a real constructed model is tested to match `ModelConfig.approx_param_count()`
@@ -2285,6 +2285,25 @@ Still not built:
 - **A trained `xl_1b`.** It fits and it steps, under FSDP with CPU offload
   ([§12](#12-scaling-to-billion-parameter-architectures)); nobody has paid for
   the run.
+
+Built on 2026-08-23:
+
+- **A check that the figures agree with the measurements.** The five figures
+  shipped the day before with no tests behind them — `ashugpt/viz/` was the
+  only module under `ashugpt/` with none — and two of them were already
+  drawing numbers nothing had measured.
+  [§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)'s
+  figure put the 5.0e-6 DPO checkpoint at 94% stop / 30% loop / 88 tokens
+  against a measured 98% / 22% / 79, and the preset ladder put `tiny` and
+  `small` at 12.3M and 33.9M against configs saying 7,292,032 and 29,938,560.
+  Both are corrected and redrawn; the preset bars are now read from
+  `configs/model/*.yaml` rather than typed, because a derivable number that
+  is typed by hand is a number that drifts. `tests/unit/test_viz_figures.py`
+  reads the same `results/*.md` tables the scoring scripts wrote and asserts
+  the rest still agree, so the next edit to either side fails there rather
+  than in a picture nobody re-reads. A third bug never reached a figure:
+  `load_log` dropped a blank perplexity instead of padding it, so
+  `val_perplexity[i]` stopped meaning `val_steps[i]` in all six DPO logs.
 
 Built on 2026-08-22:
 

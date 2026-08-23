@@ -14,6 +14,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
+from ashugpt.config import load_model_config
 from ashugpt.viz.logs import load_log
 from ashugpt.viz.style import COLORS, MUTED, TEXT, annotate, apply_style, save
 
@@ -22,14 +23,31 @@ OUT = Path("resources/plots")
 
 
 # --- Measured numbers that live in a table rather than a CSV -----------------
-# Model presets: configs/model/*.yaml, parameter counts as reported by
-# ashugpt.inspect_model (README section 3).
-PRESETS = [
-    ("tiny", 4, 128, 12.3e6, "trained on demo corpora"),
-    ("small", 6, 384, 33.9e6, "trained on demo corpora"),
-    ("medium", 12, 768, 123.6e6, "trained: 2.46B tokens"),
-    ("xl_1b", 22, 2048, 1.23e9, "fits + steps, untrained"),
+# Model presets. Only the status string is written here: the shape and the
+# parameter count are read out of configs/model/*.yaml at draw time, by the
+# same approx_param_count() README section 4 quotes, because they are
+# derivable and a derivable number that is typed by hand is a number that
+# drifts. This one had: the ladder drew tiny at 12.3M and small at 33.9M
+# against configs saying 7,292,032 and 29,938,560.
+CONFIGS = Path("configs/model")
+PRESET_STATUS = [
+    ("tiny", "trained on demo corpora"),
+    ("small", "trained on demo corpora"),
+    ("medium", "trained: 2.46B tokens"),
+    ("xl_1b", "fits + steps, untrained"),
 ]
+
+
+def _presets() -> list[tuple[str, int, int, int, str]]:
+    """(name, layers, d_model, parameters, status) for each preset."""
+    out = []
+    for name, status in PRESET_STATUS:
+        config = load_model_config(CONFIGS / f"{name}.yaml")
+        out.append((name, config.n_layers, config.d_model, config.approx_param_count(), status))
+    return out
+
+
+PRESETS = _presets()
 
 # Behaviour on the held-out Dolly split -- README sections 10.4, 10.7, 10.8.
 # Same script, same settings, same split for every row, which is the only
@@ -58,7 +76,7 @@ CHAT_SWEEP = [
 # this figure is that these two orderings are reverses of each other.
 DPO_SWEEP = [
     ("1.0e-6\n(shipped)", 57.1, 55.2, 98, 18, 70),
-    ("5.0e-6", 58.4, 56.1, 94, 30, 88),
+    ("5.0e-6", 58.4, 56.1, 98, 22, 79),
     ("2.0e-5", 59.9, 56.6, 88, 40, 103),
 ]
 SFT_BASELINE = (50.0, 54.3, 92, 20, 62)
@@ -92,8 +110,8 @@ def pretraining_curve() -> Path:
         label="held-out validation loss",
     )
 
-    final_ppl = log.val_perplexity[-1] if log.val_perplexity else None
-    if final_ppl:
+    final_ppl = log.final_val_perplexity
+    if final_ppl is not None:
         annotate(
             ax,
             f"final val loss {log.final_val_loss:.4f}\nperplexity {final_ppl:.2f}",
