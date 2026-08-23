@@ -43,3 +43,8 @@ __pycache__/
 # results/instruction_eval_dpo*.md, with every generation behind them
 /logs/dpo_*_eval.log
 /logs/chat_eval*.log
+
+# Personal CV source kept in the repo for convenience while the project's
+# resume bullets are being rewritten from its measured numbers. Not part of
+# the project and never published with it.
+/resume.txt
