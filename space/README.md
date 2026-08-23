@@ -1,35 +1,21 @@
----
-title: AshuGPT
-emoji: 📖
-colorFrom: indigo
-colorTo: purple
-sdk: gradio
-sdk_version: 5.14.0
-app_file: app.py
-pinned: false
-license: mit
----
+# The two Hugging Face Spaces
 
-# AshuGPT — a GPT built from scratch
+Both serve the same 124M model this repo pretrained from random initialization
+on 2.46B tokens of FineWeb-Edu. They differ in *which checkpoint* -- which is
+the whole point, because the difference between them is what
+[§10](../README.md#10-instruction-tuning) is about.
 
-Live demo of a decoder-only transformer implemented from scratch in PyTorch
-(RoPE, RMSNorm, SwiGLU, causal attention with a KV cache), pretrained from
-random initialization on 2.46B tokens of FineWeb-Edu. 124M parameters,
-validation perplexity 23.53, trained on a single RTX 2080 Ti.
+| | [`chat/`](chat/) | [`base/`](base/) |
+|---|---|---|
+| Space | [AshuGPT-chat](https://huggingface.co/spaces/AuthRan/AshuGPT-chat) | [AshuGPT-base](https://huggingface.co/spaces/AuthRan/AshuGPT-base) |
+| Checkpoint | `sft_chat/step_1105.pt` | `medium/step_20000.pt` |
+| Does what | answers, and holds a multi-turn conversation | continues text |
+| UI | `gr.ChatInterface` | single prompt box |
 
-It is a base model -- it continues text rather than answering questions, and
-its facts are unreliable at this size. Sample output and an honest read on what
-it did and did not learn: https://github.com/AuthRan/AuthLLM/tree/main/results
+`base/` is the honest control. A visitor who tries both sees the thing this
+project spent a week on: the same weights, before and after being taught to
+answer rather than continue. Keeping it live costs one Space and makes that
+comparison possible instead of merely described.
 
-Source: https://github.com/AuthRan/authLLM
-
-## Files this Space needs
-
-Drop one file next to `app.py` in the Space repo:
-
-- `model.pt` — an inference-only checkpoint, produced by
-  `scripts/export_inference.py` (494MB for the 124M model, down from 1.5GB once
-  optimizer state is stripped). Needs git-LFS on the Space.
-
-No `tokenizer.json`: the 124M weights were fitted to the GPT-2 tiktoken
-vocabulary, which the tokenizer rebuilds from its own package data.
+Neither `model.pt` is committed here -- they are gitignored, rebuilt with
+`scripts/export_inference.py`, and pushed to the Spaces with git-LFS.

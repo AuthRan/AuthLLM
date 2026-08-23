@@ -1,0 +1,5 @@
+{
+  "type": "tiktoken",
+  "encoding": "gpt2",
+  "vocab_size": 50259
+}

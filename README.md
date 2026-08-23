@@ -143,7 +143,7 @@ into is the 40% loop rate
 [§10.7](#107-multi-turn-chat--a-conversation-not-a-question) reports.
 
 The older base-model GIF is still in [`resources/demo.gif`](resources/demo.gif),
-and the Gradio app behind the Space lives in [`space/`](space/).
+and the Gradio apps behind the two Spaces live in [`space/`](space/).
 
 ---
 
@@ -2380,7 +2380,7 @@ authLLM/
 ├── logs/                      # metrics CSVs and run logs for every real training run
 ├── results/                   # unedited samples + what the model did and didn't learn
 ├── learning/                  # the build diary: what broke, what fixed it
-├── space/                     # the Hugging Face Space (Gradio app + deployment notes)
+├── space/                     # the two Hugging Face Spaces (chat + base Gradio apps)
 ├── ashugpt/                   # the installable package
 │   ├── generate.py             # CLI: python -m ashugpt.generate
 │   ├── inspect_model.py        # CLI: python -m ashugpt.inspect_model

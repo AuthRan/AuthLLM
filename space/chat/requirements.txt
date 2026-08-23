@@ -1,0 +1,9 @@
+# ZeroGPU attaches a real CUDA device inside @spaces.GPU, so this needs the
+# default (CUDA) torch wheels -- the CPU-only index that served the 14M model
+# would leave the GPU unused and generation crawling.
+torch
+gradio>=4.0
+# The 124M model was trained on the GPT-2 tiktoken vocabulary.
+tiktoken
+# Installs the ashugpt package (model + tokenizer code) straight from GitHub.
+git+https://github.com/AuthRan/authLLM.git

@@ -16,8 +16,8 @@ __pycache__/
 
 # Runtime artifacts for the HF Space -- uploaded to the Space directly (git-LFS
 # there), never committed to this source repo. The Space code lives in space/.
-/space/model.pt
-/space/tokenizer.json
+/space/*/model.pt
+/space/*/tokenizer.json
 
 # Env files / secrets -- never commit tokens
 .env
