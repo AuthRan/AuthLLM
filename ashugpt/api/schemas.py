@@ -27,6 +27,15 @@ class GenerateRequest(BaseModel):
     temperature: float = Field(default=0.8, ge=0.0, description="0.0 = greedy decoding")
     top_k: int | None = Field(default=50, gt=0)
     top_p: float | None = Field(default=0.9, gt=0.0, le=1.0)
+    repetition_penalty: float = Field(
+        default=1.0,
+        ge=1.0,
+        description=(
+            "Divides the score of every token already in the context. 1.0 is off and is the "
+            "default. Below 1.0 would be a repetition bonus, so it is rejected rather than "
+            "clamped."
+        ),
+    )
     instruct: bool = Field(
         default=False,
         description=(

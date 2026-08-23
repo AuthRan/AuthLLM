@@ -1716,6 +1716,34 @@ for _ in range(max_new_tokens):
   whose probabilities sum to ≥`p`, so a confident position keeps few
   candidates and an uncertain one keeps many. Combinable with top-k
   (top-k narrows first, top-p trims further).
+- **Repetition penalty**: the only one of these with a memory. Every token
+  already in the context has its logit divided by the penalty if positive and
+  multiplied if negative (Keskar et al. 2019) — the asymmetry matters, since
+  dividing a negative logit would raise it toward zero and make a
+  disfavoured token *more* likely. `1.0` is off and is the default
+  everywhere, so every number published here stays comparable.
+
+**What the penalty is worth, measured.** Loop rate is 18–40% for every
+checkpoint in [§10](#10-instruction-tuning) and no training stage addressed
+it, because none could: a model does not loop from bad training, it loops
+because nothing at sampling time can see it already said this. On the
+instruction-tuned checkpoint, same split and settings as §10.4:
+
+| repetition penalty | stop rate | mean tokens | loop rate |
+| --- | ---: | ---: | ---: |
+| 1.0 (off) | 92% | **62** | 20% |
+| **1.1** | **98%** | 74 | 8% |
+| 1.2 | 88% | 102 | **0%** |
+| 1.5 | 48% | 154 | **0%** |
+
+Held-out loss is 2.7444 on every row — teacher-forced loss never samples, so
+the metric this project usually reaches for cannot see this change at all.
+1.1 is the only setting that improves both stop rate and loop rate. Past it
+the pattern this repo keeps re-learning shows up again: loop rate reaches 0%
+and *stays* there while stopping collapses, because the tokens a model needs
+in order to end are common, therefore repeated, therefore penalised. At 1.5 it
+never loops and stops less than half the time. Narrative and the full sweep:
+[`results/repetition-penalty.md`](results/repetition-penalty.md).
 
 Both filters always leave ≥1 token unmasked (top-k by construction;
 top-p always keeps the single most-likely token even below threshold), so

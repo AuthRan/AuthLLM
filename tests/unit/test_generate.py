@@ -147,6 +147,31 @@ class _ConstantLogitsModel(nn.Module):
         return GPTOutput(logits=logits)
 
 
+class _TwoCandidateModel(nn.Module):
+    """Prefers `first_id`, with `second_id` a close runner-up.
+
+    _ConstantLogitsModel separates its favourite from the rest by 20 logits,
+    which no sane repetition penalty can cross -- 10.0 / 3.0 is still far
+    above -10.0. Testing that a penalty changes the *chosen* token needs a
+    runner-up close enough to overtake, which is also what the real failure
+    looks like: a loop is a model picking a token it only narrowly prefers.
+    """
+
+    def __init__(self, vocab_size: int, first_id: int, second_id: int, context_length: int = 1000) -> None:
+        super().__init__()
+        self.config = SimpleNamespace(context_length=context_length)
+        self.vocab_size = vocab_size
+        self.first_id = first_id
+        self.second_id = second_id
+
+    def forward(self, input_ids: torch.Tensor, **_kwargs) -> GPTOutput:
+        batch, seq_len = input_ids.shape
+        logits = torch.full((batch, seq_len, self.vocab_size), -10.0)
+        logits[:, :, self.first_id] = 5.0
+        logits[:, :, self.second_id] = 4.0
+        return GPTOutput(logits=logits)
+
+
 class _RowDependentModel(nn.Module):
     """Row 0 always predicts eos_id; every other row always predicts
     other_id -- lets us test that one finished row doesn't stop the rest
@@ -433,3 +458,97 @@ def test_stream_validates_context_length_before_yielding_anything() -> None:
     model = _ConstantLogitsModel(vocab_size=20, next_token_id=5, context_length=10)
     with pytest.raises(ValueError, match="context_length"):
         generate_stream(model, torch.tensor([[1] * 8]), max_new_tokens=5, temperature=0.0)
+
+# ---- repetition penalty ----
+
+
+def test_repetition_penalty_of_one_changes_nothing():
+    """The default has to be exactly the identity.
+
+    Every entry point defaults to 1.0, so if this were approximate the
+    penalty would silently alter every generation that never asked for it.
+    """
+    from ashugpt.inference.generate import apply_repetition_penalty
+
+    logits = torch.tensor([[1.0, -2.0, 3.0, -4.0]])
+    seen = torch.tensor([[0, 2]])
+    assert torch.equal(apply_repetition_penalty(logits, seen, 1.0), logits)
+
+
+def test_repetition_penalty_lowers_seen_tokens_of_either_sign():
+    """A positive logit is divided and a negative one multiplied.
+
+    The asymmetry is the point: dividing a negative logit would move it
+    toward zero and make an already-disfavoured token *more* likely, which
+    is the opposite of a penalty. Both branches must move the score down.
+    """
+    from ashugpt.inference.generate import apply_repetition_penalty
+
+    logits = torch.tensor([[2.0, -2.0, 5.0]])
+    seen = torch.tensor([[0, 1]])  # index 2 is untouched
+    out = apply_repetition_penalty(logits, seen, 2.0)
+
+    assert out[0, 0] == pytest.approx(1.0)   # 2.0 / 2
+    assert out[0, 1] == pytest.approx(-4.0)  # -2.0 * 2
+    assert out[0, 2] == pytest.approx(5.0)   # never generated, untouched
+    assert (out[0, :2] < logits[0, :2]).all()
+
+
+def test_repetition_penalty_is_per_row():
+    """seen_ids is (batch, context) and each row penalises its own tokens."""
+    from ashugpt.inference.generate import apply_repetition_penalty
+
+    logits = torch.tensor([[4.0, 4.0], [4.0, 4.0]])
+    seen = torch.tensor([[0], [1]])
+    out = apply_repetition_penalty(logits, seen, 2.0)
+    assert out[0].tolist() == [2.0, 4.0]
+    assert out[1].tolist() == [4.0, 2.0]
+
+
+def test_repetition_penalty_rejects_values_below_one():
+    """Below 1.0 this becomes a repetition *bonus*, which nothing wants."""
+    from ashugpt.inference.generate import apply_repetition_penalty
+
+    with pytest.raises(ValueError, match="repetition_penalty"):
+        apply_repetition_penalty(torch.zeros(1, 4), torch.tensor([[0]]), 0.9)
+
+
+def test_repetition_penalty_actually_suppresses_a_repeat():
+    """End to end: a model that only ever wants one token stops repeating it.
+
+    Greedy decoding on a model whose logits are constant emits the same id
+    forever. With a penalty it cannot, which is the behaviour loop rate
+    measures.
+    """
+    from ashugpt.inference.generate import generate
+
+    model = _TwoCandidateModel(vocab_size=8, first_id=3, second_id=2)
+    prompt = torch.tensor([[0]])
+
+    unpenalised = generate(model, prompt, max_new_tokens=4, temperature=0.0, use_cache=False)
+    assert unpenalised[0, 1:].tolist() == [3, 3, 3, 3], "greedy on constant logits repeats forever"
+
+    penalised = generate(
+        model, prompt, max_new_tokens=4, temperature=0.0, repetition_penalty=2.0, use_cache=False
+    )
+    assert penalised[0, 1:].tolist() != [3, 3, 3, 3]
+    assert len(set(penalised[0, 1:].tolist())) > 1, "the penalty did not break the loop"
+
+
+def test_repetition_penalty_is_identical_with_and_without_the_cache():
+    """The cached path tracks `seen` separately, so it can drift from the other.
+
+    Cache-equivalence is the property the rest of this file guards for
+    sampling; the penalty is the first thing here that needs the token ids
+    rather than the K/V, so it gets its own check.
+    """
+    from ashugpt.inference.generate import generate
+
+    torch.manual_seed(0)
+    model = AshuGPT(small_model_config())
+    model.eval()
+    prompt = torch.randint(0, 64, (2, 4))
+
+    cached = generate(model, prompt, max_new_tokens=8, temperature=0.0, repetition_penalty=1.6, use_cache=True)
+    uncached = generate(model, prompt, max_new_tokens=8, temperature=0.0, repetition_penalty=1.6, use_cache=False)
+    assert torch.equal(cached, uncached)

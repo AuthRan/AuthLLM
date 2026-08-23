@@ -40,6 +40,39 @@ import torch.nn.functional as F
 from ashugpt.tokenizer import BPETokenizer
 
 
+def apply_repetition_penalty(
+    logits: torch.Tensor, seen_ids: torch.Tensor, penalty: float
+) -> torch.Tensor:
+    """Push down the score of every token already in the context.
+
+    top_k and top_p decide *which* tokens may be sampled at one step; neither
+    can see that the model said the same thing four tokens ago. This is the
+    filter that looks backwards, and it is the one this repo needed: loop rate
+    -- a repeated ten-token window anywhere in a generation -- sits between
+    18% and 40% for every checkpoint measured in README section 10, and it is
+    the most visible thing wrong with the samples.
+
+    The formulation is Keskar et al. 2019 (CTRL): divide a positive logit by
+    the penalty and *multiply* a negative one. The asymmetry is the whole
+    trick -- dividing a negative logit would raise it toward zero and make a
+    disfavoured token more likely, which is backwards. Both branches move the
+    score down.
+
+    penalty=1.0 is the identity, which is why it is the default everywhere:
+    the sampler behaves exactly as it did before unless someone asks for this.
+    """
+    if penalty < 1.0:
+        raise ValueError(f"repetition_penalty must be >= 1.0, got {penalty}")
+    if penalty == 1.0 or seen_ids.numel() == 0:
+        return logits
+
+    # gather/scatter rather than a Python loop over the batch: seen_ids is
+    # (batch, context) and every row penalises a different set of tokens.
+    scores = torch.gather(logits, 1, seen_ids)
+    scores = torch.where(scores > 0, scores / penalty, scores * penalty)
+    return logits.scatter(1, seen_ids, scores)
+
+
 def _filter_top_k(logits: torch.Tensor, top_k: int) -> torch.Tensor:
     """Keep only the top_k highest logits per row; mask the rest to -inf."""
     if top_k <= 0:
@@ -110,6 +143,7 @@ def generate_stream(
     temperature: float = 1.0,
     top_k: int | None = None,
     top_p: float | None = None,
+    repetition_penalty: float = 1.0,
     eos_id: int | None = None,
     use_cache: bool = True,
 ) -> Iterator[torch.Tensor]:
@@ -163,6 +197,7 @@ def generate_stream(
         temperature=temperature,
         top_k=top_k,
         top_p=top_p,
+        repetition_penalty=repetition_penalty,
         eos_id=eos_id,
         use_cache=use_cache,
     )
@@ -176,6 +211,7 @@ def _generate_stream(
     temperature: float,
     top_k: int | None,
     top_p: float | None,
+    repetition_penalty: float,
     eos_id: int | None,
     use_cache: bool,
 ) -> Iterator[torch.Tensor]:
@@ -195,10 +231,16 @@ def _generate_stream(
         next_input = input_ids  # first call always processes the whole prompt
         position_offset = 0
         kv_caches = None
+        seen = input_ids  # every id in the context so far, prompt included
 
         for _ in range(max_new_tokens):
             output = model(next_input, kv_caches=kv_caches, position_offset=position_offset)
             next_token_logits = output.logits[:, -1, :]  # (batch, vocab_size) -- the newest position only
+            # `seen` is tracked explicitly because the cached path deliberately
+            # does not keep the sequence around -- next_input is one token by
+            # then, and the context lives inside the KV cache as K/V rather
+            # than as ids. This is the only thing here that needs the ids.
+            next_token_logits = apply_repetition_penalty(next_token_logits, seen, repetition_penalty)
             next_tokens = sample_next_token(next_token_logits, temperature, top_k, top_p)  # (batch,)
 
             if eos_id is not None:
@@ -206,6 +248,8 @@ def _generate_stream(
 
             yield next_tokens
             generated_len += 1
+            if repetition_penalty != 1.0:
+                seen = torch.cat([seen, next_tokens.unsqueeze(1)], dim=1)
 
             if eos_id is not None:
                 finished = finished | (next_tokens == eos_id)
@@ -234,6 +278,7 @@ def generate(
     temperature: float = 1.0,
     top_k: int | None = None,
     top_p: float | None = None,
+    repetition_penalty: float = 1.0,
     eos_id: int | None = None,
     use_cache: bool = True,
 ) -> torch.Tensor:
@@ -250,6 +295,7 @@ def generate(
         temperature=temperature,
         top_k=top_k,
         top_p=top_p,
+        repetition_penalty=repetition_penalty,
         eos_id=eos_id,
         use_cache=use_cache,
     ):
@@ -265,6 +311,7 @@ def generate_text(
     temperature: float = 1.0,
     top_k: int | None = None,
     top_p: float | None = None,
+    repetition_penalty: float = 1.0,
     add_bos: bool = True,
     use_cache: bool = True,
 ) -> str:
@@ -277,6 +324,7 @@ def generate_text(
         temperature=temperature,
         top_k=top_k,
         top_p=top_p,
+        repetition_penalty=repetition_penalty,
         eos_id=tokenizer.eos_id,
         use_cache=use_cache,
     )

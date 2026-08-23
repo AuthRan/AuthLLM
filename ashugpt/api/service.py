@@ -128,6 +128,7 @@ class InferenceService:
         temperature: float,
         top_k: int | None,
         top_p: float | None,
+        repetition_penalty: float = 1.0,
         instruct: bool = False,
         chat: bool = False,
         history: Sequence[tuple[str, str]] = (),
@@ -147,6 +148,7 @@ class InferenceService:
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
+            repetition_penalty=repetition_penalty,
             eos_id=self.tokenizer.eos_id,
         )
         elapsed = time.perf_counter() - start
@@ -173,6 +175,7 @@ class InferenceService:
         temperature: float,
         top_k: int | None,
         top_p: float | None,
+        repetition_penalty: float = 1.0,
         instruct: bool = False,
         chat: bool = False,
         history: Sequence[tuple[str, str]] = (),
@@ -208,6 +211,7 @@ class InferenceService:
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
+            repetition_penalty=repetition_penalty,
             eos_id=self.tokenizer.eos_id,
         )
 

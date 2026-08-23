@@ -80,6 +80,7 @@ def measure_generation(model, tokenizer, examples, args) -> tuple[dict[str, floa
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,
             top_k=args.top_k,
+            repetition_penalty=args.repetition_penalty,
             eos_id=tokenizer.eos_id,
         )
         new_ids = output_ids[0, len(prompt_ids) :].tolist()
@@ -128,6 +129,12 @@ def main() -> None:
     parser.add_argument("--max-new-tokens", type=int, default=200)
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--top-k", type=int, default=50)
+    parser.add_argument(
+        "--repetition-penalty",
+        type=float,
+        default=1.0,
+        help="1.0 is off, and is the default so every number already published stays comparable",
+    )
     parser.add_argument("--seed", type=int, default=1337)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--output", type=Path, default=None, help="Write every generation to this markdown file")
@@ -187,6 +194,7 @@ def main() -> None:
                 f"val fraction {args.val_fraction}); loss over {args.loss_batches} batches of "
                 f"{args.batch_size}; generations from the first {len(prompt_examples)} held-out "
                 f"prompts at temperature {args.temperature}, top_k {args.top_k}, "
+                f"repetition penalty {args.repetition_penalty}, "
                 f"cap {args.max_new_tokens} tokens.\n\n"
             )
             fh.write(table + "\n")
