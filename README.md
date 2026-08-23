@@ -25,7 +25,7 @@
 | **Validation** | loss 3.1583 · perplexity 23.53 |
 | **Stages** | pretrain → instruction tune → **chat** *and* **preference (DPO)** |
 | **Hardware** | 2x RTX 2080 Ti · ~27 h for the pretraining run |
-| **Tests** | 437, CPU-only, run on every push |
+| **Tests** | 441, CPU-only, run on every push |
 
 </div>
 
@@ -231,8 +231,8 @@ them has been trained to completion, and this README is careful about which
 
 ## How this got here
 
-98 commits over one month, 2026-07-23 to 2026-08-23, in the order it actually
-happened. Nothing below is reconstructed: each row links to what was written
+A hundred commits over one month, 2026-07-23 to 2026-08-23, in the order it
+actually happened. Nothing below is reconstructed: each row links to what was written
 down at the time, and the milestone-by-milestone log with the full detail —
 including every place a plan changed after something was measured — is
 [SPEC.md](SPEC.md).
@@ -2406,7 +2406,7 @@ authLLM/
 ## 17. Testing
 
 <details>
-<summary><b>Expand</b> — what the 437 tests actually assert</summary>
+<summary><b>Expand</b> — what the 441 tests actually assert</summary>
 
 ```
 pytest                    # everything
