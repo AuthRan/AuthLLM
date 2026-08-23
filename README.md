@@ -250,6 +250,16 @@ including every place a plan changed after something was measured — is
 | **Aug 22** | The length-normalized DPO variant, which **does not fix what it was built for** — because the shortcut was partly in the ruler. Then the first figures, drawn from the logs. | [preference-tuning.md](results/preference-tuning.md) |
 | **Aug 23** | Guards against the rot: figures checked against the tables they were drawn from, commands checked against the tree. Then a repetition penalty, and the sweep saying how far to turn it. | [repetition-penalty.md](results/repetition-penalty.md) · [§18](#18-whats-not-built) |
 
+**The branches.** [`main`](https://github.com/AuthRan/AuthLLM/tree/main) is the whole project and the only
+one to read. The other two are kept as bookmarks rather than as work in
+progress, and every commit on both is already contained in `main`:
+[`124-million-training`](https://github.com/AuthRan/AuthLLM/tree/124-million-training) marks where the repo
+stood the day the 124M pretraining run finished, before any fine-tuning
+existed, and [`post-run-work`](https://github.com/AuthRan/AuthLLM/tree/post-run-work) is where everything
+after that run was built. Comparing the first against `main` is the clearest
+single view of how much of this project happened *after* the model was
+trained: [see the diff](https://github.com/AuthRan/AuthLLM/compare/124-million-training...main).
+
 **The thread running through it.** Six times now, the metric closest to the
 training objective has ranked checkpoints backwards against the metric that
 matters — in early stopping, in packing, in DPO's learning rate, in the chat
