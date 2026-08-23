@@ -27,6 +27,13 @@ from ashugpt.api.service import InferenceService
 
 CHECKPOINT_ENV_VAR = "ASHUGPT_CHECKPOINT"
 TOKENIZER_ENV_VAR = "ASHUGPT_TOKENIZER"
+FORMAT_ENV_VAR = "ASHUGPT_FORMAT"
+
+# What a checkpoint was fine-tuned on. Nothing in the weights says which, so
+# the operator declares it and the frontend follows. "base" is the default
+# because it is the only one that is never actively wrong: a base checkpoint
+# continues text, and continuation is what an undeclared checkpoint gets.
+PROMPT_FORMATS = ("base", "instruct", "chat")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -40,6 +47,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             f"Set {CHECKPOINT_ENV_VAR} and {TOKENIZER_ENV_VAR} before starting the server "
             f"(scripts/serve.py does this for you from --checkpoint/--tokenizer flags)."
         )
+    prompt_format = os.environ.get(FORMAT_ENV_VAR, "base")
+    if prompt_format not in PROMPT_FORMATS:
+        raise RuntimeError(
+            f"{FORMAT_ENV_VAR}={prompt_format!r} is not one of {PROMPT_FORMATS}."
+        )
+    app.state.prompt_format = prompt_format
     app.state.service = InferenceService.load(checkpoint_path, tokenizer_path)
     yield
     # Nothing to release: no open connections/file handles outlive the process.
@@ -69,6 +82,7 @@ def health() -> HealthResponse:
         model_loaded=True,
         checkpoint_path=service.checkpoint_path,
         parameter_count=service.parameter_count,
+        prompt_format=getattr(app.state, "prompt_format", "base"),
     )
 
 

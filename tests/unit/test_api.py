@@ -79,6 +79,54 @@ def test_health_reports_model_loaded(client: TestClient) -> None:
     assert body["parameter_count"] > 0
 
 
+def test_health_reports_the_declared_prompt_format(
+    checkpoint_and_tokenizer: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The frontend picks its opening tab from this field.
+
+    Nothing in a checkpoint records what it was fine-tuned on, so the
+    operator declares it at startup and /health passes it through. Getting
+    it wrong is how a working model looks broken: an instruction-tuned
+    checkpoint served as "base" opens on the continuation tab and is asked
+    to write more of the question rather than answer it.
+    """
+    checkpoint_path, tokenizer_path = checkpoint_and_tokenizer
+    monkeypatch.setenv("ASHUGPT_CHECKPOINT", str(checkpoint_path))
+    monkeypatch.setenv("ASHUGPT_TOKENIZER", str(tokenizer_path))
+    monkeypatch.setenv("ASHUGPT_FORMAT", "chat")
+
+    from ashugpt.api.app import app
+
+    with TestClient(app) as test_client:
+        assert test_client.get("/health").json()["prompt_format"] == "chat"
+
+
+def test_prompt_format_defaults_to_base(client: TestClient) -> None:
+    """Undeclared means continuation, the one answer that is never wrong.
+
+    A base checkpoint continues text, so an operator who says nothing gets
+    the behaviour that matches an unfine-tuned model rather than a template
+    the weights have never seen.
+    """
+    assert client.get("/health").json()["prompt_format"] == "base"
+
+
+def test_an_unknown_prompt_format_refuses_to_start(
+    checkpoint_and_tokenizer: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failing at startup beats serving every request in the wrong template."""
+    checkpoint_path, tokenizer_path = checkpoint_and_tokenizer
+    monkeypatch.setenv("ASHUGPT_CHECKPOINT", str(checkpoint_path))
+    monkeypatch.setenv("ASHUGPT_TOKENIZER", str(tokenizer_path))
+    monkeypatch.setenv("ASHUGPT_FORMAT", "instructions")  # not one of the three
+
+    from ashugpt.api.app import app
+
+    with pytest.raises(RuntimeError, match="instructions"):
+        with TestClient(app):
+            pass
+
+
 # ---- /generate: happy path ----
 
 

@@ -68,6 +68,15 @@ class HealthResponse(BaseModel):
     model_loaded: bool
     checkpoint_path: str | None = None
     parameter_count: int | None = None
+    prompt_format: str | None = None
+    """Which document format this checkpoint was fine-tuned on.
+
+    "base" | "instruct" | "chat". A checkpoint file does not record what it
+    was trained on, and nothing about the weights reveals it, so this is what
+    the operator declared at startup. The frontend defaults its mode to it:
+    prompting an instruction-tuned checkpoint as raw continuation is the
+    single easiest way to make a working model look broken.
+    """
 
 
 class StreamChunkResponse(BaseModel):

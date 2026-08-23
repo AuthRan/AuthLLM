@@ -221,10 +221,24 @@
     sync();
   }
 
+  // Which tab to open on. A fine-tuned checkpoint prompted as raw
+  // continuation is asked to write more of the question instead of answering
+  // it, and looks broken while being fine -- so the page follows what the
+  // server was told the checkpoint is, rather than always starting on
+  // "Continue text". The tabs stay switchable; this only picks the default.
+  const FORMAT_MODES = { base: "continue", instruct: "instruct", chat: "chat" };
+
   fetch("health").then(r => r.json()).then(h => {
     $("model").textContent = h.model_loaded
       ? `${h.parameter_count.toLocaleString()} parameters · ${h.checkpoint_path}`
       : "model still loading…";
+    const wanted = FORMAT_MODES[h.prompt_format];
+    // Only while the box still holds an untouched sample -- /health can
+    // answer after someone has started typing, and switching tabs under them
+    // would be worse than starting on the wrong one. Same test setMode uses
+    // before it replaces the text.
+    const untouched = Object.values(SAMPLES).includes($("prompt").value.trim());
+    if (wanted && wanted !== mode && untouched) setMode(wanted);
   }).catch(() => { $("model").textContent = "API unreachable"; });
 
   // Takes the prompt rather than re-reading the textarea: chat mode clears

@@ -2,6 +2,8 @@
 
 Usage:
     python scripts/serve.py --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json
+    python scripts/serve.py --checkpoint checkpoints/sft_chat/step_1105.pt \
+        --tokenizer tokenizer_gpt2.json --format chat
     python scripts/serve.py --checkpoint ... --tokenizer ... --host 0.0.0.0 --port 8080
 
 Equivalent without this wrapper (e.g. for a container, where env vars are
@@ -17,19 +19,31 @@ from pathlib import Path
 
 import uvicorn
 
-from ashugpt.api.app import CHECKPOINT_ENV_VAR, TOKENIZER_ENV_VAR
+from ashugpt.api.app import CHECKPOINT_ENV_VAR, FORMAT_ENV_VAR, PROMPT_FORMATS, TOKENIZER_ENV_VAR
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--tokenizer", type=Path, required=True)
+    parser.add_argument(
+        "--format",
+        choices=PROMPT_FORMATS,
+        default="base",
+        help=(
+            "What this checkpoint was fine-tuned on, which the frontend uses to pick its "
+            "default mode. Nothing in a checkpoint records this. Serving an instruction- or "
+            "chat-tuned checkpoint as 'base' is the easiest way to make a working model look "
+            "broken: it gets asked to continue the question instead of answer it."
+        ),
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 
     os.environ[CHECKPOINT_ENV_VAR] = str(args.checkpoint)
     os.environ[TOKENIZER_ENV_VAR] = str(args.tokenizer)
+    os.environ[FORMAT_ENV_VAR] = args.format
 
     uvicorn.run("ashugpt.api.app:app", host=args.host, port=args.port)
 
