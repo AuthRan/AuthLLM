@@ -101,8 +101,9 @@ from-scratch transformer ([§3](#3-architecture-overview)), KV-cached decoding
 
 ```
 python scripts/serve.py --checkpoint checkpoints/sft_chat/step_1105.pt \
-    --tokenizer tokenizer_gpt2.json
-# then open http://127.0.0.1:8000 and pick the "Chat" tab
+    --tokenizer tokenizer_gpt2.json --format chat
+# then open http://127.0.0.1:8000 -- --format chat is what makes the page
+# open on the Chat tab rather than on raw continuation
 ```
 
 **Two things that recording is not.** It is not the Hugging Face Space: that
@@ -1765,7 +1766,9 @@ python -m ashugpt.generate --checkpoint ... --tokenizer ... --prompt "..." --tem
 ### 11.3 Inference API (FastAPI)
 
 ```
-python scripts/serve.py --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json
+# --format tells the frontend which tab to open on: base (the default,
+# continuation), instruct, or chat. Nothing in a checkpoint records it.
+python scripts/serve.py --checkpoint checkpoints/demo/step_150.pt --tokenizer tokenizer.json --format base
 curl -X POST http://127.0.0.1:8000/generate -H "Content-Type: application/json" \
     -d '{"prompt": "Once upon a time", "max_new_tokens": 50, "temperature": 0.8, "top_k": 50, "top_p": 0.9}'
 ```
@@ -2315,6 +2318,24 @@ Still not built:
   the run.
 
 Built on 2026-08-23:
+
+- **A repetition penalty, and the sweep that says how far to turn it.** Every
+  checkpoint here loops — 18% to 40% — and no training stage addressed it,
+  because none could: a model loops when nothing at sampling time can see it
+  already said this. `temperature`, `top_k` and `top_p` have no memory;
+  `apply_repetition_penalty` does ([§11.2](#112-sampling-methods)). On the
+  instruction-tuned checkpoint it takes loop rate 20% → 8% while stop rate
+  goes 92% → 98%, at 1.1 — the only setting that improves both. Turned
+  further it reaches 0% looping and stays there while stopping collapses to
+  48%, for the sixth instance of this project's recurring pattern. Off by
+  default everywhere measured, so nothing published changes.
+- **The page opens in the format its checkpoint was trained on.** It always
+  started on "Continue text", so serving the chat checkpoint and typing a
+  question got the model continuing the question instead of answering it —
+  the model doing exactly what it was asked, and looking broken for it.
+  Nothing in a checkpoint records what it was fine-tuned on, so
+  `scripts/serve.py --format {base,instruct,chat}` declares it, `/health`
+  reports it, and the page follows.
 
 - **A check that the commands in the docs describe runs that could happen.**
   `test_doc_links.py` checked every markdown link and nothing checked the
