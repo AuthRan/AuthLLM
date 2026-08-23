@@ -1,8 +1,34 @@
+<div align="center">
+
 # AshuGPT
 
-[![tests](https://github.com/AuthRan/AuthLLM/actions/workflows/tests.yml/badge.svg)](https://github.com/AuthRan/AuthLLM/actions/workflows/tests.yml)
+**A GPT-style decoder-only LLM built from scratch in PyTorch — tokenizer to browser frontend.**
 
-**An educational, from-scratch GPT-style decoder-only language model.**
+[![tests](https://github.com/AuthRan/AuthLLM/actions/workflows/tests.yml/badge.svg)](https://github.com/AuthRan/AuthLLM/actions/workflows/tests.yml)
+[![python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
+[![pytorch](https://img.shields.io/badge/built%20on-PyTorch-ee4c2c)](https://pytorch.org)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+[**▶ Live demo**](https://huggingface.co/spaces/AuthRan/AshGPT) ·
+[**What it writes**](results/) ·
+[**Build log**](learning/) ·
+[**How to run it**](#15-reproducibility--commands) ·
+[**What is not built**](#18-whats-not-built)
+
+</div>
+
+<div align="center">
+
+| | |
+|---|---|
+| **Trained here** | `medium` — 123,587,328 params, 2.46B tokens of FineWeb-Edu, 20,000 steps |
+| **Validation** | loss 3.1583 · perplexity 23.53 |
+| **Stages** | pretrain → instruction tune → **chat** *and* **preference (DPO)** |
+| **Hardware** | 2x RTX 2080 Ti · ~27 h for the pretraining run |
+| **Tests** | 437, CPU-only, run on every push |
+
+</div>
+
 Tokenizer, Transformer architecture (RoPE, RMSNorm, SwiGLU, causal
 attention), training loop, distributed training (DDP and FSDP), memory
 optimization, instruction tuning, preference tuning with DPO, autoregressive
@@ -192,6 +218,10 @@ else's weights — the leftmost box is random initialization.
   <img src="resources/plots/02-scaling-ladder.png" alt="Parameter counts for the tiny, small, medium and xl_1b presets, marking which have been trained" width="900">
 </p>
 
+<p align="center">
+  <sub>Parameter counts read from <a href="configs/model/"><code>configs/model/*.yaml</code></a> at draw time, by the same <code>approx_param_count()</code> §4 quotes — the bars cannot disagree with the configs. Only <code>medium</code> has been trained here.</sub>
+</p>
+
 The same model code builds all four presets; only the config changes. One of
 them has been trained to completion, and this README is careful about which
 ([§14](#14-provenance-trained--implemented--loaded)).
@@ -306,6 +336,9 @@ print(config.head_dim, config.approx_param_count())  # 64, 29938560
 
 ## 5. Tokenization
 
+<details>
+<summary><b>Expand</b> — GPT-2 BPE via tiktoken, the from-scratch BPE beside it, and why both exist</summary>
+
 `ashugpt/tokenizer/bpe_scratch.py` — a byte-level BPE tokenizer built
 without any tokenizer library, the same algorithm family GPT-2/GPT-3 use:
 
@@ -346,7 +379,14 @@ batch = tok.encode_batch(["short text", "a longer piece of text"], max_length=32
 # right-padded with pad_id, no custom collate_fn needed
 ```
 
+</details>
+
+---
+
 ## 6. Transformer Mathematics
+
+<details>
+<summary><b>Expand</b> — attention, RoPE, RMSNorm, SwiGLU and causal masking — the derivations</summary>
 
 ### 6.1 Attention Mechanism
 
@@ -435,7 +475,14 @@ confirming every *earlier* token's output is bit-for-bit unchanged — the
 only way that's possible is if the earlier positions truly never saw the
 later one.
 
+</details>
+
+---
+
 ## 7. Next-Token Prediction & Training Objective
+
+<details>
+<summary><b>Expand</b> — what the loss actually is, and what a perplexity of 23.53 means</summary>
 
 Given `"The cat sat down"`, a decoder-only LM is trained so that, at every
 position, the prediction from everything up to and including that
@@ -467,6 +514,10 @@ out.loss.backward()
 
 Padding positions in `labels` should be set to `-100`, which
 `F.cross_entropy` ignores by default — no extra masking logic needed.
+
+</details>
+
+---
 
 ## 8. Training Pipeline
 
@@ -642,6 +693,9 @@ python scripts/benchmark_memory.py
 
 ## 9. Distributed Training (DDP)
 
+<details>
+<summary><b>Expand</b> — gradient synchronization, rank-zero logging, and the launch commands</summary>
+
 ```mermaid
 sequenceDiagram
     participant R0 as GPU 0 (rank 0)
@@ -731,6 +785,10 @@ relative to fixed communication cost (bigger models/batches, or NCCL/GPU).
 
 FSDP came later, when `xl_1b` needed to train on cards that cannot each
 hold it — see [§12](#12-scaling-to-billion-parameter-architectures).
+
+</details>
+
+---
 
 ## 10. Instruction Tuning
 
@@ -894,6 +952,17 @@ examples no stage of training ever saw. Held-out loss is computed with the
 prompt masked exactly as in training, so it scores prediction of the
 *response* only. The behavioural columns come from 40 real sampled
 generations per checkpoint (temperature 0.8, top-k 50, 200-token cap).
+
+<p align="center">
+  <img src="resources/plots/03-stage-behaviour.png" alt="Stop rate, loop rate and mean answer length for the base model, the instruction-tuned model, and the chat and preference branches, on one held-out Dolly split" width="960">
+</p>
+
+<p align="center">
+  <sub>Every stage on the one split they share, scored by the same script. The last two bars
+  are hatched because they are <b>branches, not steps</b>: chat and DPO both start from the
+  instruction-tuned checkpoint, so drawing them end to end would claim a four-stage pipeline
+  this project never ran.</sub>
+</p>
 
 Every checkpoint that ran, scored the same way:
 
@@ -1280,6 +1349,10 @@ was swept too — four points, 300 steps each, complete cosine cycles
   <img src="resources/plots/04-chat-lr-sweep.png" alt="Held-out chat loss for four learning rates over 300 steps, plus the full epoch at the winner" width="960">
 </p>
 
+<p align="center">
+  <sub>Drawn from <a href="logs/"><code>logs/sft_chat_lr*.csv</code></a> and <a href="logs/sft_chat.csv"><code>logs/sft_chat.csv</code></a>. The minimum is bracketed rather than at an edge, which is the only reason the sweep is worth reporting.</sub>
+</p>
+
 1.0e-4 — 2.5x the value argued for — takes the best held-out loss of the sweep
 with the best stop rate, and 2.5e-4 is past the optimum on both loss and answer
 length, which is what makes this a bracketed minimum rather than the top of a
@@ -1538,6 +1611,10 @@ sweep — is the only one that improves anything, and is what
 
 <p align="center">
   <img src="resources/plots/05-dpo-metric-reversal.png" alt="The same three DPO checkpoints ranked by preference accuracy and by behavioural metrics, in opposite orders" width="960">
+</p>
+
+<p align="center">
+  <sub>The same three checkpoints ranked twice, from <a href="results/preference_eval_sweep.md"><code>preference_eval_sweep.md</code></a> and <a href="results/instruction_eval_dpo_sweep.md"><code>instruction_eval_dpo_sweep.md</code></a>. More learning rate wins the objective and loses on behaviour.</sub>
 </p>
 
 This is the fourth time in this project that the metric closest to the training
@@ -1938,6 +2015,9 @@ learns the difference.
 
 ## 13. Pretrained Checkpoints: Comparison, Not Loading
 
+<details>
+<summary><b>Expand</b> — why GPT-2's weights cannot be loaded into this architecture, verified rather than assumed</summary>
+
 **AshuGPT cannot load GPT-2's public pretrained weights and produce a
 working model.** Not "hasn't been tried" — determined, tested, and
 demonstrated against GPT-2's real published checkpoint metadata (fetched
@@ -1994,6 +2074,10 @@ missing** (every `gate_proj`/`up_proj`/`down_proj`), **110 unexpected**
 buffer GPT-2 stores as `h.{i}.attn.bias`). `load_gpt2_checkpoint(strict=True)`
 — the default — **raises `IncompatibleArchitectureError`** rather than
 returning a model that looks loaded but silently produces wrong output.
+
+</details>
+
+---
 
 ## 14. Provenance: Trained / Implemented / Loaded
 
@@ -2234,6 +2318,9 @@ python scripts/benchmark_memory.py
 
 ## 16. Project Structure
 
+<details>
+<summary><b>Expand</b> — the directory tree, annotated</summary>
+
 ```
 authLLM/
 ├── SPEC.md                    # full design spec + honest milestone-by-milestone log
@@ -2270,7 +2357,14 @@ authLLM/
     └── integration/              # test_train_step.py, test_ddp.py — slower, real end-to-end proofs
 ```
 
+</details>
+
+---
+
 ## 17. Testing
+
+<details>
+<summary><b>Expand</b> — what the 437 tests actually assert</summary>
 
 ```
 pytest                    # everything
@@ -2295,6 +2389,10 @@ provable invariants (rotation preserves norm, causal masking provably
 blocks future tokens), or exact expected memory multipliers. Every memory
 or speed claim in this document has a `scripts/benchmark_*.py` or test
 behind the specific number quoted.
+
+</details>
+
+---
 
 ## 18. What's Not Built
 
