@@ -2137,7 +2137,7 @@ python scripts/preference_tune.py --model configs/model/medium.yaml \
 python scripts/eval_preference.py --data data/preference/hh_test.jsonl \
     --reference checkpoints/sft_dolly_packed3e5/step_940.pt \
     --checkpoint sft=checkpoints/sft_dolly_packed3e5/step_940.pt \
-    --checkpoint dpo=checkpoints/dpo_hh/step_1495.pt \
+    --checkpoint dpo=checkpoints/dpo_hh/step_400.pt \
     --output results/preference_eval_hh.md
 ```
 
@@ -2287,6 +2287,25 @@ Still not built:
   the run.
 
 Built on 2026-08-23:
+
+- **A check that the commands in the docs describe runs that could happen.**
+  `test_doc_links.py` checked every markdown link and nothing checked the
+  commands, which is the part a reader copies. It found one: section 15's
+  preference-tuning block trained with `configs/train/dpo_hh.yaml`, whose
+  `max_steps` is 400, and then evaluated `checkpoints/dpo_hh/step_1495.pt` —
+  a checkpoint that config cannot produce, and the *full epoch*, the run
+  [§10.8](#108-preference-tuning--the-first-stage-that-is-shown-a-bad-answer)
+  measured and explicitly declined to ship.
+  [`results/preference-tuning.md`](results/preference-tuning.md) gave the same
+  block as `step_400.pt`, so the two documents disagreed about where the
+  headline preference numbers came from. No file was missing and no link was
+  dead, which is why nothing caught it. `tests/unit/test_doc_commands.py`
+  checks both halves now: that a command naming a tracked file names one that
+  exists, and that a cited `step_N.pt` is a step the config in the same block
+  actually reaches. The second comparison is against the config rather than
+  the file because `checkpoints/` is gitignored — it does not exist in the
+  clean checkout CI runs from.
+
 
 - **A check that the figures agree with the measurements.** The five figures
   shipped the day before with no tests behind them — `ashugpt/viz/` was the
