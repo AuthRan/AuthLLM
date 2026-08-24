@@ -48,3 +48,6 @@ __pycache__/
 # resume bullets are being rewritten from its measured numbers. Not part of
 # the project and never published with it.
 /resume.txt
+
+# Rendered web version of the paper (regenerate: python paper/build_page.py)
+/paper/paper.html

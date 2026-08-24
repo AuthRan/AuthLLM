@@ -1233,9 +1233,44 @@ tuned baseline being fixed:
 
 The controls rule it out: unpacked peaks at 3e-5 and has turned by 6e-5, so
 the 2e-5 the stage shipped was about right. Packed keeps improving to 1.5e-4.
-The two optima sit ~5x apart against a 4.53x batch ratio — **linear** scaling,
-not the square-root rule that is the usual first guess and would have stopped
-less than halfway.
+The two optima sit ~5x apart against a 4.47x ratio of supervised tokens per
+step, which reads as **linear** scaling rather than the square-root rule that
+is the usual first guess. That reading is wrong, and the next subsection is the
+correction.
+
+#### Why the ~5x above is not a batch-size rule
+
+The comparison that produces it moves two variables at once. At a fixed budget
+of one epoch, packing multiplies supervised tokens per step by 4.47x *and*
+divides the optimizer step count by 4.57x, so a rule that scales `lr*` with
+batch size and a rule that conserves the schedule integral `max_lr x steps`
+predict the same ~5x and cannot be told apart on these two cells. The numbers
+fit the second as well as the first: 3.0e-5 x 1600 = 0.048 against
+1.5e-4 x 350 = 0.0525, within 10%.
+
+Separating them needs the two cells this table does not have — padded at 350
+steps and packed at 1,600 — which is a 2x2 factorial, run later across two
+corpora and 97 runs ([`paper/paper.md`](paper/paper.md)). Holding the step
+count fixed, the batch effect alone is 2.73x on Alpaca and 1.60x on Dolly:
+exponents of 0.67 and 0.44 against linear's 1.0, and not the same exponent on
+the two corpora. Holding the batch fixed instead, step count moves the optimum
+on its own, by 1.78x and 1.29x.
+
+Both effects are therefore real, neither is linear, and the ~5x above is the
+two of them compounded rather than a batch-size rule. What survives from this
+section is the practical half: at a fixed data budget the optimum moves by
+roughly the packing factor (4.86x here, 2.07x on Dolly), so a learning rate
+cannot be inherited through a packing change. What does not survive is the
+exponent — this section read one number off two confounded cells and named a
+scaling law, and the factorial shows the two corpora do not share one.
+
+One smaller correction while here. The regression at the inherited rate above
+is real at 2e-5, the rate stage 1 shipped, but it is not a general fact about
+inheriting: at 3e-5, which is where the padded arm actually peaks, the packed
+run scores 2.0678 against padding's 2.0720 and is very slightly ahead. The
+durable statement is the distance to the packed optimum — 2.0175 at 1.5e-4,
+0.050 nats better than inheriting 3e-5 — and not the sign of the comparison
+against padding, which turns over between two adjacent grid points.
 
 #### Stage 1's own held-out loss picks the wrong checkpoint
 
