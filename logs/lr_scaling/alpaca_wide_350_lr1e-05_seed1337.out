@@ -1,0 +1,45 @@
+Data: 50,868 train / 1,038 val examples (68 dropped as longer than 512 tokens)
+Model: medium (123,587,328 parameters), initialized from /home/system/projects/AuthLLM/checkpoints/medium/step_20000.pt (step 20000)
+step     10 | train_loss 2.5072 | lr 4.55e-06
+step     20 | train_loss 2.3250 | lr 9.09e-06
+step     30 | train_loss 2.2817 | lr 9.99e-06
+step     40 | train_loss 2.3658 | lr 9.94e-06
+step     50 | train_loss 2.2089 | lr 9.85e-06
+step     50 | val_loss 2.2496 | val_ppl 9.48
+step     60 | train_loss 2.2366 | lr 9.72e-06
+step     70 | train_loss 2.1688 | lr 9.55e-06
+step     80 | train_loss 2.2044 | lr 9.35e-06
+step     90 | train_loss 2.2249 | lr 9.10e-06
+step    100 | train_loss 2.3227 | lr 8.83e-06
+step    100 | val_loss 2.1957 | val_ppl 8.99
+step    110 | train_loss 2.1933 | lr 8.53e-06
+step    120 | train_loss 2.1974 | lr 8.19e-06
+step    130 | train_loss 2.2196 | lr 7.84e-06
+step    140 | train_loss 2.1999 | lr 7.46e-06
+step    150 | train_loss 2.2406 | lr 7.06e-06
+step    150 | val_loss 2.1697 | val_ppl 8.76
+step    160 | train_loss 2.2065 | lr 6.65e-06
+step    170 | train_loss 2.1750 | lr 6.23e-06
+step    180 | train_loss 2.1308 | lr 5.80e-06
+step    190 | train_loss 2.2036 | lr 5.37e-06
+step    200 | train_loss 2.2995 | lr 4.94e-06
+step    200 | val_loss 2.1550 | val_ppl 8.63
+step    210 | train_loss 2.1552 | lr 4.52e-06
+step    220 | train_loss 2.2094 | lr 4.10e-06
+step    230 | train_loss 2.1963 | lr 3.70e-06
+step    240 | train_loss 2.1419 | lr 3.31e-06
+step    250 | train_loss 2.2218 | lr 2.95e-06
+step    250 | val_loss 2.1455 | val_ppl 8.55
+step    260 | train_loss 2.0904 | lr 2.60e-06
+step    270 | train_loss 2.2600 | lr 2.29e-06
+step    280 | train_loss 2.1789 | lr 2.00e-06
+step    290 | train_loss 2.0780 | lr 1.75e-06
+step    300 | train_loss 2.2056 | lr 1.53e-06
+step    300 | val_loss 2.1408 | val_ppl 8.51
+step    310 | train_loss 2.1952 | lr 1.34e-06
+step    320 | train_loss 2.1949 | lr 1.20e-06
+step    330 | train_loss 2.1755 | lr 1.09e-06
+step    340 | train_loss 2.1889 | lr 1.02e-06
+step    350 | train_loss 2.1657 | lr 1.00e-06
+step    350 | val_loss 2.1387 | val_ppl 8.49
+Saved checkpoint to /home/system/projects/AuthLLM/checkpoints/lr_scaling/alpaca_wide_350_lr1e-05_seed1337/step_350.pt

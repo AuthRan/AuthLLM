@@ -1,0 +1,24 @@
+=== orphaned children finished; harvesting ===
+harvested packed_1600_lr0.00015_seed1337: final 2.3616
+harvested packed_1600_lr9e-05_seed1337: final 2.1789
+harvested 2 orphaned run(s)
+=== unpacked_350: the decisive cell ===
+dataset alpaca (packing ratio 4.53x), cells ['unpacked_350']
+7 runs to go (0 already in lr_scaling_sweep.csv)
+~28 min serial, ~14 min across 2 gpu(s)
+[gpu 0] start alpaca_unpacked_350_lr1e-05_seed1337
+[gpu 1] start alpaca_unpacked_350_lr2e-05_seed1337
+[gpu 0] done  alpaca_unpacked_350_lr1e-05_seed1337: final 2.1885, best 2.1885 @ 350 (4.1 min)
+[gpu 0] start alpaca_unpacked_350_lr3e-05_seed1337
+[gpu 0] done  alpaca_unpacked_350_lr3e-05_seed1337: final 2.1397, best 2.1397 @ 350 (4.3 min)
+[gpu 0] start alpaca_unpacked_350_lr6e-05_seed1337
+[gpu 0] done  alpaca_unpacked_350_lr6e-05_seed1337: final 2.1338, best 2.1338 @ 350 (4.3 min)
+[gpu 0] start alpaca_unpacked_350_lr9e-05_seed1337
+[gpu 1] done  alpaca_unpacked_350_lr2e-05_seed1337: final 2.1539, best 2.1539 @ 350 (13.5 min)
+[gpu 1] start alpaca_unpacked_350_lr0.00015_seed1337
+[gpu 0] done  alpaca_unpacked_350_lr9e-05_seed1337: final 2.1466, best 2.1466 @ 350 (4.3 min)
+[gpu 0] start alpaca_unpacked_350_lr0.00025_seed1337
+[gpu 0] done  alpaca_unpacked_350_lr0.00025_seed1337: final 2.2770, best 2.2770 @ 350 (4.3 min)
+[gpu 1] done  alpaca_unpacked_350_lr0.00015_seed1337: final 2.1907, best 2.1907 @ 350 (10.2 min)
+sweep finished in 23.8 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+=== chain complete ===

@@ -1,0 +1,2 @@
+Data: 50,868 train / 1,038 val examples (68 dropped as longer than 512 tokens)
+Model: medium (123,587,328 parameters), initialized from /home/system/projects/AuthLLM/checkpoints/medium/step_20000.pt (step 20000)

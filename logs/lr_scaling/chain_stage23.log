@@ -1,0 +1,234 @@
+=== measuring Dolly's real tokens/step (replaces provisional constants) ===
+dolly.jsonl: 14,034 examples -> 4,432 packed windows (3.17x fewer, 99.4% of positions used)
+batch 8 x seq 512, amp float16, efficient_attention True, device cuda:0
+
+             ms/step  sup tok/step   sup tok/s   peak GB
+--------------------------------------------------------
+unpacked         163           568        3493      6.44
+packed           166          1658        9994      6.51
+
+supervised throughput: 2.86x     per-step cost: 1.02x
+=== Dolly factorial: second packing ratio ===
+dataset dolly (packing ratio 3.16x), cells ['unpacked_136', 'unpacked_430', 'packed_136', 'packed_430']
+28 runs to go (0 already in lr_scaling_sweep.csv)
+~96 min serial, ~48 min across 2 gpu(s)
+[gpu 1] start dolly_packed_430_lr2e-05_seed1337
+[gpu 0] start dolly_packed_430_lr1e-05_seed1337
+[gpu 0] done  dolly_packed_430_lr1e-05_seed1337: final 2.7596, best 2.7596 @ 430 (5.2 min)
+[gpu 0] start dolly_packed_430_lr3e-05_seed1337
+[gpu 0] done  dolly_packed_430_lr3e-05_seed1337: final 2.7430, best 2.7398 @ 244 (5.1 min)
+[gpu 0] start dolly_packed_430_lr6e-05_seed1337
+[gpu 0] done  dolly_packed_430_lr6e-05_seed1337: final 2.7824, best 2.7462 @ 122 (5.1 min)
+[gpu 0] start dolly_packed_430_lr9e-05_seed1337
+[gpu 1] done  dolly_packed_430_lr2e-05_seed1337: final 2.7429, best 2.7429 @ 430 (16.3 min)
+[gpu 1] start dolly_packed_430_lr0.00015_seed1337
+[gpu 0] done  dolly_packed_430_lr9e-05_seed1337: final 2.8433, best 2.7531 @ 122 (5.1 min)
+[gpu 0] start dolly_packed_430_lr0.00025_seed1337
+[gpu 0] done  dolly_packed_430_lr0.00025_seed1337: final 3.1525, best 2.8563 @ 122 (5.1 min)
+[gpu 0] start dolly_unpacked_430_lr1e-05_seed1337
+[gpu 1] done  dolly_packed_430_lr0.00015_seed1337: final 2.9742, best 2.7860 @ 122 (14.1 min)
+[gpu 1] start dolly_unpacked_430_lr2e-05_seed1337
+[gpu 0] done  dolly_unpacked_430_lr1e-05_seed1337: final 2.7801, best 2.7801 @ 430 (5.1 min)
+[gpu 0] start dolly_unpacked_430_lr3e-05_seed1337
+[gpu 0] done  dolly_unpacked_430_lr3e-05_seed1337: final 2.7517, best 2.7517 @ 430 (5.1 min)
+[gpu 0] start dolly_unpacked_430_lr6e-05_seed1337
+[gpu 0] done  dolly_unpacked_430_lr6e-05_seed1337: final 2.7567, best 2.7567 @ 430 (5.1 min)
+[gpu 0] start dolly_unpacked_430_lr9e-05_seed1337
+[gpu 1] done  dolly_unpacked_430_lr2e-05_seed1337: final 2.7588, best 2.7588 @ 430 (12.3 min)
+[gpu 1] start dolly_unpacked_430_lr0.00015_seed1337
+[gpu 0] done  dolly_unpacked_430_lr9e-05_seed1337: final 2.7765, best 2.7765 @ 430 (5.1 min)
+[gpu 0] start dolly_unpacked_430_lr0.00025_seed1337
+[gpu 0] done  dolly_unpacked_430_lr0.00025_seed1337: final 2.9180, best 2.9180 @ 430 (5.1 min)
+[gpu 0] start dolly_packed_136_lr1e-05_seed1337
+[gpu 0] done  dolly_packed_136_lr1e-05_seed1337: final 2.8071, best 2.8071 @ 136 (1.9 min)
+[gpu 0] start dolly_packed_136_lr2e-05_seed1337
+[gpu 1] done  dolly_unpacked_430_lr0.00015_seed1337: final 2.8253, best 2.8253 @ 430 (12.1 min)
+[gpu 1] start dolly_packed_136_lr3e-05_seed1337
+[gpu 0] done  dolly_packed_136_lr2e-05_seed1337: final 2.7799, best 2.7799 @ 136 (1.9 min)
+[gpu 0] start dolly_packed_136_lr6e-05_seed1337
+[gpu 0] done  dolly_packed_136_lr6e-05_seed1337: final 2.7505, best 2.7505 @ 136 (1.9 min)
+[gpu 0] start dolly_packed_136_lr9e-05_seed1337
+[gpu 0] done  dolly_packed_136_lr9e-05_seed1337: final 2.7484, best 2.7484 @ 136 (1.9 min)
+[gpu 0] start dolly_packed_136_lr0.00015_seed1337
+[gpu 1] done  dolly_packed_136_lr3e-05_seed1337: final 2.7662, best 2.7662 @ 136 (4.7 min)
+[gpu 1] start dolly_packed_136_lr0.00025_seed1337
+[gpu 0] done  dolly_packed_136_lr0.00015_seed1337: final 2.7604, best 2.7604 @ 136 (1.9 min)
+[gpu 0] start dolly_unpacked_136_lr1e-05_seed1337
+[gpu 0] done  dolly_unpacked_136_lr1e-05_seed1337: final 2.8277, best 2.8277 @ 136 (1.9 min)
+[gpu 0] start dolly_unpacked_136_lr2e-05_seed1337
+[gpu 1] done  dolly_packed_136_lr0.00025_seed1337: final 2.7973, best 2.7973 @ 136 (4.9 min)
+[gpu 1] start dolly_unpacked_136_lr3e-05_seed1337
+[gpu 0] done  dolly_unpacked_136_lr2e-05_seed1337: final 2.8043, best 2.8043 @ 136 (1.9 min)
+[gpu 0] start dolly_unpacked_136_lr6e-05_seed1337
+[gpu 0] done  dolly_unpacked_136_lr6e-05_seed1337: final 2.7868, best 2.7868 @ 136 (1.9 min)
+[gpu 0] start dolly_unpacked_136_lr9e-05_seed1337
+[gpu 0] done  dolly_unpacked_136_lr9e-05_seed1337: final 2.7978, best 2.7978 @ 136 (1.9 min)
+[gpu 0] start dolly_unpacked_136_lr0.00015_seed1337
+[gpu 1] done  dolly_unpacked_136_lr3e-05_seed1337: final 2.7931, best 2.7931 @ 136 (4.3 min)
+[gpu 1] start dolly_unpacked_136_lr0.00025_seed1337
+[gpu 0] done  dolly_unpacked_136_lr0.00015_seed1337: final 2.8372, best 2.8372 @ 136 (1.9 min)
+[gpu 1] done  dolly_unpacked_136_lr0.00025_seed1337: final 2.9178, best 2.9178 @ 136 (4.1 min)
+sweep finished in 72.7 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+# Learning-rate scaling under packing — dolly (final_val_loss)
+
+## unpacked_136  (2,272 supervised tokens/step, 136 steps, ~0.32 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.8277 | 2.8043 | 2.7931 | 2.7868 | 2.7978 | 2.8372 | 2.9178 |
+
+## unpacked_430  (2,272 supervised tokens/step, 430 steps, ~1.00 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.7801 | 2.7588 | 2.7517 | 2.7567 | 2.7765 | 2.8253 | 2.9180 |
+
+## packed_136  (6,632 supervised tokens/step, 136 steps, ~0.92 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.8071 | 2.7799 | 2.7662 | 2.7505 | 2.7484 | 2.7604 | 2.7973 |
+
+## packed_430  (6,632 supervised tokens/step, 430 steps, ~2.92 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.7596 | 2.7429 | 2.7430 | 2.7824 | 2.8433 | 2.9742 | 3.1525 |
+
+## Optimum per cell
+
+| cell | grid argmin | interpolated lr* | bracketed |
+| --- | ---: | ---: | :---: |
+| unpacked_136 | 6.00e-05 | 4.87e-05 | yes |
+| unpacked_430 | 3.00e-05 | 3.61e-05 | yes |
+| packed_136 | 9.00e-05 | 7.98e-05 | yes |
+| packed_430 | 2.00e-05 | 2.44e-05 | yes |
+
+## The two effects
+
+| effect | comparison | ratio |
+| --- | --- | ---: |
+| batch | packed / unpacked at 136 steps | 1.64x |
+| batch | packed / unpacked at 430 steps | 0.67x |
+| steps | 136 / 430 steps, unpacked | 1.35x |
+| steps | 136 / 430 steps, packed | 3.28x |
+
+Mean batch effect 1.16x against a 2.92x token ratio (linear predicts 2.92x, square-root 1.71x).
+Mean step effect 2.31x against a 3.16x step ratio.
+
+**Schedule integral.** The optimum tracks 1/steps and is flat in batch size, so the original reading was a confound and packing is not what moved it.
+=== seeds: the two 350-step cells (the headline batch effect) ===
+dataset alpaca (packing ratio 4.53x), cells ['unpacked_350']
+6 runs to go (0 already in lr_scaling_sweep.csv)
+~24 min serial, ~12 min across 2 gpu(s)
+[gpu 0] start alpaca_unpacked_350_lr3e-05_seed1338
+[gpu 1] start alpaca_unpacked_350_lr3e-05_seed1339
+[gpu 0] done  alpaca_unpacked_350_lr3e-05_seed1338: final 2.1131, best 2.1131 @ 350 (4.2 min)
+[gpu 0] start alpaca_unpacked_350_lr6e-05_seed1338
+[gpu 0] done  alpaca_unpacked_350_lr6e-05_seed1338: final 2.1006, best 2.1006 @ 350 (4.3 min)
+[gpu 0] start alpaca_unpacked_350_lr6e-05_seed1339
+[gpu 1] done  alpaca_unpacked_350_lr3e-05_seed1339: final 2.2249, best 2.2249 @ 350 (9.8 min)
+[gpu 1] start alpaca_unpacked_350_lr9e-05_seed1338
+[gpu 0] done  alpaca_unpacked_350_lr6e-05_seed1339: final 2.2178, best 2.2178 @ 350 (4.3 min)
+[gpu 0] start alpaca_unpacked_350_lr9e-05_seed1339
+[gpu 0] done  alpaca_unpacked_350_lr9e-05_seed1339: final 2.2301, best 2.2301 @ 350 (4.3 min)
+[gpu 1] done  alpaca_unpacked_350_lr9e-05_seed1338: final 2.1102, best 2.1102 @ 350 (9.6 min)
+sweep finished in 19.5 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+dataset alpaca (packing ratio 4.53x), cells ['packed_350']
+6 runs to go (0 already in lr_scaling_sweep.csv)
+~27 min serial, ~14 min across 2 gpu(s)
+[gpu 0] start alpaca_packed_350_lr9e-05_seed1338
+[gpu 1] start alpaca_packed_350_lr9e-05_seed1339
+[gpu 0] done  alpaca_packed_350_lr9e-05_seed1338: final 1.9845, best 1.9845 @ 350 (4.3 min)
+[gpu 0] start alpaca_packed_350_lr0.00015_seed1338
+[gpu 0] done  alpaca_packed_350_lr0.00015_seed1338: final 1.9758, best 1.9758 @ 350 (4.3 min)
+[gpu 0] start alpaca_packed_350_lr0.00015_seed1339
+[gpu 1] done  alpaca_packed_350_lr9e-05_seed1339: final 2.1066, best 2.1066 @ 350 (11.2 min)
+[gpu 1] start alpaca_packed_350_lr0.00025_seed1338
+[gpu 0] done  alpaca_packed_350_lr0.00015_seed1339: final 2.1015, best 2.1015 @ 350 (4.3 min)
+[gpu 0] start alpaca_packed_350_lr0.00025_seed1339
+[gpu 0] done  alpaca_packed_350_lr0.00025_seed1339: final 2.1144, best 2.1144 @ 350 (4.3 min)
+[gpu 1] done  alpaca_packed_350_lr0.00025_seed1338: final 1.9870, best 1.9870 @ 350 (10.5 min)
+sweep finished in 21.7 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+=== seeds: the two 1600-step cells ===
+dataset alpaca (packing ratio 4.53x), cells ['unpacked_1600']
+6 runs to go (0 already in lr_scaling_sweep.csv)
+~108 min serial, ~54 min across 2 gpu(s)
+[gpu 0] start alpaca_unpacked_1600_lr2e-05_seed1338
+[gpu 1] start alpaca_unpacked_1600_lr2e-05_seed1339
+[gpu 0] done  alpaca_unpacked_1600_lr2e-05_seed1338: final 2.0381, best 2.0380 @ 1596 (17.8 min)
+[gpu 0] start alpaca_unpacked_1600_lr3e-05_seed1338
+[gpu 0] done  alpaca_unpacked_1600_lr3e-05_seed1338: final 2.0311, best 2.0310 @ 1596 (17.8 min)
+[gpu 0] start alpaca_unpacked_1600_lr3e-05_seed1339
+[gpu 1] done  alpaca_unpacked_1600_lr2e-05_seed1339: final 2.1579, best 2.1578 @ 1596 (40.2 min)
+[gpu 1] start alpaca_unpacked_1600_lr6e-05_seed1338
+[gpu 0] done  alpaca_unpacked_1600_lr3e-05_seed1339: final 2.1548, best 2.1547 @ 1596 (17.8 min)
+[gpu 0] start alpaca_unpacked_1600_lr6e-05_seed1339
+[gpu 0] done  alpaca_unpacked_1600_lr6e-05_seed1339: final 2.1801, best 2.1799 @ 1596 (17.8 min)
+[gpu 1] done  alpaca_unpacked_1600_lr6e-05_seed1338: final 2.0468, best 2.0466 @ 1596 (39.1 min)
+sweep finished in 79.3 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+dataset alpaca (packing ratio 4.53x), cells ['packed_1600']
+6 runs to go (0 already in lr_scaling_sweep.csv)
+~124 min serial, ~62 min across 2 gpu(s)
+[gpu 0] start alpaca_packed_1600_lr1e-05_seed1338
+[gpu 1] start alpaca_packed_1600_lr1e-05_seed1339
+[gpu 0] done  alpaca_packed_1600_lr1e-05_seed1338: final 2.0081, best 2.0081 @ 1600 (18.0 min)
+[gpu 0] start alpaca_packed_1600_lr2e-05_seed1338
+[gpu 0] done  alpaca_packed_1600_lr2e-05_seed1338: final 1.9805, best 1.9797 @ 1368 (18.1 min)
+[gpu 0] start alpaca_packed_1600_lr2e-05_seed1339
+[gpu 1] done  alpaca_packed_1600_lr1e-05_seed1339: final 2.1257, best 2.1257 @ 1596 (49.0 min)
+[gpu 1] start alpaca_packed_1600_lr3e-05_seed1338
+[gpu 0] done  alpaca_packed_1600_lr2e-05_seed1339: final 2.0987, best 2.0982 @ 1368 (18.1 min)
+[gpu 0] start alpaca_packed_1600_lr3e-05_seed1339
+[gpu 0] done  alpaca_packed_1600_lr3e-05_seed1339: final 2.0968, best 2.0934 @ 1368 (18.1 min)
+[gpu 1] done  alpaca_packed_1600_lr3e-05_seed1338: final 1.9806, best 1.9737 @ 912 (42.0 min)
+sweep finished in 91.0 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+=== all stages complete ===
+# Learning-rate scaling under packing — alpaca (final_val_loss)
+
+## unpacked_350  (1,888 supervised tokens/step, 350 steps, ~0.22 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.1885 | 2.1539 | 2.1592 | 2.1507 | 2.1623 | 2.1907 | 2.2770 |
+
+## unpacked_1600  (1,888 supervised tokens/step, 1600 steps, ~1.01 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.0973 | 2.0902 | 2.0860 | 2.1081 | 2.1335 | 2.2091 | 2.3149 |
+
+## packed_350  (8,444 supervised tokens/step, 350 steps, ~0.98 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.1353 | 2.0911 | 2.0678 | 2.0352 | 2.0376 | 2.0316 | 2.0444 |
+
+## packed_1600  (8,444 supervised tokens/step, 1600 steps, ~4.50 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.0586 | 2.0321 | 2.0324 | 2.0845 | 2.1789 | 2.3616 |
+
+## Optimum per cell
+
+| cell | grid argmin | interpolated lr* | bracketed |
+| --- | ---: | ---: | :---: |
+| unpacked_350 | 6.00e-05 | 5.00e-05 | yes |
+| unpacked_1600 | 3.00e-05 | 2.80e-05 | yes |
+| packed_350 | 1.50e-04 | 1.37e-04 | yes |
+| packed_1600 | 2.00e-05 | 2.43e-05 | yes |
+
+## The two effects
+
+| effect | comparison | ratio |
+| --- | --- | ---: |
+| batch | packed / unpacked at 350 steps | 2.73x |
+| batch | packed / unpacked at 1600 steps | 0.87x |
+| steps | 350 / 1600 steps, unpacked | 1.79x |
+| steps | 350 / 1600 steps, packed | 5.63x |
+
+Mean batch effect 1.80x against a 4.47x token ratio (linear predicts 4.47x, square-root 2.11x).
+Mean step effect 3.71x against a 4.57x step ratio.
+
+**Both effects are live.** Neither hypothesis is sufficient alone; the original 5x is a product of the two, and the paper's claim has to be joint.

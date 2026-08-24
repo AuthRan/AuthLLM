@@ -1,0 +1,55 @@
+Data: 13,756 train / 278 val examples (977 dropped as longer than 512 tokens)
+Packing: 13,756 examples into 4,341 windows (3.2 per window, 99.3% of positions used)
+Model: medium (123,587,328 parameters), initialized from /home/system/projects/AuthLLM/checkpoints/medium/step_20000.pt (step 20000)
+step     10 | train_loss 2.9565 | lr 7.41e-06
+step     20 | train_loss 2.7943 | lr 1.48e-05
+step     30 | train_loss 2.7572 | lr 2.00e-05
+step     40 | train_loss 2.6433 | lr 2.00e-05
+step     50 | train_loss 2.6993 | lr 1.99e-05
+step     60 | train_loss 2.8258 | lr 1.97e-05
+step     61 | val_loss 2.8033 | val_ppl 16.50
+step     70 | train_loss 2.8490 | lr 1.95e-05
+step     80 | train_loss 2.6614 | lr 1.93e-05
+step     90 | train_loss 2.6742 | lr 1.90e-05
+step    100 | train_loss 2.8167 | lr 1.86e-05
+step    110 | train_loss 2.7961 | lr 1.82e-05
+step    120 | train_loss 2.4521 | lr 1.78e-05
+step    122 | val_loss 2.7661 | val_ppl 15.90
+step    130 | train_loss 2.7875 | lr 1.73e-05
+step    140 | train_loss 2.5566 | lr 1.68e-05
+step    150 | train_loss 2.7035 | lr 1.62e-05
+step    160 | train_loss 2.6487 | lr 1.56e-05
+step    170 | train_loss 2.4686 | lr 1.50e-05
+step    180 | train_loss 2.5072 | lr 1.44e-05
+step    183 | val_loss 2.7533 | val_ppl 15.69
+step    190 | train_loss 2.4966 | lr 1.37e-05
+step    200 | train_loss 2.4962 | lr 1.31e-05
+step    210 | train_loss 2.7107 | lr 1.24e-05
+step    220 | train_loss 2.3385 | lr 1.17e-05
+step    230 | train_loss 2.4730 | lr 1.10e-05
+step    240 | train_loss 2.4916 | lr 1.03e-05
+step    244 | val_loss 2.7464 | val_ppl 15.59
+step    250 | train_loss 2.5368 | lr 9.57e-06
+step    260 | train_loss 2.6207 | lr 8.88e-06
+step    270 | train_loss 2.7199 | lr 8.21e-06
+step    280 | train_loss 2.5381 | lr 7.55e-06
+step    290 | train_loss 2.4895 | lr 6.91e-06
+step    300 | train_loss 2.5128 | lr 6.30e-06
+step    305 | val_loss 2.7454 | val_ppl 15.57
+step    310 | train_loss 2.4799 | lr 5.72e-06
+step    320 | train_loss 2.4943 | lr 5.16e-06
+step    330 | train_loss 2.3809 | lr 4.65e-06
+step    340 | train_loss 2.3834 | lr 4.17e-06
+step    350 | train_loss 2.6293 | lr 3.74e-06
+step    360 | train_loss 2.5340 | lr 3.34e-06
+step    366 | val_loss 2.7430 | val_ppl 15.53
+step    370 | train_loss 2.3401 | lr 3.00e-06
+step    380 | train_loss 2.2795 | lr 2.70e-06
+step    390 | train_loss 2.4716 | lr 2.46e-06
+step    400 | train_loss 2.4938 | lr 2.26e-06
+step    410 | train_loss 2.2754 | lr 2.12e-06
+step    420 | train_loss 2.5907 | lr 2.03e-06
+step    427 | val_loss 2.7429 | val_ppl 15.53
+step    430 | train_loss 2.5230 | lr 2.00e-06
+step    430 | val_loss 2.7429 | val_ppl 15.53
+Saved checkpoint to /home/system/projects/AuthLLM/checkpoints/lr_scaling/dolly_packed_430_lr2e-05_seed1337/step_430.pt

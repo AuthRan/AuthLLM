@@ -1,0 +1,25 @@
+Data: 13,756 train / 278 val examples (977 dropped as longer than 512 tokens)
+Model: medium (123,587,328 parameters), initialized from /home/system/projects/AuthLLM/checkpoints/medium/step_20000.pt (step 20000)
+step     10 | train_loss 2.9449 | lr 9.00e-05
+step     19 | val_loss 2.8611 | val_ppl 17.48
+step     20 | train_loss 2.9813 | lr 8.85e-05
+step     30 | train_loss 2.6292 | lr 8.47e-05
+step     38 | val_loss 2.8362 | val_ppl 17.05
+step     40 | train_loss 2.7971 | lr 7.88e-05
+step     50 | train_loss 3.1121 | lr 7.12e-05
+step     57 | val_loss 2.8297 | val_ppl 16.94
+step     60 | train_loss 2.7646 | lr 6.22e-05
+step     70 | train_loss 2.6736 | lr 5.25e-05
+step     76 | val_loss 2.8188 | val_ppl 16.76
+step     80 | train_loss 2.8116 | lr 4.26e-05
+step     90 | train_loss 2.8437 | lr 3.31e-05
+step     95 | val_loss 2.8122 | val_ppl 16.65
+step    100 | train_loss 2.8040 | lr 2.46e-05
+step    110 | train_loss 2.4831 | lr 1.76e-05
+step    114 | val_loss 2.8030 | val_ppl 16.49
+step    120 | train_loss 3.2107 | lr 1.25e-05
+step    130 | train_loss 2.9157 | lr 9.60e-06
+step    133 | val_loss 2.7984 | val_ppl 16.42
+step    136 | train_loss 2.7261 | lr 9.01e-06
+step    136 | val_loss 2.7978 | val_ppl 16.41
+Saved checkpoint to /home/system/projects/AuthLLM/checkpoints/lr_scaling/dolly_unpacked_136_lr9e-05_seed1337/step_136.pt

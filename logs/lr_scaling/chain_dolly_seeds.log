@@ -1,0 +1,105 @@
+dataset dolly (packing ratio 3.16x), cells ['unpacked_136']
+6 runs to go (0 already in lr_scaling_sweep.csv)
+~9 min serial, ~5 min across 2 gpu(s)
+[gpu 1] start dolly_unpacked_136_lr3e-05_seed1339
+[gpu 0] start dolly_unpacked_136_lr3e-05_seed1338
+[gpu 0] done  dolly_unpacked_136_lr3e-05_seed1338: final 2.6910, best 2.6910 @ 136 (1.7 min)
+[gpu 0] start dolly_unpacked_136_lr6e-05_seed1338
+[gpu 0] done  dolly_unpacked_136_lr6e-05_seed1338: final 2.6864, best 2.6864 @ 136 (1.9 min)
+[gpu 0] start dolly_unpacked_136_lr6e-05_seed1339
+[gpu 0] done  dolly_unpacked_136_lr6e-05_seed1339: final 2.6994, best 2.6994 @ 136 (1.9 min)
+[gpu 0] start dolly_unpacked_136_lr9e-05_seed1338
+[gpu 0] done  dolly_unpacked_136_lr9e-05_seed1338: final 2.6978, best 2.6978 @ 136 (1.9 min)
+[gpu 0] start dolly_unpacked_136_lr9e-05_seed1339
+[gpu 1] done  dolly_unpacked_136_lr3e-05_seed1339: final 2.7072, best 2.7072 @ 136 (7.5 min)
+[gpu 0] done  dolly_unpacked_136_lr9e-05_seed1339: final 2.7083, best 2.7083 @ 136 (1.9 min)
+sweep finished in 9.4 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+dataset dolly (packing ratio 3.16x), cells ['packed_136']
+6 runs to go (0 already in lr_scaling_sweep.csv)
+~11 min serial, ~5 min across 2 gpu(s)
+[gpu 0] start dolly_packed_136_lr6e-05_seed1338
+[gpu 1] start dolly_packed_136_lr6e-05_seed1339
+[gpu 0] done  dolly_packed_136_lr6e-05_seed1338: final 2.6493, best 2.6493 @ 136 (1.9 min)
+[gpu 0] start dolly_packed_136_lr9e-05_seed1338
+[gpu 0] done  dolly_packed_136_lr9e-05_seed1338: final 2.6481, best 2.6481 @ 136 (1.9 min)
+[gpu 0] start dolly_packed_136_lr9e-05_seed1339
+[gpu 0] done  dolly_packed_136_lr9e-05_seed1339: final 2.6636, best 2.6636 @ 136 (1.9 min)
+[gpu 0] start dolly_packed_136_lr0.00015_seed1338
+[gpu 1] done  dolly_packed_136_lr6e-05_seed1339: final 2.6651, best 2.6651 @ 136 (6.5 min)
+[gpu 1] start dolly_packed_136_lr0.00015_seed1339
+[gpu 0] done  dolly_packed_136_lr0.00015_seed1338: final 2.6597, best 2.6597 @ 136 (1.9 min)
+[gpu 1] done  dolly_packed_136_lr0.00015_seed1339: final 2.6763, best 2.6763 @ 136 (4.9 min)
+sweep finished in 11.4 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+dataset dolly (packing ratio 3.16x), cells ['unpacked_430']
+6 runs to go (0 already in lr_scaling_sweep.csv)
+~29 min serial, ~15 min across 2 gpu(s)
+[gpu 0] start dolly_unpacked_430_lr2e-05_seed1338
+[gpu 1] start dolly_unpacked_430_lr2e-05_seed1339
+[gpu 0] done  dolly_unpacked_430_lr2e-05_seed1338: final 2.6585, best 2.6585 @ 430 (5.1 min)
+[gpu 0] start dolly_unpacked_430_lr3e-05_seed1338
+[gpu 0] done  dolly_unpacked_430_lr3e-05_seed1338: final 2.6521, best 2.6521 @ 427 (5.1 min)
+[gpu 0] start dolly_unpacked_430_lr3e-05_seed1339
+[gpu 1] done  dolly_unpacked_430_lr2e-05_seed1339: final 2.6743, best 2.6743 @ 430 (13.0 min)
+[gpu 1] start dolly_unpacked_430_lr6e-05_seed1338
+[gpu 0] done  dolly_unpacked_430_lr3e-05_seed1339: final 2.6660, best 2.6660 @ 430 (5.1 min)
+[gpu 0] start dolly_unpacked_430_lr6e-05_seed1339
+[gpu 0] done  dolly_unpacked_430_lr6e-05_seed1339: final 2.6677, best 2.6677 @ 430 (5.1 min)
+[gpu 1] done  dolly_unpacked_430_lr6e-05_seed1338: final 2.6554, best 2.6554 @ 430 (11.9 min)
+sweep finished in 24.9 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+=== dolly seeds complete ===
+# Learning-rate scaling under packing — dolly (final_val_loss)
+
+## unpacked_136  (2,272 supervised tokens/step, 136 steps, ~0.32 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.8277 | 2.8043 | 2.7931 | 2.7868 | 2.7978 | 2.8372 | 2.9178 |
+
+## unpacked_430  (2,272 supervised tokens/step, 430 steps, ~1.00 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.7801 | 2.7588 | 2.7517 | 2.7567 | 2.7765 | 2.8253 | 2.9180 |
+
+## packed_136  (6,632 supervised tokens/step, 136 steps, ~0.92 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.8071 | 2.7799 | 2.7662 | 2.7505 | 2.7484 | 2.7604 | 2.7973 |
+
+## packed_430  (6,632 supervised tokens/step, 430 steps, ~2.92 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.7596 | 2.7429 | 2.7430 | 2.7824 | 2.8433 | 2.9742 | 3.1525 |
+
+## Optimum per cell
+
+| cell | lr* (per-seed, geometric mean) | seeds | spread (max/min) | bracketed |
+| --- | ---: | ---: | ---: | :---: |
+| unpacked_136 | 4.89e-05 | 3 | 1.08x | yes |
+| unpacked_430 | 3.78e-05 | 3 | 1.11x | yes |
+| packed_136 | 7.84e-05 | 3 | 1.03x | yes |
+| packed_430 | 2.44e-05 | 1 | 1.00x | yes |
+
+## The two effects
+
+| effect | comparison | ratio |
+| --- | --- | ---: |
+| batch | packed / unpacked at 136 steps | 1.60x |
+| batch | packed / unpacked at 430 steps | 0.64x |
+| steps | 136 / 430 steps, unpacked | 1.29x |
+| steps | 136 / 430 steps, packed | 3.22x |
+
+Excluded from the headline as overfitting-contaminated (>1.5 epochs): packed_430.
+
+## Headline
+
+- **Batch effect at 136 steps: 1.60x** for a 2.92x token ratio — exponent 0.440 (linear 1.0, square-root 0.5).
+  Note this comparison still varies data seen: at a fixed step count the larger
+  batch consumes proportionally more of the corpus, and that residual confound
+  grows with the packing factor.
+- **Step effect (padded): 1.29x** for a 3.16x step ratio — exponent 0.224 in 1/steps.
+- **Matched data budget (one epoch each): 2.07x** for a 2.92x packing factor — exponent 0.681.
+  This is the number that decides whether inheriting a learning rate is safe.
+

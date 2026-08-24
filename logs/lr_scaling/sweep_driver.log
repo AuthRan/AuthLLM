@@ -1,0 +1,12 @@
+27 runs to go (1 already in lr_scaling_sweep.csv)
+~324 min serial, ~162 min across 2 gpu(s)
+[gpu 0] start packed_1600_lr1e-05_seed1337
+[gpu 1] start packed_1600_lr2e-05_seed1337
+[gpu 0] done  packed_1600_lr1e-05_seed1337: final 2.0421, best 2.0421 @ 1600 (18.3 min)
+[gpu 0] start packed_1600_lr3e-05_seed1337
+[gpu 0] done  packed_1600_lr3e-05_seed1337: final 2.0197, best 2.0133 @ 912 (18.9 min)
+[gpu 0] start packed_1600_lr6e-05_seed1337
+[gpu 1] done  packed_1600_lr2e-05_seed1337: final 2.0171, best 2.0158 @ 1368 (54.3 min)
+[gpu 1] start packed_1600_lr9e-05_seed1337
+[gpu 0] done  packed_1600_lr6e-05_seed1337: final 2.0845, best 2.0151 @ 684 (18.4 min)
+[gpu 0] start packed_1600_lr0.00015_seed1337

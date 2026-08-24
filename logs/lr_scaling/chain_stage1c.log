@@ -1,0 +1,85 @@
+=== packed_350: completes the 350-step row ===
+dataset alpaca (packing ratio 4.53x), cells ['packed_350']
+6 runs to go (1 already in lr_scaling_sweep.csv)
+~27 min serial, ~14 min across 2 gpu(s)
+[gpu 0] start alpaca_packed_350_lr1e-05_seed1337
+[gpu 1] start alpaca_packed_350_lr2e-05_seed1337
+[gpu 0] done  alpaca_packed_350_lr1e-05_seed1337: final 2.1353, best 2.1353 @ 350 (4.3 min)
+[gpu 0] start alpaca_packed_350_lr6e-05_seed1337
+[gpu 0] done  alpaca_packed_350_lr6e-05_seed1337: final 2.0352, best 2.0352 @ 350 (4.3 min)
+[gpu 0] start alpaca_packed_350_lr9e-05_seed1337
+[gpu 0] done  alpaca_packed_350_lr9e-05_seed1337: final 2.0217, best 2.0217 @ 350 (4.3 min)
+[gpu 0] start alpaca_packed_350_lr0.00015_seed1337
+[gpu 1] done  alpaca_packed_350_lr2e-05_seed1337: final 2.0911, best 2.0911 @ 350 (14.5 min)
+[gpu 1] start alpaca_packed_350_lr0.00025_seed1337
+[gpu 0] done  alpaca_packed_350_lr0.00015_seed1337: final 2.0175, best 2.0175 @ 350 (4.3 min)
+[gpu 1] done  alpaca_packed_350_lr0.00025_seed1337: final 2.0319, best 2.0319 @ 350 (9.9 min)
+sweep finished in 24.4 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+=== unpacked_1600: completes the factorial ===
+dataset alpaca (packing ratio 4.53x), cells ['unpacked_1600']
+7 runs to go (0 already in lr_scaling_sweep.csv)
+~126 min serial, ~63 min across 2 gpu(s)
+[gpu 0] start alpaca_unpacked_1600_lr1e-05_seed1337
+[gpu 1] start alpaca_unpacked_1600_lr2e-05_seed1337
+[gpu 0] done  alpaca_unpacked_1600_lr1e-05_seed1337: final 2.0973, best 2.0973 @ 1600 (17.8 min)
+[gpu 0] start alpaca_unpacked_1600_lr3e-05_seed1337
+[gpu 0] done  alpaca_unpacked_1600_lr3e-05_seed1337: final 2.0720, best 2.0720 @ 1596 (17.9 min)
+[gpu 0] start alpaca_unpacked_1600_lr6e-05_seed1337
+[gpu 1] done  alpaca_unpacked_1600_lr2e-05_seed1337: final 2.0745, best 2.0745 @ 1596 (43.5 min)
+[gpu 1] start alpaca_unpacked_1600_lr9e-05_seed1337
+[gpu 0] done  alpaca_unpacked_1600_lr6e-05_seed1337: final 2.0973, best 2.0972 @ 1596 (17.9 min)
+[gpu 0] start alpaca_unpacked_1600_lr0.00015_seed1337
+[gpu 0] done  alpaca_unpacked_1600_lr0.00015_seed1337: final 2.2091, best 2.2082 @ 1596 (17.9 min)
+[gpu 0] start alpaca_unpacked_1600_lr0.00025_seed1337
+[gpu 1] done  alpaca_unpacked_1600_lr9e-05_seed1337: final 2.1335, best 2.1332 @ 1596 (43.0 min)
+[gpu 0] done  alpaca_unpacked_1600_lr0.00025_seed1337: final 2.3149, best 2.3130 @ 1596 (17.9 min)
+sweep finished in 89.2 min -> /home/system/projects/AuthLLM/results/lr_scaling_sweep.csv
+=== factorial complete ===
+# Learning-rate scaling under packing — alpaca (final_val_loss)
+
+## unpacked_350  (1,888 supervised tokens/step, 350 steps, ~0.22 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.1885 | 2.1539 | 2.1397 | 2.1338 | 2.1466 | 2.1907 | 2.2770 |
+
+## unpacked_1600  (1,888 supervised tokens/step, 1600 steps, ~1.02 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.0973 | 2.0745 | 2.0720 | 2.0973 | 2.1335 | 2.2091 | 2.3149 |
+
+## packed_350  (8,444 supervised tokens/step, 350 steps, ~1.00 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 | 2.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.1353 | 2.0911 | 2.0678 | 2.0352 | 2.0217 | 2.0175 | 2.0319 |
+
+## packed_1600  (8,444 supervised tokens/step, 1600 steps, ~4.58 epochs)
+
+| max_lr | 1.0e-05 | 2.0e-05 | 3.0e-05 | 6.0e-05 | 9.0e-05 | 1.5e-04 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| final_val_loss | 2.0421 | 2.0171 | 2.0197 | 2.0845 | 2.1789 | 2.3616 |
+
+## Optimum per cell
+
+| cell | grid argmin | interpolated lr* | bracketed |
+| --- | ---: | ---: | :---: |
+| unpacked_350 | 6.00e-05 | 4.77e-05 | yes |
+| unpacked_1600 | 3.00e-05 | 2.65e-05 | yes |
+| packed_350 | 1.50e-04 | 1.30e-04 | yes |
+| packed_1600 | 2.00e-05 | 2.25e-05 | yes |
+
+## The two effects
+
+| effect | comparison | ratio |
+| --- | --- | ---: |
+| batch | packed / unpacked at 350 steps | 2.74x |
+| batch | packed / unpacked at 1600 steps | 0.85x |
+| steps | 350 / 1600 steps, unpacked | 1.80x |
+| steps | 350 / 1600 steps, packed | 5.78x |
+
+Mean batch effect 1.79x against a 4.47x token ratio (linear predicts 4.47x, square-root 2.11x).
+Mean step effect 3.79x against a 4.57x step ratio.
+
+**Both effects are live.** Neither hypothesis is sufficient alone; the original 5x is a product of the two, and the paper's claim has to be joint.
