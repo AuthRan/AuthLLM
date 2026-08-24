@@ -20,6 +20,7 @@ from ashugpt.viz.style import COLORS, MUTED, TEXT, annotate, apply_style, save
 
 LOGS = Path("logs")
 OUT = Path("resources/plots")
+SWEEPS = Path("results/lr_scaling_sweep.csv")
 
 
 # --- Measured numbers that live in a table rather than a CSV -----------------
@@ -352,10 +353,81 @@ def dpo_metric_reversal() -> Path:
     return save(fig, OUT / "05-dpo-metric-reversal.png")
 
 
+def lr_scaling() -> Path:
+    """What packing does to the optimal learning rate, on both corpora.
+
+    Read from results/lr_scaling_sweep.csv rather than a table, because this
+    figure exists to show the shape of four curves and their minima, and a
+    minimum copied by hand is a minimum that drifts.
+
+    Seed 1337 only. The fine-tune shuffles its held-out split with the same
+    seed it trains with, so curves from different seeds sit at different
+    offsets and cannot share an axis. Optima aggregated over seeds live in the
+    paper's tables; this is one seed's curves, honestly labelled.
+    """
+    import csv
+    import math
+
+    by_cell: dict[tuple[str, str], list[tuple[float, float]]] = {}
+    with SWEEPS.open() as handle:
+        for row in csv.DictReader(handle):
+            if int(row["seed"]) != 1337 or not row["final_val_loss"]:
+                continue
+            key = (row.get("dataset") or "alpaca", row["cell"])
+            by_cell.setdefault(key, []).append((float(row["max_lr"]), float(row["final_val_loss"])))
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.4))
+    panels = [
+        ("alpaca", "Alpaca — packing factor 4.47x", ("unpacked_350", "unpacked_1600", "packed_350", "packed_1600")),
+        ("dolly", "Dolly — packing factor 2.92x", ("unpacked_136", "unpacked_430", "packed_136", "packed_430")),
+    ]
+    ramp = [COLORS["baseline"], COLORS["pretrain"], COLORS["stage2"], COLORS["dpo"]]
+
+    for ax, (dataset, title, cells) in zip(axes, panels):
+        for cell, color in zip(cells, ramp):
+            points = sorted(by_cell.get((dataset, cell), []))
+            if not points:
+                continue
+            xs = [lr for lr, _ in points]
+            ys = [loss for _, loss in points]
+            packed = cell.startswith("packed")
+            ax.plot(
+                xs, ys,
+                marker="o", markersize=3.6, color=color,
+                linestyle="-" if packed else "--",
+                label=f"{'packed' if packed else 'padded'}, {cell.rsplit('_', 1)[1]} steps",
+            )
+            best = min(range(len(ys)), key=lambda i: ys[i])
+            ax.plot([xs[best]], [ys[best]], marker="v", markersize=8, color=color, linestyle="none")
+
+        ax.set_xscale("log")
+        ax.set_xlabel("peak learning rate")
+        ax.set_title(title)
+        ax.legend(loc="upper left", fontsize=8.5)
+
+    axes[0].set_ylabel("held-out loss (nats), seed 1337")
+    # Headroom above the curves so the legend and the annotation below it each
+    # get clear space; without it the two collide in the upper left.
+    low, high = axes[0].get_ylim()
+    axes[0].set_ylim(low, high + 0.30 * (high - low))
+    # The two curves that matter are one packed epoch against one padded epoch:
+    # same data budget, optima a factor of ~5 apart. The ratio quoted is this
+    # seed's (4.92x); the paper's tables carry the seed-aggregated 4.86x.
+    annotate(
+        axes[0],
+        "one packed epoch's optimum —\n4.9x above the padded epoch's\nat this seed, same data budget",
+        xy=(1.37e-4, 2.0175),
+        xytext=(1.15e-5, 2.27),
+        color=COLORS["stage2"],
+    )
+    return save(fig, OUT / "06-lr-scaling-packing.png")
+
+
 ALL = {
     "pretraining": pretraining_curve,
     "scaling": scaling_ladder,
     "behaviour": stage_behaviour,
     "chat-sweep": chat_sweep,
     "dpo-reversal": dpo_metric_reversal,
+    "lr-scaling": lr_scaling,
 }
