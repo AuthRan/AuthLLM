@@ -25,7 +25,7 @@
 | **Validation** | loss 3.1583 · perplexity 23.53 |
 | **Stages** | pretrain → instruction tune → **chat** *and* **preference (DPO)** |
 | **Hardware** | ~27 h on **one** RTX 2080 Ti · a second card is what DDP and FSDP were measured on |
-| **Tests** | 470, CPU-only, run on every push |
+| **Tests** | 479, CPU-only, run on every push |
 
 </div>
 
@@ -2448,7 +2448,7 @@ authLLM/
 ## 17. Testing
 
 <details>
-<summary><b>Expand</b> — what the 470 tests actually assert</summary>
+<summary><b>Expand</b> — what the 479 tests actually assert</summary>
 
 ```
 pytest                    # everything
