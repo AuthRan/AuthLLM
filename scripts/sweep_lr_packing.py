@@ -137,6 +137,48 @@ DATASETS = {
         Dataset("dolly", "dolly.jsonl", short_steps=136, long_steps=430,
                 packing_ratio=3.16, minutes_per_1600_unpacked=20.6,
                 minutes_per_1600_packed=22.5),
+        # Alpaca's shortest and longest thirds by encoded length. Splitting one
+        # corpus by length varies the packing ratio -- 7.85x and 2.73x against
+        # the full corpus's 4.53x -- without changing where the data came from,
+        # which is the control the Alpaca-versus-Dolly comparison cannot give.
+        # Both subsets hold 16,956 training examples, so their unpacked epoch is
+        # the same 530 steps and only the packed epoch moves.
+        Dataset("alpaca_short", "alpaca_short.jsonl", short_steps=68, long_steps=530,
+                packing_ratio=7.85, minutes_per_1600_unpacked=18.4,
+                minutes_per_1600_packed=19.6),
+        # The middle third is the control on the control: at 4.87x it packs almost
+        # exactly like the full corpus (4.53x), so if length-stratification itself
+        # distorted the measurement, this row would not land on Alpaca's.
+        Dataset("alpaca_mid", "alpaca_mid.jsonl", short_steps=109, long_steps=530,
+                packing_ratio=4.87, minutes_per_1600_unpacked=18.4,
+                minutes_per_1600_packed=19.6),
+        # A random third, not a length tercile. It matches the whole corpus on
+        # packing ratio (4.51x against 4.53x), on padded batch (1,841 against
+        # 1,888 supervised tokens/step) and on length distribution, while
+        # matching the terciles on size and padded step count. Against the whole
+        # corpus it therefore varies the scale of the run and nothing else,
+        # which is the comparison the terciles cannot make.
+        Dataset("alpaca_third", "alpaca_third.jsonl", short_steps=118, long_steps=530,
+                packing_ratio=4.51, minutes_per_1600_unpacked=18.4,
+                minutes_per_1600_packed=19.6),
+        # The scale test on the second corpus: a random third of Dolly. Its
+        # packing factor comes out at 3.14x against the whole corpus's 2.92x --
+        # sampling variation in a smaller draw, and larger than the 1% the
+        # Alpaca pair managed -- so the exponent is taken against each corpus's
+        # own factor rather than a shared one.
+        Dataset("dolly_third", "dolly_third.jsonl", short_steps=46, long_steps=143,
+                packing_ratio=3.14, minutes_per_1600_unpacked=20.6,
+                minutes_per_1600_packed=22.5),
+        # Nested inside alpaca_third, which is nested inside the whole corpus:
+        # ninth < third < all, each a random sample with the same length
+        # distribution and the same ~4.5x packing factor, so the three of them
+        # are a 9x scale series with everything else held.
+        Dataset("alpaca_ninth", "alpaca_ninth.jsonl", short_steps=39, long_steps=177,
+                packing_ratio=4.53, minutes_per_1600_unpacked=18.4,
+                minutes_per_1600_packed=19.6),
+        Dataset("alpaca_long", "alpaca_long.jsonl", short_steps=194, long_steps=530,
+                packing_ratio=2.73, minutes_per_1600_unpacked=18.4,
+                minutes_per_1600_packed=19.6),
     )
 }
 
@@ -146,7 +188,8 @@ DATASETS = {
 # _micro_batch), from the measured values above. Alpaca lands within 0.6% of
 # its packed cell (8,496 against 8,444), Dolly within 2.8% (6,816 against
 # 6,632); the residual is reported rather than corrected for.
-WIDE_ACCUM = {"alpaca": 18, "dolly": 12}
+WIDE_ACCUM = {"alpaca": 18, "dolly": 12, "alpaca_short": 31, "alpaca_mid": 19, "alpaca_long": 11,
+              "alpaca_third": 18, "alpaca_ninth": 18, "dolly_third": 13}
 
 
 def cells_for(dataset: Dataset) -> dict[str, Cell]:
@@ -416,12 +459,12 @@ def train_one(dataset: Dataset, cell: Cell, lr: float, seed: int, gpu: int,
 
     if result.returncode != 0:
         print(f"[gpu {gpu}] FAILED {name} (exit {result.returncode}) -- see {stdout_path}", flush=True)
-        return
+        return False
 
     curve = read_val_curve(log_path)
     if not curve:
         print(f"[gpu {gpu}] FAILED {name}: no validation rows in {log_path}", flush=True)
-        return
+        return False
 
     best_step, best_loss = min(curve, key=lambda pair: pair[1])
     append_result(
@@ -452,8 +495,11 @@ def train_one(dataset: Dataset, cell: Cell, lr: float, seed: int, gpu: int,
     if not keep_checkpoints and ckpt_dir.exists():
         shutil.rmtree(ckpt_dir)
 
+    return True
+
 
 def main() -> None:
+    global RESULTS, INIT_FROM, MODEL_CONFIG, LOG_DIR, CONFIG_DIR, CKPT_DIR
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dataset", default="alpaca", choices=list(DATASETS))
     parser.add_argument("--cells", nargs="+",
@@ -464,9 +510,34 @@ def main() -> None:
     parser.add_argument("--keep-checkpoints", action="store_true",
                         help="Keep each run's final weights (~1.5GB each)")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan and exit")
+    # A second model size writes to its own ledger: the dedup key is
+    # (dataset, cell, lr, seed), which says nothing about the base model, so
+    # sharing one file would let 124M and 30M runs silently collide.
+    parser.add_argument("--results", type=Path, default=RESULTS,
+                        help="Results CSV to append to and resume from")
+    parser.add_argument("--init-from", type=Path, default=INIT_FROM,
+                        help="Pretrained checkpoint each run starts from")
+    parser.add_argument("--model-config", type=Path, default=MODEL_CONFIG,
+                        help="Model preset being fine-tuned")
+    parser.add_argument("--max-consecutive-failures", type=int, default=3,
+                        help="abort the sweep after this many failures in a row "
+                             "(0 disables); guards against one busy GPU turning "
+                             "a whole grid into FAILED rows")
     parser.add_argument("--harvest", action="store_true",
                         help="Recover finished runs orphaned by a killed driver, then exit")
     args = parser.parse_args()
+    RESULTS, INIT_FROM, MODEL_CONFIG = args.results, args.init_from, args.model_config
+
+    # Namespace the per-run artefacts alongside the ledger. run_id is
+    # (dataset, cell, lr, seed) and says nothing about the base model, so a
+    # second model size writing into the same directories appends its curve to
+    # the first model's log file -- which silently corrupts best_val_loss for
+    # the new runs and pollutes the old ones. Namespacing is what stops that.
+    tag = RESULTS.stem.replace("lr_scaling_", "")
+    if tag != "sweep":
+        LOG_DIR = LOG_DIR.parent / f"lr_scaling_{tag}"
+        CONFIG_DIR = CONFIG_DIR.parent / f"lr_scaling_{tag}"
+        CKPT_DIR = CKPT_DIR.parent / f"lr_scaling_{tag}"
 
     migrate_results()
     if args.harvest:
@@ -526,14 +597,40 @@ def main() -> None:
 
     lock = threading.Lock()
 
+    # Circuit breaker. A run that dies for an environmental reason -- most often
+    # CUDA OOM because another process still holds the card -- will usually kill
+    # the next run too, and the next. Without this the sweep sprints through the
+    # whole grid marking everything FAILED: 15 runs in 0.9 minutes, an empty
+    # ledger, and the cause buried at the top of the log. Stop after a few in a
+    # row and say so, so the operator fixes the machine rather than the grid.
+    state = {"consecutive": 0, "tripped": False}
+
     def worker(gpu: int) -> None:
         while True:
+            if state["tripped"]:
+                return
             try:
                 cell, lr, seed = work.get_nowait()
             except queue.Empty:
                 return
             try:
-                train_one(dataset, cell, lr, seed, gpu, args.keep_checkpoints, lock)
+                ok = train_one(dataset, cell, lr, seed, gpu, args.keep_checkpoints, lock)
+                with lock:
+                    if ok:
+                        state["consecutive"] = 0
+                    else:
+                        state["consecutive"] += 1
+                        if (args.max_consecutive_failures
+                                and state["consecutive"] >= args.max_consecutive_failures):
+                            state["tripped"] = True
+                            print(
+                                f"\nSTOPPING: {state['consecutive']} runs failed in a row. "
+                                f"That is usually the machine and not the grid -- check "
+                                f"nvidia-smi for a process still holding a card, and the most "
+                                f"recent .out file for OOM. Nothing after this point was "
+                                f"attempted; re-run to resume.",
+                                flush=True,
+                            )
             finally:
                 work.task_done()
 
