@@ -1399,7 +1399,7 @@ both on Alpaca only.
 ## D. Reproducibility
 
 
-Every number in this paper comes from one of five ledgers, one per base model,
+Every number in this paper comes from one of seven ledgers, one per base model,
 each a row per run — dataset, cell, learning rate, seed, final and best
 validation loss, the step the best arrived at, and wall time. The sweep is
 resumable and skips rows already present, so each file is both the output and
@@ -1411,6 +1411,7 @@ the ledger.
 | `results/lr_scaling_small.csv` | 30M, 39.4 tokens/param | §4.7 |
 | `results/lr_scaling_mini.csv` | 7M, 39.5 tokens/param | §4.7 |
 | `results/lr_scaling_small9k.csv` | 30M, 19.7 tokens/param | §4.7.1 |
+| `results/lr_scaling_mini2k.csv` | 7M, 18.0 tokens/param | §4.7.1 |
 | `results/lr_scaling_ckpt.csv` | 124M, grid extension | Appendix E |
 
 They are separate files rather than one file with a model column because they

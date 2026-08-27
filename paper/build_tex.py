@@ -384,6 +384,15 @@ def main() -> None:
     figdir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(text)
 
+    # arXiv's submission form wants the abstract as plain text, separately from
+    # the source. Taken from the same markdown so the two cannot disagree.
+    abstract = body.split("## Abstract", 1)[1].split("\n## ", 1)[0]
+    paragraphs = [" ".join(block.split())
+                  for block in abstract.strip().split("\n\n") if block.strip()]
+    plain = "\n\n".join(paragraphs) + "\n"
+    (outdir / "abstract.txt").write_text(plain)
+    abstract_chars = len(plain)
+
     copied = 0
     for match in re.finditer(r"^!\[.*?\]\((.*?)\)\s*$", body, re.M):
         source = (SOURCE.parent / match.group(1)).resolve()
@@ -391,6 +400,10 @@ def main() -> None:
         copied += 1
 
     print(f"{len(text.splitlines())} lines, {copied} figures -> {out_path}")
+    # arXiv's abstract field is capped, and this one is long. Say so at build
+    # time rather than leaving it to be discovered in the submission form.
+    print(f"abstract.txt is {abstract_chars} characters; arXiv's field is capped "
+          f"(about 1,920) -- check it against the form before pasting")
 
 
 if __name__ == "__main__":

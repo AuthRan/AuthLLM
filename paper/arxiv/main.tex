@@ -675,7 +675,7 @@ Everything in \S{}4.1 through \S{}4.6 is one model size (124M) on two corpora at
 
 \section{Reproducibility}
 
-Every number in this paper comes from one of five ledgers, one per base model, each a row per run --- dataset, cell, learning rate, seed, final and best validation loss, the step the best arrived at, and wall time. The sweep is resumable and skips rows already present, so each file is both the output and the ledger.
+Every number in this paper comes from one of seven ledgers, one per base model, each a row per run --- dataset, cell, learning rate, seed, final and best validation loss, the step the best arrived at, and wall time. The sweep is resumable and skips rows already present, so each file is both the output and the ledger.
 
 \begin{center}
 \small
@@ -688,6 +688,7 @@ ledger & base model & sections \\
 \texttt{results/\allowbreak{}lr\_\allowbreak{}scaling\_\allowbreak{}small.csv} & 30M, 39.4 tokens/param & \S{}4.7 \\
 \texttt{results/\allowbreak{}lr\_\allowbreak{}scaling\_\allowbreak{}mini.csv} & 7M, 39.5 tokens/param & \S{}4.7 \\
 \texttt{results/\allowbreak{}lr\_\allowbreak{}scaling\_\allowbreak{}small9k.csv} & 30M, 19.7 tokens/param & \S{}4.7.1 \\
+\texttt{results/\allowbreak{}lr\_\allowbreak{}scaling\_\allowbreak{}mini2k.csv} & 7M, 18.0 tokens/param & \S{}4.7.1 \\
 \texttt{results/\allowbreak{}lr\_\allowbreak{}scaling\_\allowbreak{}ckpt.csv} & 124M, grid extension & Appendix E \\
 \bottomrule
 \end{tabular}}

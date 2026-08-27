@@ -38,7 +38,13 @@ paper/arxiv/
    text width with `\resizebox`; at nine columns it may set very small. If it
    does, the alternative is a landscape page (`lscape`) or splitting the table.
 
-4. **Endorsement.** arXiv requires an endorsement for a first submission to
+4. **The abstract will not fit the form as it stands.** `abstract.txt` is the
+   paper's abstract as plain text, and it is about 2,370 characters against an
+   arXiv field capped near 1,920. It needs cutting for the form -- the paper's
+   own abstract does not have to change, and the two are allowed to differ, but
+   whatever is pasted should still name the result and the control.
+
+5. **Endorsement.** arXiv requires an endorsement for a first submission to
    `cs.LG` from an author with no submission history. That is an account-level
    step and cannot be done from here. Suggested categories: `cs.LG` primary,
    `cs.CL` cross-list.
