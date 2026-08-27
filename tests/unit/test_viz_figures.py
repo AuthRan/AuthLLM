@@ -277,6 +277,7 @@ def test_every_figure_built_is_a_figure_shown():
         for path in [REPO_ROOT / "README.md", REPO_ROOT / "SPEC.md"]
         + sorted((REPO_ROOT / "results").glob("*.md"))
         + sorted((REPO_ROOT / "learning").glob("*.md"))
+        + sorted((REPO_ROOT / "paper").glob("*.md"))
     )
 
     built = sorted((REPO_ROOT / "resources" / "plots").glob("*.png"))

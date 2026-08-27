@@ -423,6 +423,198 @@ def lr_scaling() -> Path:
     return save(fig, OUT / "06-lr-scaling-packing.png")
 
 
+def lr_scaling_control() -> Path:
+    """The same batch, assembled two ways: does the optimum care which?
+
+    Packing raises supervised tokens per step and leaves the number of
+    forward-pass rows alone. Raising gradient accumulation instead reaches the
+    same tokens per step through ~4.5x as many rows. Matched that way the two
+    cells agree on everything a batch-size rule could be a function of, so if
+    the optimum is set by the statistical batch the two curves share a minimum
+    -- and if it is set by rows, they sit a factor of 4.5 apart.
+
+    Two series, so identity is carried by line style and marker as well as
+    colour: solid circles packed, dashed squares padded, the same assignment the
+    factorial figure uses. Seed 1337, the seed both cells share.
+    """
+    import csv
+    import math
+
+    by_cell: dict[tuple[str, str], list[tuple[float, float]]] = {}
+    with SWEEPS.open() as handle:
+        for row in csv.DictReader(handle):
+            if int(row["seed"]) != 1337 or not row["final_val_loss"]:
+                continue
+            key = (row.get("dataset") or "alpaca", row["cell"])
+            by_cell.setdefault(key, []).append((float(row["max_lr"]), float(row["final_val_loss"])))
+
+    def optimum(points: list[tuple[float, float]]) -> float | None:
+        """Parabola through the argmin and its neighbours, in log(lr).
+
+        The same estimator as scripts/analyze_lr_scaling.py, which is canonical;
+        kept here so the viz package does not import from scripts/.
+        """
+        points = sorted(points)
+        index = min(range(len(points)), key=lambda i: points[i][1])
+        if index == 0 or index == len(points) - 1:
+            return None
+        (x1, y1), (x2, y2), (x3, y3) = (
+            (math.log(points[i][0]), points[i][1]) for i in (index - 1, index, index + 1)
+        )
+        denominator = (x1 - x2) * (x1 - x3) * (x2 - x3)
+        a = (x3 * (y2 - y1) + x2 * (y1 - y3) + x1 * (y3 - y2)) / denominator
+        b = (x3 * x3 * (y1 - y2) + x2 * x2 * (y3 - y1) + x1 * x1 * (y2 - y3)) / denominator
+        return math.exp(-b / (2 * a)) if a > 0 else None
+
+    panels = [
+        ("alpaca", "Alpaca", "packed_350", "wide_350", 8444, 8496, 32, 144),
+        ("dolly", "Dolly", "packed_136", "wide_136", 6632, 6816, 32, 96),
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.4))
+
+    for ax, (dataset, title, packed_cell, wide_cell, pk_tok, wd_tok, pk_rows, wd_rows) in zip(axes, panels):
+        series = [
+            (packed_cell, "packed", COLORS["stage2"], "-", "o"),
+            (wide_cell, "padded, wide batch", COLORS["pretrain"], "--", "s"),
+        ]
+        marks = []
+        for cell, label, color, style, marker in series:
+            points = sorted(by_cell.get((dataset, cell), []))
+            if not points:
+                continue
+            ax.plot([lr for lr, _ in points], [loss for _, loss in points],
+                    marker=marker, markersize=5, linewidth=2, color=color,
+                    linestyle=style, label=label)
+            best = optimum(points)
+            if best is not None:
+                ax.axvline(best, color=color, linestyle=":", linewidth=1.4, alpha=0.75)
+                marks.append((label, best))
+
+        ax.set_xscale("log")
+        ax.set_xlabel("peak learning rate")
+        ax.set_title(f"{title} — {pk_tok:,} vs {wd_tok:,} supervised tokens/step")
+        ax.legend(loc="upper left", fontsize=8.5)
+
+        if len(marks) == 2:
+            # Headroom first: on Dolly the padded arm climbs into the top-right
+            # corner, so the corner has to be made empty before anything is put
+            # in it.
+            low, high = ax.get_ylim()
+            ax.set_ylim(low, high + 0.22 * (high - low))
+            # Upper right: both curves fall away from the top-left, so this
+            # corner is the one reliably empty in either panel.
+            ratio = marks[1][1] / marks[0][1]
+            ax.text(0.97, 0.95,
+                    f"optima {ratio:.2f}x apart\n{pk_rows} rows/step vs {wd_rows}",
+                    transform=ax.transAxes, ha="right", va="top", fontsize=9,
+                    color=TEXT, linespacing=1.6)
+
+    axes[0].set_ylabel("held-out loss (nats), seed 1337")
+    return save(fig, OUT / "07-lr-scaling-control.png")
+
+
+def lr_scaling_regime() -> Path:
+    """What the packing exponent depends on, and what it does not.
+
+    Left: the exponent against the size of the run, with everything else held --
+    packing factor near 4.5x, padded batch near 1,850 supervised tokens, the same
+    length distribution. Right: the exponent against the packing factor across
+    Alpaca's three length terciles, which hold the size of the run fixed instead.
+    The first axis moves it; the second does not, once the seed spread is drawn.
+
+    Error bars are the seed bound from results/exponents.csv: both cells' max/min
+    ranges carried through the ratio. They are ranges rather than standard
+    errors, so they are conservative, and the right-hand panel is the reason to
+    draw them at all -- without them its three points look like a trend.
+
+    Reads the exported table rather than recomputing, so this cannot disagree
+    with the paper about what an optimum is.
+    """
+    import csv
+
+    rows = []
+    path = OUT.parent.parent / "results" / "exponents.csv"
+    if path.exists():
+        with path.open() as handle:
+            rows = list(csv.DictReader(handle))
+    if not rows:
+        raise SystemExit("run scripts/export_exponents.py first")
+
+    SCALE = {"alpaca": "alpaca", "alpaca_third": "alpaca", "alpaca_ninth": "alpaca",
+             "dolly": "dolly", "dolly_third": "dolly"}
+    TERCILES = ("alpaca_long", "alpaca_mid", "alpaca_short")
+    style = {
+        ("124M", "alpaca"): (COLORS["pretrain"], "o", "Alpaca, 124M"),
+        ("30M", "alpaca"): (COLORS["stage2"], "s", "Alpaca, 30M"),
+        ("7M", "alpaca"): (COLORS["stage1"], "D", "Alpaca, 7M"),
+        ("124M", "dolly"): (COLORS["dpo"], "^", "Dolly, 124M"),
+        ("30M", "dolly"): (COLORS["chat"], "v", "Dolly, 30M"),
+    }
+
+    fig, (left, right) = plt.subplots(1, 2, figsize=(11.6, 4.4))
+
+    series: dict[tuple[str, str], list] = {}
+    for r in rows:
+        key = (r["model"], SCALE.get(r["dataset"]))
+        if key[1] is None or not r["train_examples"]:
+            continue
+        series.setdefault(key, []).append(
+            (int(r["train_examples"]), float(r["exponent"]), float(r["bound"])))
+    for key, pts in sorted(series.items()):
+        if key not in style:
+            continue
+        color, marker, label = style[key]
+        pts.sort()
+        left.errorbar([p[0] for p in pts], [p[1] for p in pts], yerr=[p[2] for p in pts],
+                      color=color, marker=marker, markersize=6, linewidth=2,
+                      capsize=3, elinewidth=1.2, label=label)
+    left.set_xscale("log")
+    left.set_xlabel("training examples (one epoch each)")
+    left.set_ylabel("exponent against the packing factor")
+    left.set_title("Scale moves the exponent")
+    left.legend(loc="upper left", fontsize=8.5)
+
+    tercile = sorted((float(r["packing_factor"]), float(r["exponent"]), float(r["bound"]))
+                     for r in rows if r["model"] == "124M" and r["dataset"] in TERCILES)
+    if tercile:
+        right.errorbar([p[0] for p in tercile], [p[1] for p in tercile],
+                       yerr=[p[2] for p in tercile], color=COLORS["pretrain"],
+                       marker="o", markersize=6, linewidth=2, capsize=3, elinewidth=1.2,
+                       label="Alpaca length terciles, 124M")
+    right.set_xscale("log")
+    right.set_xlabel("packing factor (supervised tokens/step)")
+    right.set_title("The packing ratio does not")
+    right.legend(loc="upper right", fontsize=8.5)
+    right.text(0.03, 0.04, "all three hold the size of the run fixed\nat 16,956 examples and 530 padded steps",
+               transform=right.transAxes, fontsize=8.5, color=MUTED, linespacing=1.5)
+
+    # Plain tick labels: matplotlib's log default renders these as 6x10^3 and
+    # 3x10^0, which is unreadable for quantities a reader wants to compare.
+    from matplotlib.ticker import FixedFormatter, FixedLocator
+    left.xaxis.set_major_locator(FixedLocator([5000, 10000, 20000, 50000]))
+    left.xaxis.set_major_formatter(FixedFormatter(["5k", "10k", "20k", "50k"]))
+    left.xaxis.set_minor_locator(FixedLocator([]))
+    if tercile:
+        factors = [p[0] for p in tercile]
+        right.xaxis.set_major_locator(FixedLocator(factors))
+        right.xaxis.set_major_formatter(FixedFormatter([f"{f:.1f}x" for f in factors]))
+        right.xaxis.set_minor_locator(FixedLocator([]))
+
+    # The two rules a reader will have in mind, drawn once so the panels share
+    # them. Labelled on the left, where neither panel's data goes.
+    for ax in (left, right):
+        for value, name in ((0.5, "square-root"), (1.0, "linear")):
+            ax.axhline(value, color=MUTED, linestyle=":", linewidth=1, alpha=0.6)
+            ax.text(0.015, value, name, transform=ax.get_yaxis_transform(),
+                    ha="left", va="bottom", fontsize=8, color=MUTED)
+    lo = min(p[1] - p[2] for pts in series.values() for p in pts)
+    hi = max(p[1] + p[2] for pts in series.values() for p in pts)
+    for ax in (left, right):
+        ax.set_ylim(min(lo, 0.2) - 0.08, max(hi, 1.1) + 0.16)
+
+    return save(fig, OUT / "08-lr-scaling-regime.png")
+
+
 ALL = {
     "pretraining": pretraining_curve,
     "scaling": scaling_ladder,
@@ -430,4 +622,6 @@ ALL = {
     "chat-sweep": chat_sweep,
     "dpo-reversal": dpo_metric_reversal,
     "lr-scaling": lr_scaling,
+    "lr-scaling-control": lr_scaling_control,
+    "lr-scaling-regime": lr_scaling_regime,
 }
