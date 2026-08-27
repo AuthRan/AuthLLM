@@ -22,6 +22,13 @@
 # 20,000 steps * 245,760 = ~4.9B tokens, which is ~40x the parameter count --
 # comfortably past Chinchilla-optimal (20x) for a 124M model.
 #
+# NOTE, added later: the run that produced checkpoints/medium used ONE card, not
+# two. The arithmetic above assumes two ranks and therefore doubles the real
+# figure: the model saw 122,880 tokens/step and 2.46B in total, which is ~20x
+# the parameter count -- Chinchilla-optimal rather than past it. This comment
+# was read at face value when budgeting the 30M and 7M runs and sent both of
+# them to twice the intended tokens-per-parameter; see fineweb_small.yaml.
+#
 # ---- Memory: why batch_size is 8 and not 12 ----
 # batch_size 12 was measured at 8.09 GB peak on an idle card and looked like
 # it fit in 11.3 GB. It does not fit in the real run, and OOM'd rank 1:

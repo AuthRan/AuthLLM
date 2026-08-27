@@ -1,0 +1,74 @@
+# The `mini` (~7M) model on FineWeb-Edu, to give the packing learning-rate
+# work a second model size. Launched with:
+#
+#   torchrun --nproc_per_node=2 scripts/train.py \
+#       --model configs/model/mini.yaml --train configs/train/fineweb_mini.yaml \
+#       --tokenizer tokenizer_gpt2.json --data-manifest data/fineweb_edu_5B/manifest.json \
+#       --checkpoint-dir checkpoints/mini --log-path logs/mini.csv
+#
+# ---- Why this config is a copy of the medium one, and where it is not ----
+# The point of this run is a second point on the model-size axis, so every
+# hyperparameter that could confound that comparison is held at the value the
+# medium run used: max_lr 6.0e-4, the same betas, weight decay, gradient
+# clipping, warmup fraction, fp16 + GradScaler (these are Turing cards; bf16 is
+# emulated and 7.4x slower -- see fineweb_2x2080ti.yaml), and stride 512 so one
+# pass over the corpus is one pass.
+#
+# Two things do change, both forced by the smaller model:
+#
+#   * Tokens per step. The medium run used 245,760. At 30M parameters that is a
+#     very large batch for very few optimizer steps, so this uses
+#     8 * 8 * 2 * 512 = 65,536 tokens/step -- a quarter of medium's, which keeps
+#     the step count in the same range rather than collapsing it.
+#
+#   * Total tokens. THIS BUDGET IS WRONG, and is left in place with the error
+#     recorded rather than silently re-run. It was sized from the comment in
+#     fineweb_2x2080ti.yaml, which computes ~4.9B tokens for the 124M run on the
+#     assumption of two ranks. That run used one card (see the repository
+#     history), so it saw 2.46B tokens -- 19.9 per parameter, not 39.6. Sizing
+#     this run at 39.6 per parameter therefore trains it about twice as heavily
+#     for its size as the model it exists to be compared against, and confounds
+#     "smaller" with "better-trained-for-its-size".
+#
+#     The matched budget would be step 2,200 -- 19.8 tokens per parameter
+#     against the 124M run's 19.9 -- but `checkpoint_interval` is 500, so that
+#     step was never saved. The nearest checkpoints on disk are step_2000 (18.0
+#     per parameter) and step_2500 (22.5), which bracket it. No 7M
+#     matched-budget sweep has been run either way.
+#
+#     Section 4.7.1 of the paper runs the equivalent comparison at 30M, where
+#     the checkpoint interval did land on the match (step 9,000, 19.7 per
+#     parameter): halving the budget there moves both optima up by ~1.45x and
+#     moves the exponent between them by 0.002 and 0.019, i.e. not at all. The
+#     7M budget axis is not measured, and the paper does not claim it is.
+#     Sweeping step_2000 is the cheapest open check left in the paper.
+#
+# ---- Memory ----
+# batch_size 8 is carried over from the medium config, where it was measured at
+# 6.01 GB peak for a 124M model. A 30M model at the same batch and sequence
+# length is strictly smaller everywhere except the logits, which are identical
+# (8 * 512 * 50304 * 4 = 0.82 GB) because they scale with vocabulary and not
+# with width. There is no memory risk here; the batch is left alone so the
+# comparison inherits a known-good setting.
+batch_size: 8
+seq_len: 512
+grad_accum_steps: 8
+max_steps: 4400
+warmup_steps: 88        # 2% of the schedule, as in the medium and small runs
+max_lr: 6.0e-4
+min_lr: 6.0e-5
+weight_decay: 0.1
+betas: [0.9, 0.95]
+grad_clip: 1.0
+log_interval: 10
+eval_interval: 500
+eval_steps: 40
+checkpoint_interval: 500
+amp_dtype: float16
+gradient_checkpointing: false
+use_efficient_attention: true
+stride: 512
+num_workers: 3
+pin_memory: true
+compile_model: false
+seed: 1337

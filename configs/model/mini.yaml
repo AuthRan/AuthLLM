@@ -1,0 +1,21 @@
+# ~7M params at the 512-token window the packing work uses.
+#
+# `tiny.yaml` is the same shape but with context_length 256, which is half the
+# window every fine-tuning run in section 10 and the packing paper trains at.
+# Rather than change tiny.yaml -- the test suite pins its context length -- this
+# is a separate preset that differs from it in exactly one field.
+#
+# It exists to give the packing learning-rate work a third model size: 7M, 30M
+# and 124M span a factor of 16, which is enough to say whether the effect has a
+# direction in model size. Two points were not.
+name: mini
+vocab_size: 50304
+d_model: 128
+n_layers: 4
+n_heads: 4
+n_kv_heads: 4
+d_ff: 384
+context_length: 512
+rope_theta: 10000.0
+norm_eps: 1.0e-5
+tie_embeddings: true
