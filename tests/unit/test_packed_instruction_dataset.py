@@ -258,6 +258,69 @@ def test_segment_ids_are_rejected_with_a_kv_cache(tokenizer, examples, model):
         )
 
 
+def test_packed_gradients_match_the_same_examples_unpacked(tokenizer, examples):
+    """Packing must not change the gradient, not just the logits.
+
+    `test_packed_logits_match_running_each_example_alone` runs under no_grad and
+    pins the forward pass. It does not pin the backward one, and the two are not
+    the same claim: the loss is a token-mean over supervised positions, so a
+    packed window and a padded batch agree only if they average over the *same*
+    set of positions with the same weights. If packing changed the number of
+    terms in that mean -- by counting a padding position, or by normalising per
+    window instead of per token -- the logits would still match example by
+    example while every gradient came out scaled.
+
+    This is the property the learning-rate work rests on: it is what makes
+    packing a change in batch size and not a disguised change in step size.
+    """
+    seq_len = 256
+    packed = PackedInstructionDataset(examples, tokenizer, seq_len=seq_len)
+    unpacked = InstructionDataset(examples, tokenizer, seq_len=seq_len)
+    assert len(packed) == 1, "test needs all examples in a single window"
+
+    torch.manual_seed(1337)
+    config = ModelConfig(
+        name="packing-grad-test",
+        vocab_size=tokenizer.vocab_size,
+        d_model=64,
+        n_layers=2,
+        n_heads=4,
+        n_kv_heads=4,
+        d_ff=128,
+        context_length=seq_len,
+    )
+    model = AshuGPT(config)
+    model.train()
+
+    def gradients(build):
+        model.zero_grad(set_to_none=True)
+        output = build()
+        output.loss.backward()
+        return output.loss, {n: p.grad.clone() for n, p in model.named_parameters()
+                             if p.grad is not None}
+
+    input_ids, labels, segment_ids, position_ids = packed[0]
+    packed_loss, packed_grads = gradients(lambda: model(
+        input_ids.unsqueeze(0),
+        labels=labels.unsqueeze(0),
+        segment_ids=segment_ids.unsqueeze(0),
+        position_ids=position_ids.unsqueeze(0),
+    ))
+
+    batch_ids = torch.stack([unpacked[i][0] for i in range(len(examples))])
+    batch_labels = torch.stack([unpacked[i][1] for i in range(len(examples))])
+    unpacked_loss, unpacked_grads = gradients(lambda: model(batch_ids, labels=batch_labels))
+
+    # Same supervised positions on both sides, or the means are not comparable.
+    assert int((labels != IGNORE_INDEX).sum()) == int((batch_labels != IGNORE_INDEX).sum())
+
+    torch.testing.assert_close(packed_loss, unpacked_loss, rtol=1e-5, atol=1e-5)
+    assert packed_grads.keys() == unpacked_grads.keys()
+    for name, grad in packed_grads.items():
+        torch.testing.assert_close(grad, unpacked_grads[name], rtol=1e-4, atol=1e-6,
+                                   msg=lambda m, n=name: f"gradient differs for {n}: {m}")
+
+
 def test_gradient_checkpointing_agrees_with_the_normal_path(tokenizer, examples):
     """Gradient checkpointing re-runs each block's forward during backward, so
     the packing arguments have to survive being passed through
