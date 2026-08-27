@@ -2,6 +2,36 @@
 
 *Written so the state survives a context reset. Update it when something lands.*
 
+## In flight (2026-08-28, overnight)
+
+Two seed replications, chained: the quality series (12 runs, `lr_scaling_quality`)
+and then the 7M matched-budget ledger (24 runs, `lr_scaling_mini2k`), the second
+launched behind `scripts/wait_for_gpus.py` when the first exits. Both are
+resumable, so a re-invocation of `replicate_series_seeds.py` with the same
+arguments picks up whatever is missing.
+
+When they land: `export_exponents.py`, then `update_paper_counts.py`, then the
+write-ups that are still owed --
+
+- **section 4.7.2**, the size-versus-quality control, scoring the fifth
+  registered prediction. At seed 1337 it reads 0.916 against 1.055 at 124M and
+  1.695 at 7M, which is H1, but one seed carries no bound.
+- **section 4.7.1**, extended with the 7M pair so the budget axis is two model
+  sizes rather than one. Appendix D already lists `lr_scaling_mini2k.csv`
+  against 4.7.1 on that assumption.
+- **Appendix C**, the seed accounting for both, and **Appendix D**, the seventh
+  ledger row.
+- The abstract, contribution 7, the 4.7 confound paragraph, section 5's threat
+  and section 7 all currently say the quality confound is registered and
+  unresolved.
+
+Also done tonight: everything above was uncommitted (769 files, and the second
+half of the paper); it is committed now. `paper/build_tex.py` renders the arXiv
+package into `paper/arxiv/`, guarded by `tests/unit/test_build_tex.py` -- it has
+never been compiled, this machine has no TeX. `wait_for_gpus.py` now exists,
+having been recorded below as a fix that had been made. `update_paper_counts.py`
+was missing the quality ledger that `export_exponents.py` had.
+
 ## Where it stands (2026-08-26)
 
 **Paper**: `paper/paper.md`, ~12,900 words, published at
