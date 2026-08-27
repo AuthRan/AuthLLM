@@ -39,6 +39,7 @@ from analyze_lr_scaling import (  # noqa: E402  -- same directory, shared consta
     CORPUS_SUPERVISED_TOKENS,
     RESULTS,
     SUPERVISED_TOKENS,
+    cell_tokens,
     interpolated_optimum,
 )
 
@@ -53,8 +54,7 @@ MATERIAL_SHIFT = 1.01
 
 
 def cell_epochs(dataset: str, cell: str, steps: int) -> float:
-    packed = cell.startswith("packed")
-    return steps * SUPERVISED_TOKENS[dataset][packed] / CORPUS_SUPERVISED_TOKENS[dataset]
+    return steps * cell_tokens(dataset, cell) / CORPUS_SUPERVISED_TOKENS[dataset]
 
 
 def load(dataset: str) -> dict[str, list[dict]]:
