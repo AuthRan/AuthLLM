@@ -113,3 +113,72 @@ with the 0.291 margin. No discretion.
    everything else in Appendix C before it goes in the paper as more than
    provisional. If seed 1337 alone is what exists when this is written up, it
    must be labelled as such.
+
+---
+
+# Scored, 2026-08-28
+
+**H1 confirmed.** Scored exactly as specified above, on the exponents
+`scripts/export_exponents.py` writes to `results/exponents.csv`, with no
+discretion applied.
+
+| | measured |
+| --- | --- |
+| 124M @ perplexity 107.0, `alpaca` | exponent **0.906 ± 0.204** |
+| against 7M's 1.695 | gap **0.789**, against the registered margin of 0.291 — 2.7x it |
+| against 124M's 1.055 | gap **0.149**, against a combined bound of 0.241 — 0.6x it |
+
+H1 required the exponent to stay near 1.055 and to land more than 0.291 below
+1.695. It does both. H2 required it to land within 0.291 of 1.695, or above it;
+it is 0.789 below. The third outcome the registration allowed for — landing
+between the two and clearing neither margin — did not happen either.
+
+Base-model quality was moved by a factor of 4.6 in perplexity, at a fixed
+parameter count, and the exponent did not follow it. §4.7 is measuring model
+size.
+
+## The seed limitation recorded in advance was addressed, and it mattered
+
+Limitation 4 said the comparison of record needed the same three-seed
+replication as everything else in Appendix C before it could go in the paper as
+more than provisional. That pass was run — twelve runs, the three learning rates
+bracketing each optimum at seeds 1338 and 1339 — and it did not go cleanly.
+
+Seed 1338's padded curve put its minimum on the *top* edge of the three
+replicated points, so it did not bracket and the usual rule would have dropped
+it. Dropping it was not neutral. The two surviving seeds put the padded optimum
+at 1.12e-4 and 1.00e-4 while the dropped one was above 1.50e-4, so dropping the
+highest of the three would have pulled the padded arm down, and the shift and
+the exponent up — *toward* H2, the hypothesis this document argues against. The
+window was extended upward by two runs instead, as was done for the 7M random
+third in Appendix C. Seed 1338 then bracketed at 1.5e-4 with an optimum of
+1.27e-4.
+
+The difference is small and it is in the direction that matters: on two seeds
+the exponent read 0.946, on three it reads 0.906. Both confirm H1. Neither
+would have been honest to report without saying which it was.
+
+## The secondary guesses, neither of record
+
+*The levels.* Guessed both optima would sit well above the fully pretrained
+model's 2.81e-5 and 1.37e-4, "possibly by more than 3x", and that the grid would
+have to be extended upward or the optima would not bracket. Both held: the
+padded optimum rises 4.00x and the packed one 3.20x, and the grid did need
+extending. This does not discriminate H1 from H2 and was not offered as if it
+did.
+
+*The middle point.* `step_2500`, at perplexity 39.4 against the 30M model's
+38.0, was not run. The quality axis therefore has two points and not three,
+which is recorded in §4.7.2 and in §5 as a limit on the shape rather than on
+the direction.
+
+## What was learned that was not predicted
+
+That the quality axis and the pretraining-budget axis of §4.7.1 behave the same
+way, and now over ranges that differ by an order of magnitude. Halving the
+budget at 30M moved both optima by about 1.45x and the exponent by 0.002 and
+0.019. Taking 124M back to 2.5% of its schedule moves both optima by 3.2x to
+4.0x and the exponent by 0.149, inside its bound. Where the optimum sits depends
+on how well the base model was trained, and how far packing moves it does not —
+a claim §4.7.1 could make only across a 15% change in perplexity and can now
+make across a factor of 4.6.

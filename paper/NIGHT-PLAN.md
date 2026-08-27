@@ -2,44 +2,49 @@
 
 *Written so the state survives a context reset. Update it when something lands.*
 
-## In flight (2026-08-28, overnight)
+## What landed overnight, 2026-08-28
 
-Two seed replications, chained: the quality series (12 runs, `lr_scaling_quality`)
-and then the 7M matched-budget ledger (24 runs, `lr_scaling_mini2k`), the second
-launched behind `scripts/wait_for_gpus.py` when the first exits. Both are
-resumable, so a re-invocation of `replicate_series_seeds.py` with the same
-arguments picks up whatever is missing.
+**The quality control (§4.7.2) and the 7M budget control (§4.7.1) are measured,
+seed-replicated and written up.** 42 runs across two ledgers plus 6 more to
+extend two windows. Every cell in every ledger now brackets at three seeds
+except the two 124M curves Appendix C has always recorded as dropped.
 
-When they land: `export_exponents.py`, then `update_paper_counts.py`, then the
-write-ups that are still owed --
+- **§4.7.2, the fifth registered prediction: H1 confirmed.** A 124M model taken
+  back to `step_500`, at perplexity 107.0 against the 7M model's 115.2, reads
+  **0.906 ± 0.204** — 0.789 below 7M's 1.695 (2.7x the registered margin of
+  0.291) and 0.149 from 124M's own 1.055 (0.6x the combined bound). Quality
+  moved by 4.6x in perplexity and the exponent stayed with the parameter count.
+  §4.7's trend is about model size.
+- **§4.7.1 now covers two model sizes.** The 7M pair reproduces the 30M null:
+  exponent differences of 0.019 and 0.103 against bounds of 0.266 and 0.424,
+  while both optima rise together (1.44x/1.40x and 1.84x/1.57x). Four pairs, two
+  sizes, same answer.
+- **Three curves needed the window extended, and one of them mattered.**
+  §4.7.2's padded cell had a seed sitting above its window; dropping it under
+  the usual rule would have pushed the exponent *up*, toward the hypothesis the
+  registration argued against (0.946 on two seeds against 0.906 on three).
+  Extended instead, as was done for the 7M random third. Recorded in Appendix C
+  and in the prediction's scoring.
 
-- **section 4.7.2**, the size-versus-quality control, scoring the fifth
-  registered prediction. At seed 1337 it reads 0.916 against 1.055 at 124M and
-  1.695 at 7M, which is H1, but one seed carries no bound.
-- **section 4.7.1**, extended with the 7M pair so the budget axis is two model
-  sizes rather than one. Appendix D already lists `lr_scaling_mini2k.csv`
-  against 4.7.1 on that assumption.
-- **Appendix C**, the seed accounting for both, and **Appendix D**, the seventh
-  ledger row.
-- The abstract, contribution 7, the 4.7 confound paragraph, section 5's threat
-  and section 7 all currently say the quality confound is registered and
-  unresolved.
-
-Also done tonight: everything above was uncommitted (769 files, and the second
-half of the paper); it is committed now. `paper/build_tex.py` renders the arXiv
-package into `paper/arxiv/`, guarded by `tests/unit/test_build_tex.py` -- it has
-never been compiled, this machine has no TeX. `wait_for_gpus.py` now exists,
-having been recorded below as a fix that had been made. `update_paper_counts.py`
-was missing the quality ledger that `export_exponents.py` had.
+**Repo work.** Everything was uncommitted — 769 files and the second half of the
+paper — and is now in ten commits. `paper/build_tex.py` renders the arXiv
+package into `paper/arxiv/` (main.tex, figures, abstract.txt, README), guarded
+by `tests/unit/test_build_tex.py`, which stands in for the compiler this machine
+does not have: brace and environment balance, table columns, unescaped
+specials, surviving markdown, and a simulation of LaTeX's section counters so
+that §4.7.1 and Appendix C still come out numbered as the prose cites them.
+`scripts/wait_for_gpus.py` now exists, having been recorded below as a fix that
+had been made. `update_paper_counts.py` was missing the quality ledger that
+`export_exponents.py` had, so the paper was under-reporting its own compute.
 
 ## Where it stands (2026-08-26)
 
 **Paper**: `paper/paper.md`, ~12,900 words, published at
 <https://claude.ai/code/artifact/a62b717b-28f8-43a8-ad66-927a75cf3bf2>.
 `paper/build_page.py` renders it; `scripts/update_paper_counts.py` keeps the run
-count and GPU-hours in sync with the ledgers — 551 runs, ~49 GPU-hours.
+count and GPU-hours in sync with the ledgers — 649 runs, ~63 GPU-hours.
 
-**Ledgers**, five, one per base model, all resumable and all tallied by
+**Ledgers**, seven, one per base model, all resumable and all tallied by
 `update_paper_counts.py` and `export_exponents.py` (keep those two lists in
 step):
 
@@ -49,6 +54,8 @@ step):
 | `results/lr_scaling_small.csv` | 30M, 39.4 tok/param |
 | `results/lr_scaling_mini.csv` | 7M, 39.5 tok/param |
 | `results/lr_scaling_small9k.csv` | 30M, 19.7 tok/param |
+| `results/lr_scaling_mini2k.csv` | 7M, 18.0 tok/param |
+| `results/lr_scaling_quality.csv` | 124M at perplexity 107.0 |
 | `results/lr_scaling_ckpt.csv` | 124M grid extension |
 
 `scripts/export_exponents.py` -> `results/exponents.csv` is the single table of
@@ -98,7 +105,12 @@ holds the third, and now carries its scoring.
    six 30M cells bracket at three seeds, none dropped, and it did not move the
    verdict.
 
-A fourth, from §4.2 (Alpaca's exponent should predict Dolly's), is falsified and
+4. At 124M and the 7M model's perplexity, the exponent should stay near 1.055
+   and land more than 0.291 below 1.695, or §4.7 is measuring base-model quality
+   rather than model size. Measured 0.906: 0.789 below, 2.7x the margin.
+   `results/registered-prediction-size-vs-quality.md` carries its scoring.
+
+A fifth, from §4.2 (Alpaca's exponent should predict Dolly's), is falsified and
 reported as such.
 
 ## Things that were findings and then were not
@@ -160,15 +172,25 @@ Kept deliberately — the paper reports them as retractions.
 - **Venue.** An efficiency or post-training workshop is the honest target;
   ENLSP and OPT at NeurIPS fit the scaling framing, *Insights from Negative
   Results in NLP* fits the falsifications. Deadlines not checked.
-- **Length.** ~12,900 words is now well over any of those workshops' limits and
-  is the most pressing problem. A cut would move §4.5, the estimator-robustness
-  material and §4.7.1 to an appendix, and compress §4.7's six bolded claims to
+- **Length.** ~13,900 words. This is a workshop problem and not an arXiv one —
+  arXiv has no limit — so it is deferred until a venue is chosen rather than
+  done speculatively. The cut, when it comes: §4.5, the estimator-robustness
+  material and §4.7.1 to an appendix, and §4.7's six bolded claims compressed to
   the two that clear their bounds.
-- **Author list and affiliation.**
-- **Cheapest open check.** `checkpoints/mini/step_2000.pt` (18.0 tok/param) is
-  unswept; sweeping it would put the 7M model on the budget axis too. §4.7.1
-  currently establishes that axis at 30M only, and the 7M row is assumed rather
-  than measured. 7M runs are 0.4–3 min each.
+- **Author list and affiliation.** `paper/build_tex.py` carries `AUTHOR` and
+  `AFFILIATION` near the top and there is a `% TODO` beside them in the
+  generated preamble. This is the one thing in the arXiv package not derived
+  from the markdown.
+- **Compile it once.** `paper/arxiv/main.tex` has never been run through LaTeX;
+  this machine has no TeX and no network to install one. Two `pdflatex` passes.
+- **The abstract does not fit arXiv's form.** ~2,460 characters against a field
+  capped near 1,920. `paper/arxiv/abstract.txt` is the text to cut down; the
+  paper's own abstract need not change.
+- **Endorsement.** A first `cs.LG` submission needs one, which is an
+  account-level step.
+- **Cheapest open check.** `checkpoints/medium/step_2500.pt` (perplexity 39.4,
+  against the 30M model's 38.0) is unswept. It is the middle point of §4.7.2's
+  quality series, which currently has two points; §4.7.2 and §5 both say so.
 
 ## Standing constraints
 

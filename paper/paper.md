@@ -1,9 +1,11 @@
 # Does Sequence Packing Change the Optimal Learning Rate?
 
-**Status: draft, complete through Appendix D, <!--runs-->607 runs (342 at 124M, 84 at 30M, 59 at 30M at the matched budget, 70 at 7M, 27 at 7M at the matched budget, 10 at 124M grid extension, 15 at 124M at the 7M model's quality)<!--/runs--> in the
-ledger. Every cell carries a full grid and every cell the headline rests on is
-seed-replicated. Remaining: a venue decision, and author list / affiliation for
-submission.**
+**Status: draft, complete, <!--runs-->649 runs (342 at 124M, 84 at 30M, 59 at 30M at the matched budget, 70 at 7M, 55 at 7M at the matched budget, 10 at 124M grid extension, 29 at 124M at the 7M model's quality)<!--/runs--> in the
+ledger. Every cell carries a full grid and every cell the paper rests on is
+seed-replicated — three seeds throughout, bar the two curves Appendix C records
+as dropped — and all five registered predictions are scored. Remaining: an
+author list and affiliation, and a venue. An arXiv package is built from this
+file into `paper/arxiv/` and has neither been compiled nor submitted.**
 
 ---
 
@@ -38,10 +40,12 @@ predictions registered before the deciding runs existed and by the two
 cross-corpus pairs that, matched on scale rather than on packing ratio, agree
 well inside their seed bounds. It also rises as the
 model gets smaller — in a direction every comparison agrees on, resolved only
-across the full 17x span, and confounded with base-model quality in a way we
-flag and have registered a test for rather than resolved. No bracket
-fixed in the packing factor therefore survives: the one an earlier draft of this
-paper proposed fails on five of the thirteen settings now measured, once by a
+across the full 17x span, and separated from base-model quality by a control
+that holds the parameter count while dropping the base model to the smallest
+model's perplexity, which keeps the exponent where the parameter count puts it.
+No bracket fixed in the packing factor therefore survives: the one an earlier
+draft of this paper proposed fails on five of the thirteen settings now
+measured, once by a
 factor of 2.4. We give a range instead and report it as a sweep rather than a
 rule. All results are at 7M to 124M parameters and should not be extrapolated to
 production batch sizes without further points.
@@ -137,7 +141,9 @@ depend on.
    same gap would survive a change of model. All three hold, on the scripts and
    the criteria named in advance. Scale is the one candidate that survives, and
    it now survives on two corpora and three model sizes rather than on one of
-   each. A fourth registered prediction, from §4.2, is reported falsified.
+   each. The registered prediction of §4.2, which preceded all three, is
+   reported falsified; §4.7.2 adds a fifth, on model size against base-model
+   quality, and it is confirmed.
 7. Three model sizes, spanning 17x. The effect is not an artefact of one model
    and it grows as the model shrinks: one packed epoch wants 4.86x the padded
    learning rate at 124M, 7.01x at 30M and 12.66x at 7M, and retuning is worth
@@ -145,10 +151,12 @@ depend on.
    three, clearing its bound by 2.8x, 2.9x and 2.5x. The exponent itself also
    rises as the model shrinks, in a direction every one of six comparisons
    agrees on and clearing its bound in one — across the full 17x span rather
-   than between adjacent sizes. We state that at the span and not at the step,
-   and we state it as size-*or*-quality: a smaller model here is also a worse
-   one, and §4.7 registers a test that separates them rather than assuming the
-   reading we prefer.
+   than between adjacent sizes. We state that at the span and not at the step.
+   A smaller model here is also a worse one, so §4.7.2 separates the two with a
+   registered control: a 124M model taken back to an early pretraining
+   checkpoint, at the 7M model's perplexity, keeps the 124M exponent (0.906
+   against 1.055) rather than acquiring the 7M one (1.695). The trend is in
+   parameter count.
 8. A control on the pretraining budget. Both smaller models were mistakenly
    trained about twice as heavily for their size as the 124M model, so we
    measured that axis instead of caveating it: re-running the 30M comparisons
@@ -886,18 +894,13 @@ suggestive rather than sufficient — the exponent is flat across a 38.0-to-43.9
 change in perplexity at fixed size, but the gap this question concerns is a
 factor of five, not fifteen per cent.
 
-The confound is separable in principle, because the 124M pretraining run
-checkpointed every 500 steps and its perplexity trajectory passes through the
-other two models' final values: step 2,500 sits at 39.4 against the 30M model's
-38.0, and step 500 at 107.0 against the 7M model's 115.2. Running the same
-factorial from those checkpoints gives a quality series at a *fixed* parameter
-count, and if the exponent tracks quality rather than size it should reproduce
-1.300 and 1.695 at 124M parameters. We have registered that prediction
-(`results/registered-prediction-size-vs-quality.md`, H1: it will not) with the
-runs not yet performed, and this section will be corrected rather than defended
-if it comes out the other way. Until it is scored, **the model-size reading in
-this section should be read as size-or-quality**, and the abstract and
-contribution 7 should be read the same way.
+The confound is separable, because the 124M pretraining run checkpointed every
+500 steps and its perplexity trajectory passes through the other two models'
+final values. §4.7.2 runs that control on the extreme point of it — a 124M model
+at the 7M model's perplexity — against a prediction registered before the runs
+existed. The exponent stays with the parameter count, so the reading in this
+section is a reading about model size, and the abstract and contribution 7 say
+so too.
 
 **One thing that does not replicate is the sign of the inherit-versus-padding
 comparison.** At 7M the inherited rate beats padding by 0.038 nats, where at
@@ -915,7 +918,9 @@ the confound rather than arguing about it. The 30M run checkpointed every 500
 steps, and step 9,000 — 590M tokens, 19.7 per parameter against the 124M run's
 19.9 — is the same model at the budget the comparison was meant to use. It is a
 visibly worse base model than the one at step 18,000: validation perplexity 43.9
-against 38.0. Repeating both comparisons from it, three seeds each:
+against 38.0. The 7M run gives the same control at a second size: its step 2,000
+is 18.0 tokens per parameter against the final checkpoint's 39.5, at perplexity
+142.4 against 115.2. Repeating both comparisons from both, three seeds each:
 
 | base model | corpus | lr* padded | lr* packed | shift | exponent |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -923,17 +928,23 @@ against 38.0. Repeating both comparisons from it, three seeds each:
 | 30M, 19.7 tokens/param | Alpaca third | 9.19e-5 | 3.01e-4 | 3.27x | 0.787 ± 0.100 |
 | 30M, 39.4 tokens/param | Alpaca whole | 3.50e-5 | 2.45e-4 | 7.01x | 1.300 ± 0.159 |
 | 30M, 19.7 tokens/param | Alpaca whole | 5.06e-5 | 3.56e-4 | 7.03x | 1.302 ± 0.119 |
+| 7M, 39.5 tokens/param | Alpaca third | 1.89e-4 | 7.39e-4 | 3.91x | 0.905 ± 0.174 |
+| 7M, 18.0 tokens/param | Alpaca third | 2.73e-4 | 1.04e-3 | 3.80x | 0.886 ± 0.201 |
+| 7M, 39.5 tokens/param | Alpaca whole | 1.19e-4 | 1.51e-3 | 12.66x | 1.695 ± 0.261 |
+| 7M, 18.0 tokens/param | Alpaca whole | 2.19e-4 | 2.38e-3 | 10.85x | 1.592 ± 0.333 |
 
-**Halving the pretraining budget does not move the exponent.** The two pairs
-differ by 0.019 and 0.002 against combined bounds of 0.137 and 0.198 — 0.1x and
-0.0x of their own noise, and the smallest differences anywhere in this paper.
-Doubling how heavily the base model is trained for its size, which costs 590M
-tokens and moves its perplexity by 5.9, leaves how far packing moves the optimum
-where it was.
+**Halving the pretraining budget does not move the exponent.** The four pairs
+differ by 0.019, 0.002, 0.019 and 0.103 against combined bounds of 0.137, 0.198,
+0.266 and 0.424 — between 0.0x and 0.2x of their own noise, and the smallest
+differences anywhere in this paper. Doubling how heavily the base model is
+trained for its size leaves how far packing moves the optimum where it was, and
+it does so at both model sizes this could be checked at.
 
-**It does move both optima, and by the same factor.** All four learning rates
-rise when the base model is the less-trained one, and they rise together: 1.46x
-and 1.50x on the third, 1.45x and 1.45x on the whole corpus. A less-pretrained
+**It does move both optima, and by the same factor.** All eight learning rates
+rise when the base model is the less-trained one, and within each pair they rise
+together: 1.46x and 1.50x on the 30M third, 1.45x and 1.45x on the 30M whole
+corpus, 1.44x and 1.40x on the 7M third, 1.84x and 1.57x on the 7M whole
+corpus. A less-pretrained
 model wants a larger fine-tuning step in both arms, and the *distance* between
 the arms — the only quantity this paper measures — is untouched. The exponent is
 therefore not inherited from how well the base model was trained, which is what
@@ -942,29 +953,93 @@ disguise. It also means a practitioner cannot read their own optimum off ours:
 where the optimum sits depends on the base model, while how far it moves does
 not.
 
-The scale dependence survives at this checkpoint too — 0.787 against 1.302 is a
-gap of 0.515 against a bound of 0.155, or 3.3x — which makes it four base models
-in a row (§4.6, §4.7) on which a third of the corpus wants a smaller exponent
-than the whole of it.
+The scale dependence survives at both checkpoints too — 0.787 against 1.302 is a
+gap of 0.515 against a bound of 0.155, or 3.3x, and 0.886 against 1.592 is 0.706
+against 0.389, or 1.8x — which makes it five base models in a row (§4.6, §4.7) on
+which a third of the corpus wants a smaller exponent than the whole of it.
 
-What this does not settle is the shape of the budget axis. It is one model size,
-at two budgets a factor of two apart, both of them far below where a model of
-this size would be trained in practice; it establishes that the exponent is flat
-across that interval and not that it is flat everywhere.
+What this does not settle is the shape of the budget axis. It is two model
+sizes, each at two budgets about a factor of two apart, all four far below where
+a model of that size would be trained in practice; it establishes that the
+exponent is flat across those intervals and not that it is flat everywhere. The
+7M whole-corpus pair is also the widest-bounded comparison in the paper — its
+padded cell spreads 1.62x across seeds, the largest anywhere — so it is the
+weakest of the four even though it agrees with them.
+
+
+### 4.7.2 Model size, or model quality?
+
+
+The comparison above moves two things at once. A smaller model trained on the
+same corpus is also a worse model — validation perplexities are 23.5, 38.0 and
+115.2 across the three sizes — so *smaller* and *worse* are perfectly confounded
+in it, and the trend has a second reading in which the exponent tracks not
+parameter count but how badly the base model models language.
+
+The confound is separable because the 124M pretraining run checkpointed every
+500 steps, and its perplexity trajectory passes through the smaller models'
+final values. Fine-tuning the whole-Alpaca factorial from `step_500`, at
+perplexity 107.0 against the 7M model's 115.2, gives a 124M model *at the 7M
+model's quality*. Everything else is held: the same architecture, the same
+window, the same 4.47x packing factor, the same two cells, the same estimator
+and the same three seeds. The prediction was registered before any run of it
+existed (`results/registered-prediction-size-vs-quality.md`), with H1 — that the
+exponent tracks parameter count — as the prediction of record: it should land
+near the 124M value of 1.055 and more than 0.291 below 7M's 1.695, that margin
+being the combined seed bound §4.7 already reports for the pair.
+
+| base model | perplexity | lr* padded | lr* packed | shift | exponent |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 124M, step 20,000 | 23.5 | 2.81e-5 | 1.37e-4 | 4.86x | 1.055 ± 0.128 |
+| 124M, step 500 | 107.0 | 1.12e-4 | 4.36e-4 | 3.88x | 0.906 ± 0.204 |
+| 7M, final | 115.2 | 1.19e-4 | 1.51e-3 | 12.66x | 1.695 ± 0.261 |
+
+**The exponent tracks parameter count, not base-model quality.** At the 7M
+model's perplexity and the 124M model's parameter count it reads 0.906: 0.789
+below 7M's 1.695, or 2.7x the registered margin, and 0.149 from the fully
+pretrained 124M model's own 1.055, against a combined bound of 0.241. Base-model
+quality was moved by a factor of 4.6 in perplexity and the exponent did not
+follow it; it stayed with the parameter count. H1 is confirmed on the criterion
+named in advance, and §4.7's claim is a claim about model size.
+
+**It does move both optima, by three to four times.** The padded optimum rises
+4.00x against the fully pretrained model and the packed one 3.20x. That is
+§4.7.1's finding over a much longer range: a less well trained base model wants
+a larger fine-tuning rate in both arms, while the *distance* between the arms —
+the only quantity this paper measures — is left where it was. The registration
+expected this and recorded in advance that it discriminates nothing between the
+two hypotheses, which it does not. It is reported because it is the practical
+half: a practitioner reading an optimum off this paper would be wrong by 4x if
+their base model were as undertrained as this one, while reading the *shift* off
+it would not.
+
+**What this does not settle**, all of it recorded in the registration before the
+runs existed. An early checkpoint of a large model is not a converged small one:
+at step 500 of 20,000 the weights are 2.5% of the way through a cosine schedule,
+so matching on perplexity matches one number and not the state, and this is the
+main reason to read the result as evidence about the confound rather than as its
+dissolution. Perplexity is also one axis of quality among several, and the two
+models are matched on held-out FineWeb-Edu loss rather than on any downstream
+capability. And it is one corpus at one packing factor: the middle point of the
+series, `step_2500` at perplexity 39.4 against the 30M model's 38.0, is
+unswept, so the quality axis has two points rather than three.
 
 
 ## 5. Threats to validity
 
 
-**Model size is confounded with base-model quality.** The three models differ in
-parameter count and in how well they model language — perplexity 23.5, 38.0 and
-115.2 — so §4.7's model-size trend has a second reading in which the exponent
-tracks base-model quality instead. §4.7.1 shows the exponent is flat across a
-small change in that quality at fixed size, which is evidence and not proof. A
-registered test that separates the two, using 124M checkpoints matched on
-perplexity to the smaller models, is described in §4.7 and not yet scored. This
-is the largest open threat in the paper and we flag it as such rather than
-waiting for the answer to decide whether to mention it.
+**Model size was confounded with base-model quality, and the control has two
+points rather than three.** The three models differ in parameter count and in how
+well they model language — perplexity 23.5, 38.0 and 115.2 — so §4.7's trend had
+a second reading in which the exponent tracked base-model quality instead.
+§4.7.1 ruled that out across a small change in quality at fixed size, and §4.7.2
+across a factor of 4.6, at the extreme point where a 124M model is taken to the
+7M model's perplexity: the exponent stays with the parameter count. What is left
+open is the shape rather than the direction. The middle point of the quality
+series is unswept, so the axis has two points; and an early checkpoint of a large
+model is not a converged small model, since matching on perplexity matches one
+number and not the state of the weights. We read §4.7.2 as evidence about the
+confound rather than as its dissolution.
 
 **Three model sizes, two source corpora, and a ratio axis built by subsetting
 them.** Most numbers come from a 124M model; §4.7 repeats the scale series at
@@ -1209,7 +1284,8 @@ How much the optimum moves is not settled, and we think it is not settleable in
 the form the question is usually asked. There is no exponent to report: it runs
 from 0.39 to 1.70, it rises with the scale of the run on two corpora and three
 model sizes, it rises as the model shrinks, and it is indifferent to how well
-the base model was pretrained. A bracket we proposed in an earlier draft of this
+the base model was pretrained — indifferent across a doubling of the pretraining
+budget at fixed size, and across a 4.6-fold change in perplexity at fixed size. A bracket we proposed in an earlier draft of this
 paper fails on five of thirteen settings and is retracted here rather than
 quietly dropped.
 
@@ -1375,7 +1451,7 @@ across the 30M, 7M and matched-budget-30M ledgers bracket their optimum at all
 three seeds, with none dropped. Their spreads run 1.06x to 1.37x — 30M's six
 cells at 1.06x to 1.23x, the matched-budget 30M's four at 1.09x to 1.17x, and
 7M's four at 1.20x to 1.37x. The 7M packed 350-step cell's 1.37x is the widest
-spread anywhere in this study, which is why §4.7's bounds are widest at 7M and
+spread among them, which is why §4.7's bounds are widest at 7M and
 why the model-size claim is stated only at the 17x span: the smallest model is
 also the noisiest, and the bounds carry that through rather than around it.
 
@@ -1392,9 +1468,31 @@ merely widening it. We extended the window instead, at four more runs, and all
 three then bracketed. The bound on that cell went from ±0.006 to ±0.174, which
 is the honest number and is nearly forty times larger.
 
+The two ledgers added last — §4.7.1's 7M matched-budget control and §4.7.2's
+quality control — were replicated the same way, and needed the window extended
+twice more. All four cells of the 7M matched-budget ledger now bracket at three
+seeds, with spreads of 1.15x, 1.23x, 1.25x and 1.62x; the last of these, its
+padded whole-corpus cell, is the widest spread anywhere in this study and is why
+§4.7.1 calls that pair the weakest of its four even though it agrees with them.
+Both of §4.7.2's cells bracket at three seeds, at 1.22x and 1.26x.
+
+Three curves across those two ledgers first put their minimum on the edge of the
+replicated window — two at the top, one at the bottom — and in each case
+dropping the curve, which is the rule everywhere above, would have moved the
+surviving estimate in a known direction rather than merely widening it. The
+window was extended instead, as it was for the 7M random third: six more runs.
+The case worth stating is §4.7.2's, because it ran against the hypothesis being
+tested. Its padded cell's unbracketed seed sat above the other two, so dropping
+it would have pulled that arm down and pushed the exponent *up*, toward the
+quality reading its registered prediction argued against. On two seeds that
+exponent read 0.946; on three it reads 0.906. Both confirm H1 and the difference
+is well inside the bound either way, but the drop would not have been neutral,
+and reporting the two-seed number as though it were would have been wrong.
+
 Everything in §4.1 through §4.6 is one model size (124M) on two corpora at one
-window length; §4.7 adds two more sizes and §4.7.1 a second pretraining budget,
-both on Alpaca only.
+window length; §4.7 adds two more sizes, §4.7.1 a second pretraining budget at
+two of them, and §4.7.2 a base model matched on quality rather than on size, all
+of them on Alpaca only.
 
 ## D. Reproducibility
 
@@ -1412,6 +1510,7 @@ the ledger.
 | `results/lr_scaling_mini.csv` | 7M, 39.5 tokens/param | §4.7 |
 | `results/lr_scaling_small9k.csv` | 30M, 19.7 tokens/param | §4.7.1 |
 | `results/lr_scaling_mini2k.csv` | 7M, 18.0 tokens/param | §4.7.1 |
+| `results/lr_scaling_quality.csv` | 124M, perplexity 107.0 | §4.7.2 |
 | `results/lr_scaling_ckpt.csv` | 124M, grid extension | Appendix E |
 
 They are separate files rather than one file with a model column because they
@@ -1478,7 +1577,7 @@ epochs from the headline for the reason in Appendix B. The tables in §4.1 and t
 ratios in §4.2 are its output rather than transcriptions of it.
 
 Hardware is a single RTX 2080 Ti per run, and the whole grid is
-<!--compute-->about 58 GPU-hours (measured across the 605 runs that recorded wall time; 2 rows carry no wall time, having been harvested from earlier runs of the same configs)<!--/compute-->. One caveat for anyone reproducing the schedule estimate rather than the science:
+<!--compute-->about 63 GPU-hours (measured across the 647 runs that recorded wall time; 2 rows carry no wall time, having been harvested from earlier runs of the same configs)<!--/compute-->. One caveat for anyone reproducing the schedule estimate rather than the science:
 the second card in this machine thermally throttles under sustained load and
 takes about 2.5x as long per step, which the sweep's planner accounts for and a
 naive divide-by-GPU-count does not.
@@ -1549,9 +1648,9 @@ through that ratio, so it is a range and not a standard error (§4.5).
 | 7M | Alpaca, whole | 50,868 | 4.47x | 1.19e-04 | 1.51e-03 | 12.66x | **1.695 ± 0.261** | 3 |
 | 30M @ 19.7 tok/param | Alpaca, random third | 16,956 | 4.51x | 9.19e-05 | 3.01e-04 | 3.27x | **0.787 ± 0.100** | 3 |
 | 30M @ 19.7 tok/param | Alpaca, whole | 50,868 | 4.47x | 5.06e-05 | 3.56e-04 | 7.03x | **1.302 ± 0.119** | 3 |
-| 7M @ 18.0 tok/param | Alpaca, random third | 16,956 | 4.51x | 2.51e-04 | 9.44e-04 | 3.76x | **0.879** (no bound) | 1, provisional |
-| 7M @ 18.0 tok/param | Alpaca, whole | 50,868 | 4.47x | 2.20e-04 | 2.49e-03 | 11.29x | **1.618** (no bound) | 1, provisional |
-| 124M @ perplexity 107 | Alpaca, whole | 50,868 | 4.47x | 1.12e-04 | 4.41e-04 | 3.94x | **0.916** (no bound) | 1, provisional |
+| 7M @ 18.0 tok/param | Alpaca, random third | 16,956 | 4.51x | 2.73e-04 | 1.04e-03 | 3.80x | **0.886 ± 0.201** | 3 |
+| 7M @ 18.0 tok/param | Alpaca, whole | 50,868 | 4.47x | 2.19e-04 | 2.38e-03 | 10.85x | **1.592 ± 0.333** | 3 |
+| 124M @ perplexity 107 | Alpaca, whole | 50,868 | 4.47x | 1.12e-04 | 4.36e-04 | 3.88x | **0.906 ± 0.204** | 3 |
 <!--/exponents-->
 
 Read down a group and the scale dependence of §4.6 is the trend; read the same

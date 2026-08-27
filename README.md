@@ -1250,7 +1250,7 @@ fit the second as well as the first: 3.0e-5 x 1600 = 0.048 against
 
 Separating them needs the two cells this table does not have — padded at 350
 steps and packed at 1,600 — which is a 2x2 factorial, run later across two
-corpora and then extended to thirteen settings and three model sizes over 551
+corpora and then extended to thirteen settings and three model sizes over 649
 runs ([`paper/paper.md`](paper/paper.md)). Holding the step
 count fixed, the batch effect alone is 2.73x on Alpaca and 1.60x on Dolly:
 exponents of 0.67 and 0.44 against linear's 1.0, and not the same exponent on
