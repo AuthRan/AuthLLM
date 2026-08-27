@@ -85,6 +85,7 @@ All runs fine-tune a 124M-parameter decoder-only transformer (RoPE, RMSNorm, Swi
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrrrr}
 \toprule
 corpus & training examples & held out & dropped as over-length & supervised tokens/example \\
@@ -92,7 +93,8 @@ corpus & training examples & held out & dropped as over-length & supervised toke
 Alpaca & 50,868 & 1,039 & 67 & 59 \\
 Dolly & 13,756 & 300 & 955 & 71 \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 The held-out split is 2\% of the corpus, drawn before the over-length filter, reconstructed from the training seed and seen by no run. Dolly loses far more examples to the 512-token window than Alpaca does, and the same property --- longer examples, so fewer of them per window --- is what gives it the smaller packing factor that makes it a useful second point.
@@ -122,6 +124,7 @@ They come apart off the diagonal. We therefore run the full factorial:
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lll}
 \toprule
  & 350 steps & 1,600 steps \\
@@ -129,7 +132,8 @@ They come apart off the diagonal. We therefore run the full factorial:
 \textbf{padded} (1,888 supervised tokens/step) & new & known \\
 \textbf{packed} (8,444 supervised tokens/step) & known & new \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 Batch scaling predicts the optimum depends on the row only; schedule integral predicts it depends on the column only. Holding the step count fixed while varying batch size means the smaller batch sees proportionally less data --- the padded 350-step cell is 0.22 of an epoch --- which is not a defect of the design but the definition of a larger batch: more data consumed per update. The packed 1,600-step cell conversely runs 4.50 epochs, where overfitting rather than the learning rate may set the minimum; we report the full validation curve for every run so that this is visible rather than hidden inside a single endpoint.
@@ -160,6 +164,7 @@ Every optimum is bracketed --- an interior minimum with a rise on both sides ---
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrr}
 \toprule
 lr* & 350 steps & 1,600 steps \\
@@ -167,7 +172,8 @@ lr* & 350 steps & 1,600 steps \\
 \textbf{padded} & 5.00e-5 & 2.81e-5 \\
 \textbf{packed} & 1.37e-4 & 2.35e-5 \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 (Optima after seed replication; see Appendix C. At seed 1337 alone they are 4.77e-5, 2.65e-5, 1.30e-4 and 2.25e-5.)
@@ -176,6 +182,7 @@ lr* & 350 steps & 1,600 steps \\
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrr}
 \toprule
 lr* & 136 steps & 430 steps \\
@@ -183,7 +190,8 @@ lr* & 136 steps & 430 steps \\
 \textbf{padded} & 4.89e-5 & 3.78e-5 \\
 \textbf{packed} & 7.84e-5 & 2.44e-5 \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 (At seed 1337 alone: 4.87e-5, 3.61e-5, 7.98e-5 and 2.44e-5. The packed 430-step cell is seed 1337 only, being excluded from the headline as overfitting-contaminated; the other three are three-seed aggregates.)
@@ -212,6 +220,7 @@ We therefore do not fit a shared power law. Two corpora, each with a well-bracke
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrr}
 \toprule
  & Alpaca & Dolly \\
@@ -225,7 +234,8 @@ matched data budget (one epoch each) & 4.86x & 2.07x \\
 --- as an exponent & \textbf{1.055} & \textbf{0.681} \\
 worst per-cell seed spread & 1.17x & 1.11x \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 We do not think the honest reading of this is that one corpus is anomalous. The fixed-step comparison that defines the batch effect necessarily varies data seen as well --- at a fixed step count the larger batch consumes proportionally more of the corpus --- and that residual confound grows with the packing factor, which is larger for Alpaca. Some part of the exponent gap is therefore built into the design rather than into the models. Li et al.'s (2024) non-monotone picture supplies another candidate: a local exponent that depends on where a batch size sits relative to the gradient noise scale need not be shared by two corpora with different example lengths.
@@ -242,6 +252,7 @@ Three things hold on both corpora.
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrrr}
 \toprule
  & padded at its optimum & packed, inherited & packed at its optimum \\
@@ -249,7 +260,8 @@ Three things hold on both corpora.
 Alpaca & 2.0720 (3e-5) & 2.0678 (3e-5) & \textbf{2.0175} (1.5e-4) \\
 Dolly & 2.7517 (3e-5) & 2.7662 (3e-5) & \textbf{2.7484} (9e-5) \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 Retuning is worth \textbf{0.050 nats on Alpaca and 0.018 on Dolly} against inheriting. Measured against the padded baseline instead, the packed run at its own optimum wins on both corpora --- by 0.054 and 0.003 nats --- while the packed run at the inherited rate wins on neither: 0.004 nats better than padding on Alpaca, which at this scale is a wash, and 0.015 nats \emph{worse} on Dolly. A practitioner who turns packing on and changes nothing else buys throughput and collects, at best, none of the quality packing had available; on one of the two corpora they pay for it.
@@ -268,6 +280,7 @@ So we assemble it the other way. Leaving packing off and raising gradient accumu
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrrrr}
 \toprule
 cell & supervised tokens/step & examples/step & rows/step & data seen \\
@@ -277,7 +290,8 @@ Alpaca \texttt{wide\_\allowbreak{}350} (accum 18) & 8,496 & 144 & \textbf{144} &
 Dolly \texttt{packed\_\allowbreak{}136} & 6,632 & 93 & 32 & 0.92 epoch \\
 Dolly \texttt{wide\_\allowbreak{}136} (accum 12) & 6,816 & 96 & \textbf{96} & 0.95 epoch \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 The match is within 0.6\% on Alpaca and 2.8\% on Dolly, where the accumulation count is a coarser lever. The two arms differ only in whether those examples arrive packed into shared windows or padded into their own --- which costs the padded arm several times the forward-pass rows for the same gradient, and is the entire reason packing exists.
@@ -290,6 +304,7 @@ The match is within 0.6\% on Alpaca and 2.8\% on Dolly, where the accumulation c
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrrrrr}
 \toprule
  & packed lr* & wide lr* & ratio & batch rule predicts & rows rule predicts \\
@@ -297,7 +312,8 @@ The match is within 0.6\% on Alpaca and 2.8\% on Dolly, where the accumulation c
 Alpaca & 1.30e-4 & 1.28e-4 & \textbf{0.98x} & 1.00x & 4.47x \\
 Dolly & 7.98e-5 & 7.00e-5 & \textbf{0.88x} & 1.00x & 2.92x \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 \textbf{The rows rule is dead on both corpora}, rejected by factors of 4.6 and 3.3. Running several times the forward-pass rows for the same gradient does not move the optimum anywhere near that far, so the optimum is not set by how many sequences the forward pass processes. It is set by the examples the step carries. \textbf{Packing's effect on the learning rate is a batch-size effect, and the identical optimum is reachable without packing at all --- by padding, at several times the compute.} That is what makes the rest of this paper a result about batch size which packing is a convenient way of changing, rather than a result about a representation.
@@ -318,6 +334,7 @@ Splitting one corpus by length gives that. Sorted by encoded length, Alpaca's te
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrrrrr}
 \toprule
 corpus & packing factor & lr* padded & lr* packed & shift & exponent \\
@@ -328,7 +345,8 @@ Alpaca long third & 2.73x & 6.73e-5 & 1.37e-4 & 2.03x & \textbf{0.707 $\pm$ 0.26
 Alpaca, whole & 4.47x & 2.81e-5 & 1.37e-4 & 4.86x & \textbf{1.055 $\pm$ 0.128} \\
 Dolly & 2.92x & 3.78e-5 & 7.84e-5 & 2.07x & \textbf{0.681 $\pm$ 0.099} \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 Each bound carries both cells' seed spreads through the ratio. It is built from max/min ranges rather than standard errors, so with three seeds it is roughly 1.7 standard deviations and deliberately conservative. Reporting it changes what this table supports, and we state the comparisons against it rather than against the point estimates.
@@ -351,7 +369,7 @@ Extending to a third point, with everything but scale held:
 
 \begin{center}
 \small
-\resizebox{\textwidth}{!}{%
+\setbox0=\hbox{%
 \begin{tabular}{lrrrrrr}
 \toprule
 corpus & examples & padded steps & packing & exponent & batch term & step term \\
@@ -360,8 +378,8 @@ Alpaca ninth & 5,652 & 177 & 4.53x & \textbf{0.385 $\pm$ 0.100} & 0.323 & 0.062 
 Alpaca third & 16,956 & 530 & 4.51x & \textbf{0.670 $\pm$ 0.043} & 0.520 & 0.151 \\
 Alpaca, whole & 50,868 & 1,600 & 4.47x & \textbf{1.055 $\pm$ 0.128} & 0.670 & 0.379 \\
 \bottomrule
-\end{tabular}
-}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 The exponent rises monotonically across a ninefold span of scale, and both steps clear their combined bounds --- 2.6x and 2.8x. So does each of the two terms it decomposes into. That decomposition is worth stating on its own: at a fixed data budget the exponent is a batch term plus a step term (\S{}4.3), and running the padded arm at the \emph{packed} step count isolates the first. Both fall at smaller scale, and the step term falls faster: from the whole corpus down to a ninth the batch term drops to 0.48 of its value and the step term to 0.16. \textbf{The scale effect is not localised in the batch term}, which is what a rule about batch size alone would have predicted. A shorter run is less sensitive to both levers, and at the smallest scale here the step count has nearly stopped mattering.
@@ -378,6 +396,7 @@ The exponent rises monotonically across a ninefold span of scale, and both steps
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrrr}
 \toprule
 corpus & examples & packing factor & exponent \\
@@ -387,7 +406,8 @@ Dolly, whole & 13,756 & 2.92x & 0.681 $\pm$ 0.099 \\
 Alpaca, random ninth & 5,652 & 4.53x & 0.385 $\pm$ 0.100 \\
 Dolly, random third & 4,585 & 3.14x & 0.456 $\pm$ 0.092 \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 Two corpora of different provenance and length distribution, differing by about half again in packing ratio and matched only to within 1.23x on the size of the run, agree on the exponent at \textbf{both} scales --- by 0.011 against a bound of 0.108, and by 0.071 against 0.136, or 0.10x and 0.53x of their own noise. One corpus moved 3x in scale disagrees with \emph{itself} by 2.85x its bound. Scale matched, two different corpora agree; scale changed, one corpus does not.
@@ -412,6 +432,7 @@ Repeating the scale series of \S{}4.6 at each size. Three seeds stand behind eve
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrrrr}
 \toprule
 corpus & examples & 124M & 30M & 7M \\
@@ -420,7 +441,8 @@ Alpaca ninth & 5,652 & 0.385 $\pm$ 0.100 & 0.456 $\pm$ 0.059 & --- \\
 Alpaca third & 16,956 & 0.670 $\pm$ 0.043 & 0.768 $\pm$ 0.094 & 0.905 $\pm$ 0.174 \\
 Alpaca whole & 50,868 & 1.055 $\pm$ 0.128 & 1.300 $\pm$ 0.159 & \textbf{1.695 $\pm$ 0.261} \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 \textbf{The effect is not a 124M artefact, and it grows as the model shrinks.} One packed epoch of Alpaca wants 4.86x the padded learning rate at 124M, 7.01x at 30M and \textbf{12.66x} at 7M --- the largest shift measured anywhere in this paper, from 1.19e-4 padded to 1.51e-3 packed. The cost of ignoring it grows with it. Taking each model's padded optimum and inheriting it into the packed run at the same data budget, retuning is worth 0.050 nats at 124M, 0.110 at 30M and \textbf{0.172} at 7M. Whatever a practitioner loses by inheriting a learning rate through a packing change, they lose more of it on a smaller model.
@@ -445,6 +467,7 @@ The budget error above leaves every size comparison confounded, so we measured t
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{llrrrr}
 \toprule
 base model & corpus & lr* padded & lr* packed & shift & exponent \\
@@ -454,7 +477,8 @@ base model & corpus & lr* padded & lr* packed & shift & exponent \\
 30M, 39.4 tokens/param & Alpaca whole & 3.50e-5 & 2.45e-4 & 7.01x & 1.300 $\pm$ 0.159 \\
 30M, 19.7 tokens/param & Alpaca whole & 5.06e-5 & 3.56e-4 & 7.03x & 1.302 $\pm$ 0.119 \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 \textbf{Halving the pretraining budget does not move the exponent.} The two pairs differ by 0.019 and 0.002 against combined bounds of 0.137 and 0.198 --- 0.1x and 0.0x of their own noise, and the smallest differences anywhere in this paper. Doubling how heavily the base model is trained for its size, which costs 590M tokens and moves its perplexity by 5.9, leaves how far packing moves the optimum where it was.
@@ -505,6 +529,7 @@ The failure mode this paper documents is the other practice --- keep the batch, 
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{ll}
 \toprule
 setting & where the packed optimum landed \\
@@ -515,7 +540,8 @@ Dolly third, 124M & 5\% below the floor \\
 Alpaca whole, 30M & 31\% \textbf{above} the ceiling \\
 Alpaca whole, 7M & 136\% \textbf{above} the ceiling \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 The three misses below the floor are the three smallest-scale settings, where the exponent is 0.385, 0.456 and 0.456 --- under the 0.5 that \texttt{sqrt(p)} assumes. The two above the ceiling are the two smaller models on the largest corpus, where it is 1.300 and 1.695, and the second misses by a factor of 2.4. A bracket fixed in \texttt{p} cannot work when the exponent itself moves with the scale of the run and with the size of the model, and reporting one would have been the most quotable and least durable thing in this paper.
@@ -584,6 +610,7 @@ Nine of the grid's learning rates were run in this project before, under the han
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrrrrr}
 \toprule
 cell & 2.0e-5 & 3.0e-5 & 6.0e-5 & 9.0e-5 & 1.5e-4 \\
@@ -593,7 +620,8 @@ packed, 350 steps --- here & 2.0911 & 2.0678 & 2.0352 & 2.0217 & 2.0175 \\
 padded, 1,600 steps --- prior & 2.0745 & 2.0720 & 2.0973 & --- & --- \\
 padded, 1,600 steps --- here & 2.0745 & 2.0720 & 2.0973 & --- & --- \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 The sweep is therefore measuring the same quantity the original tables did, on generated configs, and the two new cells are directly comparable to the two old ones.
@@ -608,6 +636,7 @@ How far this reaches is worth measuring rather than asserting, because the choic
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrl}
 \toprule
 epochs the cell runs & cells & optimum under best-checkpoint scoring \\
@@ -616,7 +645,8 @@ epochs the cell runs & cells & optimum under best-checkpoint scoring \\
 2.92 (Dolly packed, 430 steps) & 1 & \textbf{1.29x} \\
 4.50 (Alpaca packed, 1,600 steps) & 1 & \textbf{1.60x} \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 The threshold is sharp, and nothing in this study falls between 1.01 and 2.92 epochs to soften it. In all fifteen cells at or under one epoch no run peaks before its final step, so the two metrics are not merely close --- they are the same measurement, and return the same optimum to the digit. At 1.01 epochs runs do begin to peak early, but by 0.0005 nats, and the optimum still does not move. Only past about three epochs does the choice of metric change the answer. How far past matters: the 4.50-epoch cell's 1.60x exceeds every seed spread measured anywhere in this study, including the 1.37x of Appendix C, while the 2.92-epoch cell's 1.29x exceeds the worst spread among the 124M cells this table covers (1.25x) but not that 1.37x. So the first is a metric effect larger than the noise on any cell here and the second is at the edge of it, which is one more reason to keep both out of the headline rather than to correct them.
@@ -649,6 +679,7 @@ Every number in this paper comes from one of five ledgers, one per base model, e
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lll}
 \toprule
 ledger & base model & sections \\
@@ -659,7 +690,8 @@ ledger & base model & sections \\
 \texttt{results/\allowbreak{}lr\_\allowbreak{}scaling\_\allowbreak{}small9k.csv} & 30M, 19.7 tokens/param & \S{}4.7.1 \\
 \texttt{results/\allowbreak{}lr\_\allowbreak{}scaling\_\allowbreak{}ckpt.csv} & 124M, grid extension & Appendix E \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 They are separate files rather than one file with a model column because they were not always: \texttt{run\_\allowbreak{}id} is (dataset, cell, learning rate, seed) and says nothing about the base model, so the first 30M sweep appended its curves to the 124M runs' log files and its \texttt{best\_\allowbreak{}val\_\allowbreak{}loss} picked up 124M minima. Logs, configs and checkpoints are now namespaced per ledger, and that ledger was discarded and re-run.
@@ -725,7 +757,7 @@ Final validation loss at every learning rate in the grid, seed 1337, for the two
 
 \begin{center}
 \small
-\resizebox{\textwidth}{!}{%
+\setbox0=\hbox{%
 \begin{tabular}{lrrrrrrr}
 \toprule
 cell & 1e-5 & 2e-5 & 3e-5 & 6e-5 & 9e-5 & 1.5e-4 & 2.5e-4 \\
@@ -735,8 +767,8 @@ padded, 1,600 & 2.0973 & 2.0745 & \textbf{2.0720} & 2.0973 & 2.1335 & 2.2091 & 2
 packed, 350 & 2.1353 & 2.0911 & 2.0678 & 2.0352 & 2.0217 & \textbf{2.0175} & 2.0319 \\
 packed, 1,600 & 2.0421 & \textbf{2.0171} & 2.0197 & 2.0845 & 2.1789 & 2.3616 & 2.5703 \\
 \bottomrule
-\end{tabular}
-}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 The packed 1,600-step cell ran at 2.5e-4 only after the rest of the grid was complete; its absence could not have moved that cell's optimum, which sits at the opposite end of the grid.
@@ -745,7 +777,7 @@ The packed 1,600-step cell ran at 2.5e-4 only after the rest of the grid was com
 
 \begin{center}
 \small
-\resizebox{\textwidth}{!}{%
+\setbox0=\hbox{%
 \begin{tabular}{lrrrrrrr}
 \toprule
 cell & 1e-5 & 2e-5 & 3e-5 & 6e-5 & 9e-5 & 1.5e-4 & 2.5e-4 \\
@@ -755,8 +787,8 @@ padded, 430 & 2.7801 & 2.7588 & \textbf{2.7517} & 2.7567 & 2.7765 & 2.8253 & 2.9
 packed, 136 & 2.8071 & 2.7799 & 2.7662 & 2.7505 & \textbf{2.7484} & 2.7604 & 2.7973 \\
 packed, 430 & 2.7596 & \textbf{2.7429} & 2.7430 & 2.7824 & 2.8433 & 2.9742 & 3.1525 \\
 \bottomrule
-\end{tabular}
-}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 Every optimum in both grids is bracketed --- an interior minimum with a rise on both sides --- including the packed short-step cell, which section 10.6 of this project's own write-up swept only as far as 1.5e-4 and could not bracket.
@@ -769,7 +801,7 @@ Every row is a matched-budget comparison: one epoch padded against one epoch pac
 
 \begin{center}
 \small
-\resizebox{\textwidth}{!}{%
+\setbox0=\hbox{%
 \begin{tabular}{llrrrrrrr}
 \toprule
 base model & corpus & examples & \texttt{p} & lr* padded & lr* packed & shift & exponent & seeds \\
@@ -793,8 +825,8 @@ base model & corpus & examples & \texttt{p} & lr* padded & lr* packed & shift & 
 7M @ 18.0 tok/param & Alpaca, whole & 50,868 & 4.47x & 2.20e-04 & 2.49e-03 & 11.29x & \textbf{1.618} (no bound) & 1, provisional \\
 124M @ perplexity 107 & Alpaca, whole & 50,868 & 4.47x & 1.12e-04 & 4.41e-04 & 3.94x & \textbf{0.916} (no bound) & 1, provisional \\
 \bottomrule
-\end{tabular}
-}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 Read down a group and the scale dependence of \S{}4.6 is the trend; read the same corpus across groups and the model-size dependence of \S{}4.7 is the trend. The last group is not a fourth model size but the same 30M weights taken from an earlier pretraining checkpoint, and is the control of \S{}4.7.1: its exponents sit on top of 30M's while its learning rates sit half again above them.
@@ -807,6 +839,7 @@ The table is regenerated from \texttt{results/\allowbreak{}exponents.csv} by \te
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lll}
 \toprule
  & statistic & what it assumes \\
@@ -815,13 +848,15 @@ The table is regenerated from \texttt{results/\allowbreak{}exponents.csv} by \te
 \texttt{linear} & \texttt{(shift - 1) /\allowbreak{} (p - 1)} & the shift is linear in \texttt{p} \\
 \texttt{sqrtrel} & \texttt{shift /\allowbreak{} sqrt(p)} & the residual against the square-root rule \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 Seed bounds are propagated exactly rather than by a delta approximation: the ledger's bound is converted back to the multiplicative factor it implies on the shift, each statistic is evaluated at both ends, and the half-width of that interval is taken. The intervals are asymmetric under the two non-log forms, which is why the approximation is avoided.
 
 \begin{center}
 \small
+\setbox0=\hbox{%
 \begin{tabular}{lrrrl}
 \toprule
 conclusion & \texttt{power} & \texttt{linear} & \texttt{sqrtrel} & verdict \\
@@ -831,7 +866,8 @@ The tercile ratio trend is unsupported & 0.71x & \textbf{1.01x} & 0.57x & holds,
 Alpaca third and Dolly whole agree & 0.10x & 0.50x & 0.51x & \textbf{agree under all three} \\
 Alpaca ninth and Dolly third agree & 0.53x & 0.86x & 0.69x & \textbf{agree under all three} \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
 Each number is the gap between the two settings as a multiple of their combined seed bound, under that normalization.

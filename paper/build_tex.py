@@ -138,25 +138,29 @@ def row_cells(line: str) -> list[str]:
 def table(lines: list[str]) -> str:
     header, separator, *body = lines
     spec = alignment(separator)
-    out = ["", "\\begin{center}", "\\small"]
-    # Nine columns of numbers do not fit a 6.5in text block at any font size the
-    # rest of the paper uses, so the widest tables are scaled rather than
-    # silently overrunning the margin.
-    wide = len(spec) >= 7
-    if wide:
-        out.append("\\resizebox{\\textwidth}{!}{%")
-    out.append(f"\\begin{{tabular}}{{{spec}}}")
-    out.append("\\toprule")
-    out.append(" & ".join(inline(c) for c in row_cells(header)) + " \\\\")
-    out.append("\\midrule")
+    # Nine columns of numbers do not fit a 6.5in text block, and a three-column
+    # table scaled to the same width would be magnified into something absurd.
+    # Which is which cannot be known without typesetting it, so the decision is
+    # left to LaTeX: measure the table, shrink it only if it overruns.
+    out = [
+        "",
+        "\\begin{center}",
+        "\\small",
+        "\\setbox0=\\hbox{%",
+        f"\\begin{{tabular}}{{{spec}}}",
+        "\\toprule",
+        " & ".join(inline(c) for c in row_cells(header)) + " \\\\",
+        "\\midrule",
+    ]
     for line in body:
         out.append(" & ".join(inline(c) for c in row_cells(line)) + " \\\\")
-    out.append("\\bottomrule")
-    out.append("\\end{tabular}")
-    if wide:
-        out.append("}")
-    out.append("\\end{center}")
-    out.append("")
+    out += [
+        "\\bottomrule",
+        "\\end{tabular}}",
+        "\\ifdim\\wd0>\\linewidth\\resizebox{\\linewidth}{!}{\\usebox0}\\else\\usebox0\\fi",
+        "\\end{center}",
+        "",
+    ]
     return "\n".join(out)
 
 
