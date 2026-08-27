@@ -1,0 +1,46 @@
+Data: 50,867 train / 1,039 val examples (68 dropped as longer than 512 tokens)
+Packing: 50,867 examples into 11,217 windows (4.5 per window, 98.8% of positions used)
+Model: mini (7,292,032 parameters), initialized from checkpoints/mini/step_2000.pt (step 2000)
+step     10 | train_loss 4.3941 | lr 1.14e-03
+step     20 | train_loss 4.3606 | lr 2.27e-03
+step     30 | train_loss 4.5844 | lr 2.50e-03
+step     40 | train_loss 4.5859 | lr 2.49e-03
+step     50 | train_loss 4.3131 | lr 2.46e-03
+step     50 | val_loss 4.4533 | val_ppl 85.91
+step     60 | train_loss 4.2538 | lr 2.43e-03
+step     70 | train_loss 4.2617 | lr 2.39e-03
+step     80 | train_loss 4.1917 | lr 2.34e-03
+step     90 | train_loss 4.3623 | lr 2.28e-03
+step    100 | train_loss 4.3014 | lr 2.21e-03
+step    100 | val_loss 4.3051 | val_ppl 74.07
+step    110 | train_loss 4.1886 | lr 2.13e-03
+step    120 | train_loss 4.0445 | lr 2.05e-03
+step    130 | train_loss 4.1429 | lr 1.96e-03
+step    140 | train_loss 4.0571 | lr 1.86e-03
+step    150 | train_loss 3.9938 | lr 1.77e-03
+step    150 | val_loss 4.1489 | val_ppl 63.36
+step    160 | train_loss 3.8661 | lr 1.66e-03
+step    170 | train_loss 3.8335 | lr 1.56e-03
+step    180 | train_loss 4.0045 | lr 1.45e-03
+step    190 | train_loss 3.8502 | lr 1.34e-03
+step    200 | train_loss 3.8987 | lr 1.24e-03
+step    200 | val_loss 4.0149 | val_ppl 55.42
+step    210 | train_loss 3.9908 | lr 1.13e-03
+step    220 | train_loss 3.7422 | lr 1.03e-03
+step    230 | train_loss 3.8519 | lr 9.25e-04
+step    240 | train_loss 3.8142 | lr 8.28e-04
+step    250 | train_loss 3.7257 | lr 7.37e-04
+step    250 | val_loss 3.9026 | val_ppl 49.53
+step    260 | train_loss 3.7392 | lr 6.51e-04
+step    270 | train_loss 3.6152 | lr 5.72e-04
+step    280 | train_loss 3.8252 | lr 5.00e-04
+step    290 | train_loss 3.8647 | lr 4.37e-04
+step    300 | train_loss 3.8878 | lr 3.82e-04
+step    300 | val_loss 3.8206 | val_ppl 45.63
+step    310 | train_loss 3.5766 | lr 3.36e-04
+step    320 | train_loss 3.6719 | lr 2.99e-04
+step    330 | train_loss 3.7487 | lr 2.73e-04
+step    340 | train_loss 3.6816 | lr 2.56e-04
+step    350 | train_loss 3.7355 | lr 2.50e-04
+step    350 | val_loss 3.7764 | val_ppl 43.66
+Saved checkpoint to /home/system/projects/AuthLLM/checkpoints/lr_scaling_mini2k/alpaca_packed_350_lr0.0025_seed1339/step_350.pt

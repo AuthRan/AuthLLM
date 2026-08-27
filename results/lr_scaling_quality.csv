@@ -14,3 +14,17 @@ alpaca,unpacked_1600,False,1600,9e-05,1337,3.3010,3.3009,1596,1083,logs/lr_scali
 alpaca,unpacked_1600,False,1600,0.00025,1337,3.3335,3.3333,1596,1210,logs/lr_scaling_quality/alpaca_unpacked_1600_lr0.00025_seed1337.csv
 alpaca,unpacked_1600,False,1600,0.0004,1337,3.3946,3.3942,1596,1076,logs/lr_scaling_quality/alpaca_unpacked_1600_lr0.0004_seed1337.csv
 alpaca,unpacked_1600,False,1600,0.00015,1337,3.3028,3.3022,1596,3020,logs/lr_scaling_quality/alpaca_unpacked_1600_lr0.00015_seed1337.csv
+alpaca,packed_350,True,350,0.00025,1338,3.0885,3.0885,350,251,logs/lr_scaling_quality/alpaca_packed_350_lr0.00025_seed1338.csv
+alpaca,packed_350,True,350,0.0004,1338,3.0630,3.0630,350,265,logs/lr_scaling_quality/alpaca_packed_350_lr0.0004_seed1338.csv
+alpaca,packed_350,True,350,0.00025,1339,3.2183,3.2183,350,613,logs/lr_scaling_quality/alpaca_packed_350_lr0.00025_seed1339.csv
+alpaca,packed_350,True,350,0.0004,1339,3.2058,3.2058,350,260,logs/lr_scaling_quality/alpaca_packed_350_lr0.0004_seed1339.csv
+alpaca,packed_350,True,350,0.0006,1339,3.2166,3.2166,350,261,logs/lr_scaling_quality/alpaca_packed_350_lr0.0006_seed1339.csv
+alpaca,packed_350,True,350,0.0006,1338,3.0642,3.0642,350,731,logs/lr_scaling_quality/alpaca_packed_350_lr0.0006_seed1338.csv
+alpaca,unpacked_1600,False,1600,6e-05,1338,3.2900,3.2896,1596,1076,logs/lr_scaling_quality/alpaca_unpacked_1600_lr6e-05_seed1338.csv
+alpaca,unpacked_1600,False,1600,9e-05,1338,3.2731,3.2721,1596,1075,logs/lr_scaling_quality/alpaca_unpacked_1600_lr9e-05_seed1338.csv
+alpaca,unpacked_1600,False,1600,6e-05,1339,3.4092,3.4092,1600,2792,logs/lr_scaling_quality/alpaca_unpacked_1600_lr6e-05_seed1339.csv
+alpaca,unpacked_1600,False,1600,9e-05,1339,3.3963,3.3963,1600,1075,logs/lr_scaling_quality/alpaca_unpacked_1600_lr9e-05_seed1339.csv
+alpaca,unpacked_1600,False,1600,0.00015,1339,3.4041,3.4029,1596,1075,logs/lr_scaling_quality/alpaca_unpacked_1600_lr0.00015_seed1339.csv
+alpaca,unpacked_1600,False,1600,0.00015,1338,3.2697,3.2684,1596,2424,logs/lr_scaling_quality/alpaca_unpacked_1600_lr0.00015_seed1338.csv
+alpaca,unpacked_1600,False,1600,0.00025,1338,3.2867,3.2859,1596,1077,logs/lr_scaling_quality/alpaca_unpacked_1600_lr0.00025_seed1338.csv
+alpaca,unpacked_1600,False,1600,0.0004,1338,3.3283,3.3282,1596,2398,logs/lr_scaling_quality/alpaca_unpacked_1600_lr0.0004_seed1338.csv
