@@ -54,7 +54,12 @@ def main() -> None:
     title = re.search(r"^# (.+)$", raw, re.M).group(1)
     status = re.search(r"^\*\*Status: (.+?)\*\*$", raw, re.M | re.S).group(1)
     status = " ".join(status.split())
+    status = re.sub(r"<!--/?(?:runs|compute)-->", "", status)
     body_md = raw.split("---\n", 1)[1]
+
+    # scripts/update_paper_counts.py marks the two regenerated spans with HTML
+    # comments. They render as nothing, but there is no reason to ship them.
+    body_md = re.sub(r"<!--/?(?:runs|compute)-->", "", body_md)
 
     html = markdown.markdown(body_md, extensions=["tables", "fenced_code", "sane_lists"])
 

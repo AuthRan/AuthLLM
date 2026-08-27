@@ -25,7 +25,7 @@
 | **Validation** | loss 3.1583 · perplexity 23.53 |
 | **Stages** | pretrain → instruction tune → **chat** *and* **preference (DPO)** |
 | **Hardware** | ~27 h on **one** RTX 2080 Ti · a second card is what DDP and FSDP were measured on |
-| **Tests** | 441, CPU-only, run on every push |
+| **Tests** | 470, CPU-only, run on every push |
 
 </div>
 
@@ -1250,11 +1250,19 @@ fit the second as well as the first: 3.0e-5 x 1600 = 0.048 against
 
 Separating them needs the two cells this table does not have — padded at 350
 steps and packed at 1,600 — which is a 2x2 factorial, run later across two
-corpora and 97 runs ([`paper/paper.md`](paper/paper.md)). Holding the step
+corpora and then extended to thirteen settings and three model sizes over 551
+runs ([`paper/paper.md`](paper/paper.md)). Holding the step
 count fixed, the batch effect alone is 2.73x on Alpaca and 1.60x on Dolly:
 exponents of 0.67 and 0.44 against linear's 1.0, and not the same exponent on
 the two corpora. Holding the batch fixed instead, step count moves the optimum
 on its own, by 1.78x and 1.29x.
+
+![Learning-rate curves for both corpora](resources/plots/06-lr-scaling-packing.png)
+
+*Held-out loss against peak learning rate on both corpora, seed 1337, minima
+marked. Dashed is padded, solid is packed. The two solid-versus-dashed pairs at
+one epoch each are the comparison this section originally made; the other two
+curves are the cells that break the tie.*
 
 Both effects are therefore real, neither is linear, and the ~5x above is the
 two of them compounded rather than a batch-size rule. What survives from this
@@ -2440,7 +2448,7 @@ authLLM/
 ## 17. Testing
 
 <details>
-<summary><b>Expand</b> — what the 441 tests actually assert</summary>
+<summary><b>Expand</b> — what the 470 tests actually assert</summary>
 
 ```
 pytest                    # everything
