@@ -1,0 +1,32 @@
+Data: 16,956 train / 346 val examples (0 dropped as longer than 512 tokens)
+Packing: 16,956 examples into 6,215 windows (2.7 per window, 91.8% of positions used)
+Model: medium (123,587,328 parameters), initialized from /home/system/projects/AuthLLM/checkpoints/medium/step_20000.pt (step 20000)
+step     10 | train_loss 2.2278 | lr 1.25e-04
+step     20 | train_loss 2.2518 | lr 1.50e-04
+step     27 | val_loss 2.2008 | val_ppl 9.03
+step     30 | train_loss 2.1527 | lr 1.47e-04
+step     40 | train_loss 2.1460 | lr 1.43e-04
+step     50 | train_loss 2.2364 | lr 1.37e-04
+step     54 | val_loss 2.1639 | val_ppl 8.71
+step     60 | train_loss 2.1839 | lr 1.29e-04
+step     70 | train_loss 2.1753 | lr 1.20e-04
+step     80 | train_loss 2.1704 | lr 1.10e-04
+step     81 | val_loss 2.1264 | val_ppl 8.38
+step     90 | train_loss 2.1391 | lr 9.87e-05
+step    100 | train_loss 2.1408 | lr 8.72e-05
+step    108 | val_loss 2.0987 | val_ppl 8.16
+step    110 | train_loss 2.1747 | lr 7.55e-05
+step    120 | train_loss 2.0409 | lr 6.41e-05
+step    130 | train_loss 2.1207 | lr 5.32e-05
+step    135 | val_loss 2.0782 | val_ppl 7.99
+step    140 | train_loss 2.1407 | lr 4.32e-05
+step    150 | train_loss 2.1350 | lr 3.44e-05
+step    160 | train_loss 2.0970 | lr 2.69e-05
+step    162 | val_loss 2.0622 | val_ppl 7.86
+step    170 | train_loss 2.1237 | lr 2.12e-05
+step    180 | train_loss 2.1070 | lr 1.73e-05
+step    189 | val_loss 2.0544 | val_ppl 7.80
+step    190 | train_loss 2.0771 | lr 1.53e-05
+step    194 | train_loss 2.0353 | lr 1.50e-05
+step    194 | val_loss 2.0532 | val_ppl 7.79
+Saved checkpoint to /home/system/projects/AuthLLM/checkpoints/lr_scaling/alpaca_long_packed_194_lr0.00015_seed1337/step_194.pt

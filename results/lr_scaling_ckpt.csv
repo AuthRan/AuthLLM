@@ -1,0 +1,11 @@
+dataset,cell,pack_sequences,max_steps,max_lr,seed,final_val_loss,best_val_loss,best_val_step,wall_seconds,log_path
+alpaca,packed_350,True,350,6e-05,1337,2.0352,2.0352,350,258,logs/lr_scaling_ckpt/alpaca_packed_350_lr6e-05_seed1337.csv
+alpaca,packed_350,True,350,0.00015,1337,2.0175,2.0175,350,260,logs/lr_scaling_ckpt/alpaca_packed_350_lr0.00015_seed1337.csv
+alpaca,packed_350,True,350,9e-05,1337,2.0217,2.0217,350,757,logs/lr_scaling_ckpt/alpaca_packed_350_lr9e-05_seed1337.csv
+alpaca,packed_350,True,350,0.00025,1337,2.0318,2.0318,350,260,logs/lr_scaling_ckpt/alpaca_packed_350_lr0.00025_seed1337.csv
+alpaca,packed_350,True,350,0.0004,1337,2.0685,2.0685,350,540,logs/lr_scaling_ckpt/alpaca_packed_350_lr0.0004_seed1337.csv
+alpaca,unpacked_1600,False,1600,1e-05,1337,2.0973,2.0973,1600,1072,logs/lr_scaling_ckpt/alpaca_unpacked_1600_lr1e-05_seed1337.csv
+alpaca,unpacked_1600,False,1600,3e-05,1337,2.0720,2.0720,1600,1076,logs/lr_scaling_ckpt/alpaca_unpacked_1600_lr3e-05_seed1337.csv
+alpaca,unpacked_1600,False,1600,2e-05,1337,2.0745,2.0745,1596,2704,logs/lr_scaling_ckpt/alpaca_unpacked_1600_lr2e-05_seed1337.csv
+alpaca,unpacked_1600,False,1600,6e-05,1337,2.0973,2.0972,1596,1075,logs/lr_scaling_ckpt/alpaca_unpacked_1600_lr6e-05_seed1337.csv
+alpaca,unpacked_1600,False,1600,9e-05,1337,2.1335,2.1333,1596,2143,logs/lr_scaling_ckpt/alpaca_unpacked_1600_lr9e-05_seed1337.csv

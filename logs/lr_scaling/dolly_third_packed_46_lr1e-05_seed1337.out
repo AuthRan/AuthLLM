@@ -1,0 +1,17 @@
+Data: 4,585 train / 93 val examples (0 dropped as longer than 512 tokens)
+Packing: 4,585 examples into 1,458 windows (3.1 per window, 99.3% of positions used)
+Model: medium (123,587,328 parameters), initialized from /home/system/projects/AuthLLM/checkpoints/medium/step_20000.pt (step 20000)
+step      6 | val_loss 2.9833 | val_ppl 19.75
+step     10 | train_loss 2.7858 | lr 9.57e-06
+step     12 | val_loss 2.9220 | val_ppl 18.58
+step     18 | val_loss 2.9028 | val_ppl 18.23
+step     20 | train_loss 2.8304 | lr 7.26e-06
+step     24 | val_loss 2.8876 | val_ppl 17.95
+step     30 | train_loss 2.6810 | lr 4.05e-06
+step     30 | val_loss 2.8789 | val_ppl 17.80
+step     36 | val_loss 2.8753 | val_ppl 17.73
+step     40 | train_loss 2.7325 | lr 1.58e-06
+step     42 | val_loss 2.8730 | val_ppl 17.69
+step     46 | train_loss 2.7198 | lr 1.01e-06
+step     46 | val_loss 2.8720 | val_ppl 17.67
+Saved checkpoint to /home/system/projects/AuthLLM/checkpoints/lr_scaling/dolly_third_packed_46_lr1e-05_seed1337/step_46.pt

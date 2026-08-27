@@ -1,0 +1,23 @@
+Data: 16,956 train / 346 val examples (0 dropped as longer than 512 tokens)
+Packing: 16,956 examples into 3,483 windows (4.9 per window, 93.4% of positions used)
+Model: medium (123,587,328 parameters), initialized from /home/system/projects/AuthLLM/checkpoints/medium/step_20000.pt (step 20000)
+step     10 | train_loss 2.2438 | lr 8.99e-05
+step     15 | val_loss 2.1989 | val_ppl 9.02
+step     20 | train_loss 2.1840 | lr 8.73e-05
+step     30 | train_loss 2.1151 | lr 8.11e-05
+step     30 | val_loss 2.1409 | val_ppl 8.51
+step     40 | train_loss 2.1003 | lr 7.19e-05
+step     45 | val_loss 2.1140 | val_ppl 8.28
+step     50 | train_loss 2.1411 | lr 6.06e-05
+step     60 | train_loss 2.0249 | lr 4.83e-05
+step     60 | val_loss 2.0936 | val_ppl 8.11
+step     70 | train_loss 2.0561 | lr 3.60e-05
+step     75 | val_loss 2.0776 | val_ppl 7.99
+step     80 | train_loss 2.1550 | lr 2.51e-05
+step     90 | train_loss 2.0815 | lr 1.64e-05
+step     90 | val_loss 2.0680 | val_ppl 7.91
+step    100 | train_loss 2.0414 | lr 1.09e-05
+step    105 | val_loss 2.0615 | val_ppl 7.86
+step    109 | train_loss 2.2623 | lr 9.02e-06
+step    109 | val_loss 2.0604 | val_ppl 7.85
+Saved checkpoint to /home/system/projects/AuthLLM/checkpoints/lr_scaling/alpaca_mid_packed_109_lr9e-05_seed1338/step_109.pt
