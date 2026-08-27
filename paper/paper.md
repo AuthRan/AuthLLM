@@ -1,6 +1,6 @@
 # Does Sequence Packing Change the Optimal Learning Rate?
 
-**Status: draft, complete through Appendix D, <!--runs-->590 runs (340 at 124M, 84 at 30M, 59 at 30M at the matched budget, 70 at 7M, 27 at 7M at the matched budget, 10 at 124M grid extension)<!--/runs--> in the
+**Status: draft, complete through Appendix D, <!--runs-->607 runs (342 at 124M, 84 at 30M, 59 at 30M at the matched budget, 70 at 7M, 27 at 7M at the matched budget, 10 at 124M grid extension, 15 at 124M at the 7M model's quality)<!--/runs--> in the
 ledger. Every cell carries a full grid and every cell the headline rests on is
 seed-replicated. Remaining: a venue decision, and author list / affiliation for
 submission.**
@@ -1477,7 +1477,7 @@ epochs from the headline for the reason in Appendix B. The tables in §4.1 and t
 ratios in §4.2 are its output rather than transcriptions of it.
 
 Hardware is a single RTX 2080 Ti per run, and the whole grid is
-<!--compute-->about 54 GPU-hours (measured across the 588 runs that recorded wall time; 2 rows carry no wall time, having been harvested from earlier runs of the same configs)<!--/compute-->. One caveat for anyone reproducing the schedule estimate rather than the science:
+<!--compute-->about 58 GPU-hours (measured across the 605 runs that recorded wall time; 2 rows carry no wall time, having been harvested from earlier runs of the same configs)<!--/compute-->. One caveat for anyone reproducing the schedule estimate rather than the science:
 the second card in this machine thermally throttles under sustained load and
 takes about 2.5x as long per step, which the sweep's planner accounts for and a
 naive divide-by-GPU-count does not.
@@ -1550,6 +1550,7 @@ through that ratio, so it is a range and not a standard error (§4.5).
 | 30M @ 19.7 tok/param | Alpaca, whole | 50,868 | 4.47x | 5.06e-05 | 3.56e-04 | 7.03x | **1.302 ± 0.119** | 3 |
 | 7M @ 18.0 tok/param | Alpaca, random third | 16,956 | 4.51x | 2.51e-04 | 9.44e-04 | 3.76x | **0.879** (no bound) | 1, provisional |
 | 7M @ 18.0 tok/param | Alpaca, whole | 50,868 | 4.47x | 2.20e-04 | 2.49e-03 | 11.29x | **1.618** (no bound) | 1, provisional |
+| 124M @ perplexity 107 | Alpaca, whole | 50,868 | 4.47x | 1.12e-04 | 4.41e-04 | 3.94x | **0.916** (no bound) | 1, provisional |
 <!--/exponents-->
 
 Read down a group and the scale dependence of §4.6 is the trend; read the same

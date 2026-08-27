@@ -39,6 +39,10 @@ LEDGERS = [
     (REPO / "results" / "lr_scaling_mini.csv", "7M"),
     (REPO / "results" / "lr_scaling_mini2k.csv", "7M at the matched budget"),
     (REPO / "results" / "lr_scaling_ckpt.csv", "124M grid extension"),
+    # The 124M model fine-tuned from an early pretraining checkpoint, matched on
+    # perplexity to the 7M model rather than on parameter count: the control that
+    # separates model size from base-model quality (section 4.7.2).
+    (REPO / "results" / "lr_scaling_quality.csv", "124M at the 7M model's quality"),
 ]
 
 
@@ -61,15 +65,18 @@ def tally() -> tuple[int, int, float, list[str]]:
 
 
 # How each ledger's base model should read in Appendix F, and the order the rows
-# are grouped in: largest model first, and the matched-budget control last
-# because it is a control on 30M rather than a fourth size.
-MODEL_ORDER = ["124M", "30M", "7M", "30M@19.7", "7M@18.0"]
+# are grouped in: the three model sizes largest-first, then the controls. The
+# controls sit last because none of them is a fourth size -- two hold the size
+# and halve the pretraining budget, and the third holds the size at 124M and
+# drops the base model to the 7M model's perplexity.
+MODEL_ORDER = ["124M", "30M", "7M", "30M@19.7", "7M@18.0", "124M@ppl107"]
 MODEL_LABEL = {
     "124M": "124M",
     "30M": "30M",
     "7M": "7M",
     "30M@19.7": "30M @ 19.7 tok/param",
     "7M@18.0": "7M @ 18.0 tok/param",
+    "124M@ppl107": "124M @ perplexity 107",
 }
 CORPUS_LABEL = {
     "alpaca": "Alpaca, whole", "alpaca_third": "Alpaca, random third",
