@@ -8,6 +8,7 @@ audience, which is the most common way a good plot becomes unreadable.
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 import matplotlib
@@ -94,3 +95,28 @@ def save(fig, path: str | Path) -> Path:
     plt.close(fig)
     print(f"  wrote {path}")
     return path
+
+
+@contextlib.contextmanager
+def paper_text():
+    """Scale every font up, for a figure that LaTeX will shrink.
+
+    A figure drawn 11.6in wide and set at `\\linewidth` in the paper's 5.5in
+    text column is scaled to 0.47, so its 8.5pt tick labels print at 4pt and the
+    figure becomes decoration. Shrinking the canvas instead keeps the text
+    absolute and crowds the axes, which was worse.
+
+    Scaling the type with the canvas is the fix: at 1.8x, an 8.5pt label is
+    15.3pt on a canvas that prints at 0.47, which lands at 7.2pt on the page --
+    a little under the body text, which is what a caption-sized label should be.
+    The layout is unchanged, because every size moves together.
+    """
+    scale = 1.8
+    keys = ["font.size", "axes.titlesize", "axes.labelsize",
+            "xtick.labelsize", "ytick.labelsize", "legend.fontsize"]
+    before = {k: plt.rcParams[k] for k in keys}
+    plt.rcParams.update({k: before[k] * scale for k in keys})
+    try:
+        yield scale
+    finally:
+        plt.rcParams.update(before)

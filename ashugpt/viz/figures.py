@@ -16,7 +16,8 @@ from matplotlib.ticker import FuncFormatter
 
 from ashugpt.config import load_model_config
 from ashugpt.viz.logs import load_log
-from ashugpt.viz.style import COLORS, MUTED, TEXT, annotate, apply_style, save
+from ashugpt.viz.style import (COLORS, MUTED, TEXT, annotate, apply_style,
+                               paper_text, save)
 
 LOGS = Path("logs")
 OUT = Path("resources/plots")
@@ -470,47 +471,49 @@ def lr_scaling_control() -> Path:
         ("alpaca", "Alpaca", "packed_350", "wide_350", 8444, 8496, 32, 144),
         ("dolly", "Dolly", "packed_136", "wide_136", 6632, 6816, 32, 96),
     ]
-    fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.4))
+    # Drawn large and typeset small; see style.paper_text().
+    with paper_text():
+        fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.4))
 
-    for ax, (dataset, title, packed_cell, wide_cell, pk_tok, wd_tok, pk_rows, wd_rows) in zip(axes, panels):
-        series = [
-            (packed_cell, "packed", COLORS["stage2"], "-", "o"),
-            (wide_cell, "padded, wide batch", COLORS["pretrain"], "--", "s"),
-        ]
-        marks = []
-        for cell, label, color, style, marker in series:
-            points = sorted(by_cell.get((dataset, cell), []))
-            if not points:
-                continue
-            ax.plot([lr for lr, _ in points], [loss for _, loss in points],
-                    marker=marker, markersize=5, linewidth=2, color=color,
-                    linestyle=style, label=label)
-            best = optimum(points)
-            if best is not None:
-                ax.axvline(best, color=color, linestyle=":", linewidth=1.4, alpha=0.75)
-                marks.append((label, best))
+        for ax, (dataset, title, packed_cell, wide_cell, pk_tok, wd_tok, pk_rows, wd_rows) in zip(axes, panels):
+            series = [
+                (packed_cell, "packed", COLORS["stage2"], "-", "o"),
+                (wide_cell, "padded, wide batch", COLORS["pretrain"], "--", "s"),
+            ]
+            marks = []
+            for cell, label, color, style, marker in series:
+                points = sorted(by_cell.get((dataset, cell), []))
+                if not points:
+                    continue
+                ax.plot([lr for lr, _ in points], [loss for _, loss in points],
+                        marker=marker, markersize=5, linewidth=2, color=color,
+                        linestyle=style, label=label)
+                best = optimum(points)
+                if best is not None:
+                    ax.axvline(best, color=color, linestyle=":", linewidth=1.4, alpha=0.75)
+                    marks.append((label, best))
 
-        ax.set_xscale("log")
-        ax.set_xlabel("peak learning rate")
-        ax.set_title(f"{title} — {pk_tok:,} vs {wd_tok:,} supervised tokens/step")
-        ax.legend(loc="upper left", fontsize=8.5)
+            ax.set_xscale("log")
+            ax.set_xlabel("peak learning rate")
+            ax.set_title(f"{title} — {pk_tok:,} vs {wd_tok:,} supervised tokens/step")
+            ax.legend(loc="upper left", fontsize=8.5)
 
-        if len(marks) == 2:
-            # Headroom first: on Dolly the padded arm climbs into the top-right
-            # corner, so the corner has to be made empty before anything is put
-            # in it.
-            low, high = ax.get_ylim()
-            ax.set_ylim(low, high + 0.22 * (high - low))
-            # Upper right: both curves fall away from the top-left, so this
-            # corner is the one reliably empty in either panel.
-            ratio = marks[1][1] / marks[0][1]
-            ax.text(0.97, 0.95,
-                    f"optima {ratio:.2f}x apart\n{pk_rows} rows/step vs {wd_rows}",
-                    transform=ax.transAxes, ha="right", va="top", fontsize=9,
-                    color=TEXT, linespacing=1.6)
+            if len(marks) == 2:
+                # Headroom first: on Dolly the padded arm climbs into the top-right
+                # corner, so the corner has to be made empty before anything is put
+                # in it.
+                low, high = ax.get_ylim()
+                ax.set_ylim(low, high + 0.22 * (high - low))
+                # Upper right: both curves fall away from the top-left, so this
+                # corner is the one reliably empty in either panel.
+                ratio = marks[1][1] / marks[0][1]
+                ax.text(0.97, 0.95,
+                        f"optima {ratio:.2f}x apart\n{pk_rows} rows/step vs {wd_rows}",
+                        transform=ax.transAxes, ha="right", va="top", fontsize=9,
+                        color=TEXT, linespacing=1.6)
 
-    axes[0].set_ylabel("held-out loss (nats), seed 1337")
-    return save(fig, OUT / "07-lr-scaling-control.png")
+        axes[0].set_ylabel("held-out loss (nats), seed 1337")
+        return save(fig, OUT / "07-lr-scaling-control.png")
 
 
 def lr_scaling_regime() -> Path:
@@ -551,68 +554,70 @@ def lr_scaling_regime() -> Path:
         ("30M", "dolly"): (COLORS["chat"], "v", "Dolly, 30M"),
     }
 
-    fig, (left, right) = plt.subplots(1, 2, figsize=(11.6, 4.4))
+    # Drawn large and typeset small; see style.paper_text().
+    with paper_text():
+        fig, (left, right) = plt.subplots(1, 2, figsize=(11.6, 4.4))
 
-    series: dict[tuple[str, str], list] = {}
-    for r in rows:
-        key = (r["model"], SCALE.get(r["dataset"]))
-        if key[1] is None or not r["train_examples"]:
-            continue
-        series.setdefault(key, []).append(
-            (int(r["train_examples"]), float(r["exponent"]), float(r["bound"])))
-    for key, pts in sorted(series.items()):
-        if key not in style:
-            continue
-        color, marker, label = style[key]
-        pts.sort()
-        left.errorbar([p[0] for p in pts], [p[1] for p in pts], yerr=[p[2] for p in pts],
-                      color=color, marker=marker, markersize=6, linewidth=2,
-                      capsize=3, elinewidth=1.2, label=label)
-    left.set_xscale("log")
-    left.set_xlabel("training examples (one epoch each)")
-    left.set_ylabel("exponent against the packing factor")
-    left.set_title("Scale moves the exponent")
-    left.legend(loc="upper left", fontsize=8.5)
+        series: dict[tuple[str, str], list] = {}
+        for r in rows:
+            key = (r["model"], SCALE.get(r["dataset"]))
+            if key[1] is None or not r["train_examples"]:
+                continue
+            series.setdefault(key, []).append(
+                (int(r["train_examples"]), float(r["exponent"]), float(r["bound"])))
+        for key, pts in sorted(series.items()):
+            if key not in style:
+                continue
+            color, marker, label = style[key]
+            pts.sort()
+            left.errorbar([p[0] for p in pts], [p[1] for p in pts], yerr=[p[2] for p in pts],
+                          color=color, marker=marker, markersize=6, linewidth=2,
+                          capsize=3, elinewidth=1.2, label=label)
+        left.set_xscale("log")
+        left.set_xlabel("training examples (one epoch each)")
+        left.set_ylabel("exponent against the packing factor")
+        left.set_title("Scale moves the exponent")
+        left.legend(loc="upper left", fontsize=8.5)
 
-    tercile = sorted((float(r["packing_factor"]), float(r["exponent"]), float(r["bound"]))
-                     for r in rows if r["model"] == "124M" and r["dataset"] in TERCILES)
-    if tercile:
-        right.errorbar([p[0] for p in tercile], [p[1] for p in tercile],
-                       yerr=[p[2] for p in tercile], color=COLORS["pretrain"],
-                       marker="o", markersize=6, linewidth=2, capsize=3, elinewidth=1.2,
-                       label="Alpaca length terciles, 124M")
-    right.set_xscale("log")
-    right.set_xlabel("packing factor (supervised tokens/step)")
-    right.set_title("The packing ratio does not")
-    right.legend(loc="upper right", fontsize=8.5)
-    right.text(0.03, 0.04, "all three hold the size of the run fixed\nat 16,956 examples and 530 padded steps",
-               transform=right.transAxes, fontsize=8.5, color=MUTED, linespacing=1.5)
+        tercile = sorted((float(r["packing_factor"]), float(r["exponent"]), float(r["bound"]))
+                         for r in rows if r["model"] == "124M" and r["dataset"] in TERCILES)
+        if tercile:
+            right.errorbar([p[0] for p in tercile], [p[1] for p in tercile],
+                           yerr=[p[2] for p in tercile], color=COLORS["pretrain"],
+                           marker="o", markersize=6, linewidth=2, capsize=3, elinewidth=1.2,
+                           label="Alpaca length terciles, 124M")
+        right.set_xscale("log")
+        right.set_xlabel("packing factor (supervised tokens/step)")
+        right.set_title("The packing ratio does not")
+        right.legend(loc="upper right", fontsize=8.5)
+        right.text(0.03, 0.04, "all three hold the size of the run fixed\nat 16,956 examples and 530 padded steps",
+                   transform=right.transAxes, fontsize=8.5, color=MUTED, linespacing=1.5)
 
-    # Plain tick labels: matplotlib's log default renders these as 6x10^3 and
-    # 3x10^0, which is unreadable for quantities a reader wants to compare.
-    from matplotlib.ticker import FixedFormatter, FixedLocator
-    left.xaxis.set_major_locator(FixedLocator([5000, 10000, 20000, 50000]))
-    left.xaxis.set_major_formatter(FixedFormatter(["5k", "10k", "20k", "50k"]))
-    left.xaxis.set_minor_locator(FixedLocator([]))
-    if tercile:
-        factors = [p[0] for p in tercile]
-        right.xaxis.set_major_locator(FixedLocator(factors))
-        right.xaxis.set_major_formatter(FixedFormatter([f"{f:.1f}x" for f in factors]))
-        right.xaxis.set_minor_locator(FixedLocator([]))
+        # Plain tick labels: matplotlib's log default renders these as 6x10^3 and
+        # 3x10^0, which is unreadable for quantities a reader wants to compare.
+        from matplotlib.ticker import FixedFormatter, FixedLocator
+        left.xaxis.set_major_locator(FixedLocator([5000, 10000, 20000, 50000]))
+        left.xaxis.set_major_formatter(FixedFormatter(["5k", "10k", "20k", "50k"]))
+        left.xaxis.set_minor_locator(FixedLocator([]))
+        if tercile:
+            factors = [p[0] for p in tercile]
+            right.xaxis.set_major_locator(FixedLocator(factors))
+            right.xaxis.set_major_formatter(FixedFormatter([f"{f:.1f}x" for f in factors]))
+            right.xaxis.set_minor_locator(FixedLocator([]))
 
-    # The two rules a reader will have in mind, drawn once so the panels share
-    # them. Labelled on the left, where neither panel's data goes.
-    for ax in (left, right):
-        for value, name in ((0.5, "square-root"), (1.0, "linear")):
-            ax.axhline(value, color=MUTED, linestyle=":", linewidth=1, alpha=0.6)
-            ax.text(0.015, value, name, transform=ax.get_yaxis_transform(),
-                    ha="left", va="bottom", fontsize=8, color=MUTED)
-    lo = min(p[1] - p[2] for pts in series.values() for p in pts)
-    hi = max(p[1] + p[2] for pts in series.values() for p in pts)
-    for ax in (left, right):
-        ax.set_ylim(min(lo, 0.2) - 0.08, max(hi, 1.1) + 0.16)
+        # The two rules a reader will have in mind, drawn once so the panels share
+        # them. Labelled on the left, where neither panel's data goes.
+        for ax in (left, right):
+            for value, name in ((0.5, "square-root"), (1.0, "linear")):
+                ax.axhline(value, color=MUTED, linestyle=":", linewidth=1, alpha=0.6)
+                ax.text(0.015, value, name, transform=ax.get_yaxis_transform(),
+                        ha="left", va="bottom", fontsize=8, color=MUTED)
+        lo = min(p[1] - p[2] for pts in series.values() for p in pts)
+        hi = max(p[1] + p[2] for pts in series.values() for p in pts)
+        for ax in (left, right):
+            ax.set_ylim(min(lo, 0.2) - 0.08, max(hi, 1.1) + 0.16)
 
-    return save(fig, OUT / "08-lr-scaling-regime.png")
+        return save(fig, OUT / "08-lr-scaling-regime.png")
 
 
 
@@ -698,65 +703,67 @@ def lr_scaling_quality() -> Path:
             "padded": float(r["lr_padded"]), "packed": float(r["lr_packed"]),
         })
 
-    fig, (left, right) = plt.subplots(1, 2, figsize=(11.6, 4.4))
+    # Drawn large and typeset small; see style.paper_text().
+    with paper_text():
+        fig, (left, right) = plt.subplots(1, 2, figsize=(11.6, 4.4))
 
-    for family in ("124M", "30M", "7M"):
-        pts = sorted((p for p in points if p["family"] == family),
-                     key=lambda p: p["ppl"])
-        if not pts:
-            continue
-        color, marker = pts[0]["color"], pts[0]["marker"]
-        left.errorbar([p["ppl"] for p in pts], [p["exponent"] for p in pts],
-                      yerr=[p["bound"] for p in pts], color=color, marker=marker,
-                      markersize=6, linewidth=2, capsize=3, elinewidth=1.2,
-                      label=f"{family} base model")
-        for arm, style in (("padded", "--"), ("packed", "-")):
-            right.plot([p["ppl"] for p in pts], [p[arm] for p in pts],
-                       color=color, marker=marker, markersize=5, linewidth=1.8,
-                       linestyle=style, label=f"{family}, {arm}")
+        for family in ("124M", "30M", "7M"):
+            pts = sorted((p for p in points if p["family"] == family),
+                         key=lambda p: p["ppl"])
+            if not pts:
+                continue
+            color, marker = pts[0]["color"], pts[0]["marker"]
+            left.errorbar([p["ppl"] for p in pts], [p["exponent"] for p in pts],
+                          yerr=[p["bound"] for p in pts], color=color, marker=marker,
+                          markersize=6, linewidth=2, capsize=3, elinewidth=1.2,
+                          label=f"{family} base model")
+            for arm, style in (("padded", "--"), ("packed", "-")):
+                right.plot([p["ppl"] for p in pts], [p[arm] for p in pts],
+                           color=color, marker=marker, markersize=5, linewidth=1.8,
+                           linestyle=style, label=f"{family}, {arm}")
 
-    # A readable ladder rather than one tick per point: the measured
-    # perplexities include 107, 115 and 142, whose labels collide at this width.
-    ticks = [20, 30, 40, 60, 80, 100, 150]
-    for ax in (left, right):
-        ax.set_xscale("log")
-        ax.set_xlabel("base-model validation perplexity")
-        from matplotlib.ticker import FixedFormatter, FixedLocator
-        ax.xaxis.set_major_locator(FixedLocator(ticks))
-        ax.xaxis.set_major_formatter(FixedFormatter([str(t) for t in ticks]))
-        ax.xaxis.set_minor_locator(FixedLocator([]))
+        # A readable ladder rather than one tick per point: the measured
+        # perplexities include 107, 115 and 142, whose labels collide at this width.
+        ticks = [20, 30, 40, 60, 80, 100, 150]
+        for ax in (left, right):
+            ax.set_xscale("log")
+            ax.set_xlabel("base-model validation perplexity")
+            from matplotlib.ticker import FixedFormatter, FixedLocator
+            ax.xaxis.set_major_locator(FixedLocator(ticks))
+            ax.xaxis.set_major_formatter(FixedFormatter([str(t) for t in ticks]))
+            ax.xaxis.set_minor_locator(FixedLocator([]))
 
-    left.set_ylabel("exponent against the packing factor")
-    left.set_title("Quality does not move the exponent")
-    left.legend(loc="upper left", fontsize=8.5)
-    for value, name in ((0.5, "square-root"), (1.0, "linear")):
-        left.axhline(value, color=MUTED, linestyle=":", linewidth=1, alpha=0.6)
-        left.text(0.015, value, name, transform=left.get_yaxis_transform(),
-                  ha="left", va="bottom", fontsize=8, color=MUTED)
+        left.set_ylabel("exponent against the packing factor")
+        left.set_title("Quality does not move the exponent")
+        left.legend(loc="upper left", fontsize=8.5)
+        for value, name in ((0.5, "square-root"), (1.0, "linear")):
+            left.axhline(value, color=MUTED, linestyle=":", linewidth=1, alpha=0.6)
+            left.text(0.015, value, name, transform=left.get_yaxis_transform(),
+                      ha="left", va="bottom", fontsize=8, color=MUTED)
 
-    # The comparison the figure exists for: two base models of the same quality
-    # and 17x apart in parameters, which is the control section 4.7.2 registered.
-    worst_124 = max((p for p in points if p["family"] == "124M"), key=lambda p: p["ppl"])
-    small_7m = min((p for p in points if p["family"] == "7M"), key=lambda p: p["ppl"])
-    left.annotate(
-        "", xy=(small_7m["ppl"], small_7m["exponent"]),
-        xytext=(worst_124["ppl"], worst_124["exponent"]),
-        arrowprops={"arrowstyle": "<->", "color": COLORS["dpo"], "linewidth": 1.4})
-    left.text(worst_124["ppl"] * 0.93,
-              (small_7m["exponent"] + worst_124["exponent"]) / 2,
-              "same perplexity,\n17x the parameters", fontsize=8.5,
-              color=COLORS["dpo"], linespacing=1.4, va="center", ha="right")
+        # The comparison the figure exists for: two base models of the same quality
+        # and 17x apart in parameters, which is the control section 4.7.2 registered.
+        worst_124 = max((p for p in points if p["family"] == "124M"), key=lambda p: p["ppl"])
+        small_7m = min((p for p in points if p["family"] == "7M"), key=lambda p: p["ppl"])
+        left.annotate(
+            "", xy=(small_7m["ppl"], small_7m["exponent"]),
+            xytext=(worst_124["ppl"], worst_124["exponent"]),
+            arrowprops={"arrowstyle": "<->", "color": COLORS["dpo"], "linewidth": 1.4})
+        left.text(worst_124["ppl"] * 0.93,
+                  (small_7m["exponent"] + worst_124["exponent"]) / 2,
+                  "same perplexity,\n17x the parameters", fontsize=8.5,
+                  color=COLORS["dpo"], linespacing=1.4, va="center", ha="right")
 
-    right.set_yscale("log")
-    right.set_ylabel("optimal peak learning rate")
-    right.set_title("It moves both optima, together")
-    right.legend(loc="upper left", fontsize=7.5, ncol=3)
-    right.text(0.97, 0.04,
-               "both arms rise together;\nthe gap between them is what this paper measures",
-               transform=right.transAxes, fontsize=8.5, color=MUTED,
-               linespacing=1.5, ha="right")
+        right.set_yscale("log")
+        right.set_ylabel("optimal peak learning rate")
+        right.set_title("It moves both optima, together")
+        right.legend(loc="upper left", fontsize=7.5, ncol=3)
+        right.text(0.97, 0.04,
+                   "both arms rise together;\nthe gap between them is what this paper measures",
+                   transform=right.transAxes, fontsize=8.5, color=MUTED,
+                   linespacing=1.5, ha="right")
 
-    return save(fig, OUT / "09-lr-scaling-quality.png")
+        return save(fig, OUT / "09-lr-scaling-quality.png")
 
 
 
@@ -819,48 +826,50 @@ def lr_scaling_bracket() -> Path:
 
     # Wide and short on purpose: at \linewidth in a 5.5in NeurIPS column a
     # taller aspect costs two-thirds of a page, and thirteen rows do not need it.
-    fig, ax = plt.subplots(figsize=(10.4, 4.9))
-    y = list(range(len(items)))
+    # Drawn large and typeset small; see style.paper_text().
+    with paper_text():
+        fig, ax = plt.subplots(figsize=(10.4, 4.9))
+        y = list(range(len(items)))
 
-    for i, d in enumerate(items):
-        ax.plot([d["floor"], d["ceiling"]], [i, i], color=MUTED, linewidth=7,
-                alpha=0.22, solid_capstyle="butt", zorder=1)
-    # One legend entry for the band, drawn off the visible rows.
-    ax.plot([], [], color=MUTED, linewidth=7, alpha=0.22,
-            label=r"the bracket that was proposed: $[\sqrt{p},\ 1.2p]$")
+        for i, d in enumerate(items):
+            ax.plot([d["floor"], d["ceiling"]], [i, i], color=MUTED, linewidth=7,
+                    alpha=0.22, solid_capstyle="butt", zorder=1)
+        # One legend entry for the band, drawn off the visible rows.
+        ax.plot([], [], color=MUTED, linewidth=7, alpha=0.22,
+                label=r"the bracket that was proposed: $[\sqrt{p},\ 1.2p]$")
 
-    for i, d in enumerate(items):
-        color = COLORS["dpo"] if d["misses"] else COLORS["pretrain"]
-        ax.errorbar(d["exponent"], i, xerr=d["bound"], color=color, marker="o",
-                    markersize=6, capsize=3, elinewidth=1.2, linestyle="none",
-                    zorder=3)
-    ax.plot([], [], color=COLORS["pretrain"], marker="o", linestyle="none",
-            label="measured, inside the bracket")
-    ax.plot([], [], color=COLORS["dpo"], marker="o", linestyle="none",
-            label="measured, outside it")
+        for i, d in enumerate(items):
+            color = COLORS["dpo"] if d["misses"] else COLORS["pretrain"]
+            ax.errorbar(d["exponent"], i, xerr=d["bound"], color=color, marker="o",
+                        markersize=6, capsize=3, elinewidth=1.2, linestyle="none",
+                        zorder=3)
+        ax.plot([], [], color=COLORS["pretrain"], marker="o", linestyle="none",
+                label="measured, inside the bracket")
+        ax.plot([], [], color=COLORS["dpo"], marker="o", linestyle="none",
+                label="measured, outside it")
 
-    for value in (0.4, 1.7):
-        ax.axvline(value, color=COLORS["accent"], linestyle="--", linewidth=1.3,
-                   alpha=0.85, zorder=2)
-    ax.plot([], [], color=COLORS["accent"], linestyle="--",
-            label=r"the range section 6 recommends: $p^{0.4}$ to $p^{1.7}$")
+        for value in (0.4, 1.7):
+            ax.axvline(value, color=COLORS["accent"], linestyle="--", linewidth=1.3,
+                       alpha=0.85, zorder=2)
+        ax.plot([], [], color=COLORS["accent"], linestyle="--",
+                label=r"the range section 6 recommends: $p^{0.4}$ to $p^{1.7}$")
 
-    ax.set_yticks(y)
-    ax.set_yticklabels([d["label"] for d in items], fontsize=8.5)
-    ax.set_ylim(-0.8, len(items) - 0.2)
-    ax.set_xlabel("exponent against the packing factor")
-    ax.set_title("A bracket fixed in $p$ cannot cover thirteen settings")
-    ax.legend(loc="lower right", fontsize=8.5)
-    ax.grid(axis="y", alpha=0.35)
+        ax.set_yticks(y)
+        ax.set_yticklabels([d["label"] for d in items], fontsize=8.5)
+        ax.set_ylim(-0.8, len(items) - 0.2)
+        ax.set_xlabel("exponent against the packing factor")
+        ax.set_title("A bracket fixed in $p$ cannot cover thirteen settings")
+        ax.legend(loc="lower right", fontsize=8.5)
+        ax.grid(axis="y", alpha=0.35)
 
-    missed = sum(1 for d in items if d["misses"])
-    # Boxed: it sits over the topmost bracket band, which is the row it is
-    # describing and the one a reader looks at first.
-    ax.text(0.02, 0.97, f"{missed} of {len(items)} settings fall outside",
-            transform=ax.transAxes, fontsize=9, color=COLORS["dpo"], va="top",
-            bbox={"facecolor": "white", "edgecolor": "none", "pad": 2.5})
+        missed = sum(1 for d in items if d["misses"])
+        # Boxed: it sits over the topmost bracket band, which is the row it is
+        # describing and the one a reader looks at first.
+        ax.text(0.02, 0.97, f"{missed} of {len(items)} settings fall outside",
+                transform=ax.transAxes, fontsize=9, color=COLORS["dpo"], va="top",
+                bbox={"facecolor": "white", "edgecolor": "none", "pad": 2.5})
 
-    return save(fig, OUT / "10-lr-scaling-bracket.png")
+        return save(fig, OUT / "10-lr-scaling-bracket.png")
 
 
 ALL = {
