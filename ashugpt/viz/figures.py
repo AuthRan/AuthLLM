@@ -736,7 +736,9 @@ def lr_scaling_quality() -> Path:
             ax.xaxis.set_minor_locator(FixedLocator([]))
 
         left.set_ylabel("exponent against the packing factor")
-        left.set_title("Quality does not move the exponent")
+        # Short enough to fit its own panel at paper type size; the caption
+        # carries the rest.
+        left.set_title("Quality does not move it")
         left.legend(loc="upper left", fontsize=8.5)
         for value, name in ((0.5, "square-root"), (1.0, "linear")):
             left.axhline(value, color=MUTED, linestyle=":", linewidth=1, alpha=0.6)
@@ -758,7 +760,7 @@ def lr_scaling_quality() -> Path:
 
         right.set_yscale("log")
         right.set_ylabel("optimal peak learning rate")
-        right.set_title("It moves both optima, together")
+        right.set_title("It moves both optima")
         right.legend(loc="upper left", fontsize=7.5, ncol=3)
         right.text(0.97, 0.04,
                    "both arms rise together;\nthe gap between them is what this paper measures",
