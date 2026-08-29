@@ -46,7 +46,9 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import contextlib
 import csv
+import fcntl
 import os
 import queue
 import re
@@ -333,6 +335,39 @@ def completed_runs() -> set[tuple[str, float, int]]:
         }
 
 
+# One lock file per card. `wait_for_gpus` checks the cards are free before a
+# sweep starts, which is not the same thing and does not compose: a driver that
+# runs two sweeps back to back leaves a gap between them, and another driver
+# blocking on exactly that gap will take the card during it. That is not
+# hypothetical -- it killed a 124M run at step 220 on 2026-08-30, with no error
+# in its log because the card simply ran out of memory under two of them.
+#
+# The lock is per card rather than global on purpose: two sweeps pinned to
+# different GPUs are a legitimate and useful thing to run, and this is meant to
+# stop them colliding, not to serialise the box.
+LOCK_DIR = REPO / "logs"
+
+
+@contextlib.contextmanager
+def gpu_lock(gpu: int):
+    """Hold an exclusive lock on one card for the length of one run."""
+    LOCK_DIR.mkdir(parents=True, exist_ok=True)
+    path = LOCK_DIR / f".gpu{gpu}.lock"
+    handle = path.open("w")
+    try:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            # Blocking rather than failing: a queued sweep should wait its turn,
+            # which is what the operator wanted when they started it.
+            print(f"[gpu {gpu}] waiting: another sweep holds this card", flush=True)
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(handle, fcntl.LOCK_UN)
+        handle.close()
+
+
 # Every finetune subprocess this driver has started and has not yet reaped.
 # The OOM postmortem left one thing open: worker threads are daemons, so when
 # the driver goes away -- Ctrl-C, SIGTERM, or the circuit breaker tripping --
@@ -495,7 +530,7 @@ def train_one(dataset: Dataset, cell: Cell, lr: float, seed: int, gpu: int,
 
     print(f"[gpu {gpu}] start {name}", flush=True)
     started = time.monotonic()
-    with stdout_path.open("w") as sink:
+    with gpu_lock(gpu), stdout_path.open("w") as sink:
         child = subprocess.Popen(
             command,
             cwd=REPO,

@@ -94,3 +94,50 @@ def test_signal_stops_workers_and_exits_with_the_signal():
 
     assert sweep._stopping.is_set(), "workers would keep pulling work off the queue"
     assert excinfo.value.code == 143, "exit status should record the signal"
+
+
+def test_two_sweeps_cannot_share_a_card():
+    """The failure of 2026-08-30, which had no error message at all.
+
+    A driver ran two sweeps back to back with no preflight between them. Another
+    driver was blocking on `wait_for_gpus` waiting for exactly that card, saw the
+    gap between the two invocations, and started its own 124M run on it. Two of
+    those do not fit in 11.26 GB, and the first one died at step 220 with nothing
+    in its log -- no traceback, no CUDA error, just a truncated run.
+
+    `wait_for_gpus` cannot prevent this: it answers "is the card free now", and
+    the answer was yes. A lock held for the length of the run can.
+    """
+    import multiprocessing
+
+    def hold(gpu, started, release):
+        with sweep.gpu_lock(gpu):
+            started.set()
+            release.wait(timeout=10)
+
+    started = multiprocessing.Event()
+    release = multiprocessing.Event()
+    holder = multiprocessing.Process(target=hold, args=(7, started, release))
+    holder.start()
+    try:
+        assert started.wait(timeout=10), "the other process never took the lock"
+
+        import fcntl
+        path = sweep.LOCK_DIR / ".gpu7.lock"
+        with path.open("w") as handle:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    finally:
+        release.set()
+        holder.join(timeout=10)
+
+    # And it is released afterwards, or the next sweep would hang for ever.
+    with sweep.gpu_lock(7):
+        pass
+
+
+def test_different_cards_do_not_block_each_other():
+    """Two sweeps pinned to different GPUs is a thing worth being able to do."""
+    with sweep.gpu_lock(8):
+        with sweep.gpu_lock(9):
+            pass
