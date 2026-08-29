@@ -35,12 +35,12 @@ paper/arxiv/
    against the numbers the prose cites -- so a build that cannot reach the
    network still catches most of what a compiler would.
 
-2. **Fill in the author block.** `paper/build_tex.py` carries `AUTHOR` and
-   `AFFILIATION` near the top; they are the only content in the build script
-   that is not derived from the markdown, because the markdown does not carry
-   them. They currently read "Ashutosh Ranjan / Independent Researcher" and
-   there is no contact address. There is a `% TODO` beside them in the
-   generated preamble.
+2. **The author block is filled in.** `paper/build_tex.py` carries `AUTHOR`,
+   `AFFILIATION` and `CONTACT` near the top; they are the only content in the
+   build script that is not derived from the markdown, because the markdown
+   does not carry them. They read "Ashutosh Ranjan / Independent Researcher /
+   authran.off@gmail.com", and the address is set as a `mailto:` link through
+   `hyperref`. Edit there, not in `main.tex`.
 
 3. **The wide tables set legibly.** Every table is wrapped in a conditional
    `\resizebox` that shrinks it only if it overruns the text width. Checked in

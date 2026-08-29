@@ -45,6 +45,7 @@ ABSTRACT_CAP = 1920
 # markdown, because the markdown does not carry it. Edit here.
 AUTHOR = "Ashutosh Ranjan"
 AFFILIATION = "Independent Researcher"
+CONTACT = "authran.off@gmail.com"
 
 # Private-use code points, so a placeholder cannot collide with anything in the
 # text and is not touched by the escaper.
@@ -236,9 +237,8 @@ PREAMBLE = r"""\documentclass[11pt]{article}
 \sloppy
 
 \title{@TITLE@}
-% TODO before submission: confirm the author line and add an affiliation and
-% contact address. Nothing downstream of here depends on it.
-\author{@AUTHOR@ \\ \small @AFFILIATION@}
+\author{@AUTHOR@ \\ \small @AFFILIATION@ \\
+        \small \href{mailto:@CONTACT@}{\texttt{@CONTACT@}}}
 \date{}
 
 \begin{document}
@@ -378,7 +378,8 @@ def main() -> None:
     preamble = (PREAMBLE
                 .replace("@TITLE@", escape(title))
                 .replace("@AUTHOR@", escape(AUTHOR))
-                .replace("@AFFILIATION@", escape(AFFILIATION)))
+                .replace("@AFFILIATION@", escape(AFFILIATION))
+                .replace("@CONTACT@", escape(CONTACT)))
     text = preamble + "\n".join(out) + "\n\n\\end{document}\n"
     # Collapse the runs of blank lines the block handling leaves behind.
     text = re.sub(r"\n{3,}", "\n\n", text)
