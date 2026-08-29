@@ -6,92 +6,72 @@
 
 
 Sequence packing is standard in supervised fine-tuning and is presented as an
-efficiency change that leaves the model untouched: with the right masking and
-position ids, a packed example is mathematically identical to the same example
-run alone. That identity holds per example, not per optimizer step, and the
-literature nonetheless advises inheriting the learning rate -- advice asserted
-but never swept. We sweep it, across thirteen settings, two corpora and three
-model sizes spanning 17x, resolving with a 2x2 factorial a confound that makes
-batch size and step count move together at a fixed data budget.
+efficiency change that leaves the model untouched. That identity holds per
+example, not per optimizer step, and the literature nonetheless advises
+inheriting the learning rate. We sweep it across thirteen settings, two corpora
+and three model sizes spanning 17x, resolving with a 2x2 factorial a confound
+that moves batch size and step count together at a fixed data budget.
 
 Inheriting is expensive and more so as the model shrinks: retuning is worth
-0.050 nats at 124M parameters, 0.110 at 30M and 0.172 at 7M, and at the
-inherited rate packing does not reliably beat not packing at all. A control
+0.050 nats at 124M parameters, 0.110 at 30M and 0.172 at 7M. A control
 identifies the mechanism -- a padded run whose accumulation is raised until it
-matches a packed step on supervised tokens, examples and data seen finds the
-same optimum, against the three- to four-and-a-half-fold shift a rule keyed on
-forward-pass rows predicts -- so packing acts on the learning rate purely as a
-change of batch size.
-
-How large a change has no single answer: as an exponent against the packing
-factor it runs 0.39 to 1.70. Corpus identity is ruled out and the packing ratio
-is unsupported once seed spread is carried through; what survives is the scale
-of the run and the size of the model, while how well the base model was
-pretrained moves both optima and not the distance between them. No fixed
-bracket survives -- the one an earlier draft proposed fails on five of the
-thirteen settings, once by 2.4x -- so we give a range and a sweep instead. Six
-predictions were registered before the deciding runs existed; five hold, one is
-reported falsified, and four earlier findings are withdrawn after replication.
+matches a packed step finds the same optimum -- so packing acts on the learning
+rate purely as a change of batch size. How large a change has no single answer:
+as an exponent against the packing factor it runs 0.39 to 1.70, rising with the
+scale of the run and as the model shrinks, while how well the base model was
+pretrained moves both optima and not the distance between them. No fixed bracket
+survives, so we give a range and a sweep instead. Six predictions were
+registered before the deciding runs existed; five hold, one is reported
+falsified, and four earlier findings are withdrawn after replication.
 
 
 ## 1. Introduction
 
 
-Sequence packing — concatenating several short training examples into one
+Sequence packing -- concatenating several short training examples into one
 fixed-length window, with attention masked at the boundaries so they cannot see
-each other — is standard practice in supervised fine-tuning. Its appeal is
-arithmetic: instruction-tuning corpora are short relative to the context window,
-so a padded batch spends most of its compute on padding. In the setting we
-study, an Alpaca example averages 113 tokens in a 512-token window and only ~58
-are supervised, so roughly 89% of every optimizer step is spent on positions
-that contribute nothing to the loss. Packing recovers most of it: we measure
-4.40x the supervised tokens per second at 1.02x the per-step cost.
+each other -- is standard practice in supervised fine-tuning. Its appeal is
+arithmetic: instruction corpora are short relative to the context window, so a
+padded batch spends most of its compute on padding. In the setting we study an
+Alpaca example averages 113 tokens in a 512-token window and only ~58 are
+supervised, so roughly 89% of every optimizer step is spent on positions that
+contribute nothing to the loss, and packing recovers most of it: 4.40x the
+supervised tokens per second at 1.02x the per-step cost.
 
 Packing is usually presented as an efficiency change that leaves the model
-untouched — with the right masking and position ids, a packed example is
+untouched -- with the right masking and position ids, a packed example is
 mathematically identical to the same example run alone. That identity holds per
-example. It does not hold per optimizer step. A packed step in our setting
-carries 4.5x the supervised tokens of a padded one, which makes it a different
-step in exactly the way a larger batch is a different step, and the question
-this paper asks is whether the learning rate has to move with it.
-
-The practical literature says no. Krell et al. (2021) advise explicitly against
-scaling the learning rate with the batch size under packing, reporting that it
-slowed convergence. Their primary recommendation, which matters for how our
-result should be read, is to *reduce* the computational batch size by the
-packing factor — which holds the step's contents fixed, and on our evidence
-needs no learning-rate change at all (§6). Wang et al. (2025) state that "in
-packing mode, the batch size is no longer directly proportional to the learning
-rate," and hold the learning rate at 1e-5 across both padded and packed runs of
-LLaMA-3-8B and 70B. They do vary it once, in an analysis that moves batch size
-and learning rate together along the linear rule and finds the relationship
-holds under padding and breaks under packing -- which points the same way as our
-result without saying where the optimum goes. Neither paper sweeps the rate at a
-fixed batch to locate it, which is the measurement that decides whether
-inheriting it is safe. To our
-knowledge no published work does, which leaves the advice that matters for the
-common case — pack, keep the batch, inherit the rate — resting on an assertion
-rather than a measurement.
+example. It does not hold per optimizer step: a packed step here carries 4.5x
+the supervised tokens of a padded one, which makes it a different step in
+exactly the way a larger batch is a different step. Whether the learning rate
+has to move with it is the question, and the practical literature says no.
+Krell et al. (2021) advise against scaling the learning rate under packing,
+reporting that it slowed convergence; their primary recommendation is to
+*reduce* the computational batch size by the packing factor, which holds the
+step's contents fixed and on our evidence needs no learning-rate change at all
+(§6). Wang et al. (2025) state that "in packing mode, the batch size is no
+longer directly proportional to the learning rate," and hold the rate at 1e-5
+across padded and packed runs of LLaMA-3-8B and 70B. They do vary it once, in an
+analysis that moves batch size and learning rate together along the linear rule
+and finds the relationship holds under padding and breaks under packing -- which
+points the same way as our result without saying where the optimum goes. Neither
+paper sweeps the rate at a fixed batch to locate it, which is the measurement
+that decides whether inheriting it is safe.
 
 We sweep it. The measurement is complicated by a confound that is easy to miss
 and that we ourselves initially missed: at a fixed data budget, packing changes
 the number of optimizer steps in an epoch by the same factor it changes the
-batch size, in the opposite direction. Any learning-rate shift observed between
-"one packed epoch" and "one padded epoch" is therefore explained equally well by
-a rule that has nothing to do with batch size at all. We resolve it with a 2x2
-factorial that varies batch size and step count independently, and then ask what
-the size of the resulting shift is a function of.
-
-**Contributions.** The sweep itself, and four things it makes measurable. A 2x2
-factorial separates packing's batch-size effect from the step-count effect it
-induces at a fixed data budget, a confound that, left in, supports a conclusion
-the data does not. A control identifies the mechanism (§4.4). A measurement of
-what the standard advice costs (§4.3). And evidence that there is no exponent to
-report: it runs 0.385 to 1.695, rising with the scale of the run and as the
-model shrinks (§4.6, §4.7) while being indifferent to how well the base model
-was pretrained (§4.7.1, §4.7.2). Because the scale reading was reached by
-elimination rather than by test, it was committed to in advance on two corpora
-and at three model sizes.
+batch size, in the opposite direction, so any shift observed between "one packed
+epoch" and "one padded epoch" is explained equally well by a rule with no
+batch-size content. We resolve it with a 2x2 factorial that varies batch size
+and step count independently, and then ask what the size of the resulting shift
+is a function of. Beyond the sweep, we contribute a control that identifies the
+mechanism (§4.4), a measurement of what the standard advice costs (§4.3), and
+evidence that there is no exponent to report: it runs 0.385 to 1.695, rising
+with the scale of the run and as the model shrinks (§4.6, §4.7) while being
+indifferent to how well the base model was pretrained (§4.7.1, §4.7.2). Because
+the scale reading was reached by elimination rather than by test, it was
+committed to in advance on two corpora and at three model sizes.
 
 ## 2. Related work
 
@@ -99,25 +79,25 @@ and at three model sizes.
 **Sequence packing.** Krell et al. (2021) introduce packing without
 cross-contamination for BERT, with the block-diagonal masking that makes a
 packed example equivalent to an unpacked one, and address the hyperparameter
-question directly: reduce the computational batch size by the packing factor and
-otherwise change nothing; where the batch is kept, adjust LAMB's decay
-parameters; and do not scale the learning rate, which slowed convergence for
-them. Their setting is BERT pretraining with LAMB, not AdamW fine-tuning, and
-they report no sweep. Wang et al. (2025) study packing for supervised
-fine-tuning at 8B and 70B, keep the rate at 1e-5 in both arms, and note that
-packing breaks the proportionality between batch size and learning rate. That
-claim is accompanied by a comparison rather than a sweep: their section 5.3
-varies batch size and learning rate together and reports that the linear
-relationship holds for padding and not for packing, which points the same way as
-our result without locating the optimum at a fixed batch.
+question in their §3.3: reduce the computational batch size by the packing
+factor and otherwise change nothing; where the batch is kept, adjust LAMB's
+decay parameters; and do not scale the learning rate, which reduced convergence
+speed in their experiments. Their setting is BERT pretraining with LAMB, not
+AdamW fine-tuning. Wang et al. (2025) study packing for supervised fine-tuning
+at 8B and 70B over corpora from 69K to 1.2M conversations, keep the rate at 1e-5
+in both arms, and report in their §5.3 that the linear relationship between
+batch size and learning rate holds for padding and not for packing --
+attributing this to packing not holding the number of conversations per batch
+constant. That tests the linear rule along its own diagonal and points the same
+way as our result; it does not locate the optimum at a fixed batch.
 
 **Learning rate and batch size.** Smith et al. (2018) show that decaying the
 learning rate and increasing the batch size produce the same learning curves, so
-batch size, learning rate and number of updates trade off against one another
-rather than acting independently -- which is what makes the design in §3.2
-necessary. Shallue et al. (2019), over 35 workloads, find the batch-to-steps
-relationship varies enormously between workloads rather than following one rule,
-and that literature disagreements about batch size are largely explained by how
+the two and the number of updates trade off against one another rather than
+acting independently -- which is what makes the design in §3.2 necessary.
+Shallue et al. (2019), over 35 workloads, find the batch-to-steps relationship
+varies enormously between workloads rather than following one rule, and that
+literature disagreements about batch size are largely explained by how
 metaparameters were tuned at each batch size. For adaptive optimizers the rule
 is contested: a square-root rule for Adam (Malladi et al., 2022), batch-size
 invariance under linear scaling (Wang and Aitchison, 2024), and a non-monotone
@@ -169,32 +149,27 @@ for every cell.
 ### 3.2 The confound, and the design that resolves it
 
 
-Packing multiplies supervised tokens per optimizer step by the packing factor `p`
-(here 4.47x, from 1,888 to 8,444 — the ratio of *supervised tokens*, slightly
-smaller than the 4.53x ratio of windows because packed windows are not perfectly
-full; the token ratio is the one the batch effect is defined against). At a fixed
-budget of one epoch it also divides the number of optimizer steps by
-approximately the same factor (1,600 padded to 350 packed). Two different rules
-therefore predict the same observed shift:
+Packing multiplies supervised tokens per optimizer step by the packing factor
+`p` (here 4.47x, from 1,888 to 8,444 -- the ratio of *supervised tokens*, which
+is what the batch effect is defined against, and slightly smaller than the 4.53x
+ratio of windows). At a fixed budget of one epoch it also divides the number of
+optimizer steps by about the same factor, from 1,600 padded to 350 packed. Two
+rules therefore predict the same observed shift: **batch scaling**, under which
+`lr*` tracks supervised tokens per step and should rise ~4.47x linearly or
+~2.11x as a square root regardless of steps run, and the **schedule integral**,
+under which `lr*` tracks 1/steps so that `max_lr x steps` is conserved
+regardless of batch size. On the two cells historically run they are
+indistinguishable -- both predict roughly 4.5x, and the values this project
+originally measured fit both to within 10%.
 
-- **Batch scaling.** `lr*` is governed by supervised tokens per step, so it
-  should rise ~4.47x (linear) or ~2.11x (square-root), independent of steps run.
-- **Schedule integral.** `lr*` is governed by 1/steps, conserving `max_lr x
-  steps`, independent of batch size.
-
-On the two cells historically run — padded at 1,600 steps, packed at 350 — these
-are indistinguishable. Both predict roughly 4.5x, and the values this project
-originally measured (3.0e-5 padded, ~1.5e-4 packed) fit both to within 10%. They
-come apart off the diagonal, so we run the full factorial: padded and packed, at
-350 and at 1,600 steps. Batch scaling predicts the optimum depends on the row
-only; schedule integral predicts the column only.
-
-Holding the step count fixed while varying batch size means the smaller batch
-sees proportionally less data — the padded 350-step cell is 0.22 of an epoch —
-which is not a defect but the definition of a larger batch. The packed
-1,600-step cell conversely runs 4.50 epochs, where overfitting rather than the
-learning rate may set the minimum; it is excluded from the headline for that
-reason (Appendix B), and we report the full validation curve for every run.
+They come apart off the diagonal, so we run the full factorial: padded and
+packed, at 350 and at 1,600 steps. Batch scaling predicts the optimum depends on
+the row only; the schedule integral predicts the column only. Holding the step
+count fixed while varying batch size means the smaller batch sees proportionally
+less data, which is not a defect but the definition of a larger batch; the
+packed 1,600-step cell conversely runs 4.50 epochs, where overfitting rather
+than the learning rate may set the minimum, and it is excluded from the headline
+for that reason (Appendix B).
 
 ### 3.3 Grid
 
@@ -268,21 +243,17 @@ square-root rule's 1.71x, while Alpaca's 2.73x sits well above its own
 square-root prediction of 2.11x. The failure is larger than the noise — both
 cells were run at three seeds with spreads of 1.08x and 1.03x, about 1.09x
 combined on their ratio, and the prediction misses by 1.28x, roughly 2.9 times
-that spread. Three seeds give a range and not a standard error, so this is a
-claim about magnitude rather than a significance test.
+that spread.
 
 | | Alpaca | Dolly |
 | --- | ---: | ---: |
 | packing factor (supervised tokens/step) | 4.47x | 2.92x |
 | batch effect at matched steps | 2.73x | 1.60x |
 | — as an exponent | **0.670** | **0.440** |
-| step effect, padded | 1.78x | 1.29x |
 | matched data budget (one epoch each) | 4.86x | 2.07x |
 | — as an exponent | **1.055** | **0.681** |
-| worst per-cell seed spread | 1.17x | 1.11x |
 
-We therefore do not fit a shared power law. Two corpora, each with a
-well-bracketed and seed-stable optimum, disagree by more than their noise. The
+We therefore do not fit a shared power law. The
 obvious reading is that the exponent is corpus-dependent; §4.5 tests that against
 five settings and finds it wrong, and §4.6 supplies the reading that replaces it.
 Either way, **the shift is real and large on both corpora, and it is not
@@ -305,10 +276,7 @@ its own optimum wins on both corpora, while the packed run at the inherited
 rate wins on neither: 0.004 nats better than padding on Alpaca, which at this
 scale is a wash, and 0.015 nats *worse* on Dolly. A practitioner who turns
 packing on and changes nothing else buys throughput and collects, at best,
-none of the quality packing had available. The Alpaca case is a wash rather
-than a regression because the sign turns over between two adjacent grid
-points, so the claim we defend is the 0.050 nats retuning recovers and not the
-sign of a difference an order of magnitude smaller. Appendix H gives the full
+none of the quality packing had available. Appendix H gives the full
 comparison, and the caution that the batch effect, the step effect and the
 matched-budget shift are three views of the same four optima -- their agreeing
 is arithmetic, not corroboration.
@@ -334,9 +302,6 @@ for the same gradient, and is the entire reason packing exists.
 | Dolly | 7.98e-5 | 7.00e-5 | **0.88x** | 1.00x | 2.92x |
 
 **The rows rule is dead on both corpora**, rejected by factors of 4.6 and 3.3.
-Running several times the forward-pass rows for the same gradient does not move
-the optimum anywhere near that far, so the optimum is not set by how many
-sequences the forward pass processes. It is set by the examples the step carries.
 **Packing's effect on the learning rate is a batch-size effect, and the identical
 optimum is reachable without packing at all — by padding, at several times the
 compute.**
@@ -352,23 +317,15 @@ each wide cell is a single seed.
 
 
 §4.2 leaves the exponent disagreeing between two corpora, and the obvious
-reading is that it is corpus-dependent. Two corpora cannot support that, because
-Alpaca and Dolly differ in packing ratio and in everything else at once;
-separating them needs a packing ratio that moves while the corpus does not,
-which splitting Alpaca into length terciles gives. **The corpus is not it:** two
-*different* corpora at similar packing ratios -- the long tercile at 2.73x and
-Dolly at 2.92x -- differ by 0.026 against a combined bound of 0.282. **The
-packing ratio is not established as it either:** across the three terciles the
-exponent spans 0.191 against a combined bound of 0.268, or 0.7x its own noise.
-The point estimates fall in a tidy monotone order and that order does not
-survive the seed spread; it *was* a finding until the terciles were replicated.
-Splitting by length also cannot move the ratio alone, because the ratio *is* a
-function of the lengths -- the padded step carries 411, 1,334 and 3,709
-supervised tokens across the three -- which is why the next section changes
-scale instead, holding composition fixed. Appendix I gives the table, the
-per-cell bounds, and the behaviour under two alternative normalizations, under
-one of which the spread reaches 1.01x its noise rather than 0.71x; we report the
-weakest of the three rather than the most convenient.
+reading is that it is corpus-dependent. Alpaca's length terciles separate that
+from the packing ratio, which moves while the corpus does not, and neither
+survives: two *different* corpora at similar ratios differ by 0.026 against a
+combined bound of 0.282, and across the three terciles the exponent spans 0.191
+against a bound of 0.268, or 0.7x its own noise. The tercile trend was a finding
+until the terciles were replicated, and is reported as unsupported. Splitting by
+length also cannot move the ratio alone, because the ratio *is* a function of
+the lengths, which is why §4.6 changes scale instead. Appendix I gives the
+table, the bounds and the behaviour under two alternative normalizations.
 
 ### 4.6 What it is a function of
 
@@ -388,22 +345,16 @@ corpus (50,868), at packing factors of 4.53x, 4.51x and 4.47x. Appendix F
 carries every comparison with its bound.
 
 The exponent rises monotonically across a ninefold span of scale, and both steps
-clear their combined bounds — 2.6x and 2.8x. So does each of the two terms it
-decomposes into: at a fixed data budget the exponent is a batch term plus a step
-term, and both fall at smaller scale with the step term falling faster.
-**The scale effect is not localised in the batch term**, which is what a rule
-about batch size alone would have predicted. Appendix L gives the decomposition.
+clear their combined bounds — 2.6x and 2.8x.
 
 ![What the exponent depends on](../resources/plots/08-lr-scaling-regime.png)
 
 *Left: the exponent against the size of the run, with packing factor, padded
-batch and length distribution held — on both corpora and, from §4.7, at all three
-model sizes. Every series rises, and the smaller the model the higher it sits,
-though adjacent models' bars overlap and only the 124M-to-7M span separates.
-Right: the exponent against the packing factor across Alpaca's three length
-terciles, which hold the size of the run fixed instead. Error bars are the seed
-bound of §4.5. The right-hand panel is why they are drawn: without them its three
-points look like a trend.*
+batch and length distribution held — on both corpora and, from §4.7, at all
+three model sizes. Every series rises, and the smaller the model the higher it
+sits, though only the 124M-to-7M span separates. Right: the exponent against the
+packing factor across Alpaca's three length terciles, which hold the size of the
+run fixed instead; without the error bars its three points look like a trend.*
 
 **It replicates on the second corpus**, and that replication was registered in
 advance and directional: a random third of Dolly should land below the whole
@@ -416,9 +367,7 @@ disagreement goes away -- Alpaca's random third reads 0.670 against Dolly whole'
 and 0.53x of their own noise, while one corpus moved 3x in scale disagrees with
 *itself* by 2.85x its bound. Those two pairs are worth more than the rest of this
 section, for the reason §5 gives: every other scale comparison here is a corpus
-against a nested subset of itself. They are also the two most exposed to how the
-shift is summarised, and the agreement survives two alternative normalizations at
-0.50x and 0.51x of the bound.
+against a nested subset of itself.
 
 **A retraction worth reporting.** Before replication the three Alpaca points sat
 exactly 3x apart in scale with exponent differences of +0.369 and +0.371 — a
@@ -427,8 +376,7 @@ law at the time, on the grounds that residuals two orders of magnitude below the
 seed bounds are coincidence rather than signal. Replication settles it: the
 differences are now **+0.285 and +0.385** and the line is gone. What survives is
 the monotone increase, at roughly 0.3 of exponent per tripling of scale, with no
-functional form behind it. We report this because the tidy version was available
-for several hours and would have been the more quotable result.
+functional form behind it.
 
 ### 4.7 Three model sizes
 
@@ -439,13 +387,7 @@ architecture: 30M (`small`) and 7M (`mini`). With the 124M model that is three
 sizes about 4x apart, spanning 17x. Every hyperparameter that could confound a
 size comparison is held at the 124M run's value and the window is fixed at 512 in
 all three, so the packing factors, per-step token counts and cell step counts
-carry over unchanged: the only thing that differs is the base model. Validation
-perplexities are 23.5, 38.0 and 115.2.
-
-Both smaller runs were sized from a stale note and are trained about twice as
-heavily for their size as the 124M model — 39.4 and 39.5 tokens per parameter
-against 19.9. §4.7.1 measures that axis rather than caveating it, and finds it
-null; the rest of this section is written on that basis.
+carry over unchanged: the only thing that differs is the base model.
 
 Repeating the scale series at each size puts the whole corpus at 1.055 ± 0.128,
 1.300 ± 0.159 and **1.695 ± 0.261** across 124M, 30M and 7M, its random third
@@ -457,8 +399,6 @@ in §4.6 draws all three series together.
 packed epoch of Alpaca wants 4.86x the padded learning rate at 124M, 7.01x at 30M
 and **12.66x** at 7M — the largest shift measured anywhere here, from 1.19e-4 to
 1.51e-3. Retuning is worth 0.050 nats at 124M, 0.110 at 30M and **0.172** at 7M.
-Whatever a practitioner loses by inheriting a rate through a packing change, they
-lose more of it on a smaller model.
 
 **The scale dependence replicates at every model size, and the first
 replication was registered before it ran.** Within each model the whole corpus
@@ -466,33 +406,25 @@ sits above a third of it by more than the combined seed bound: 2.8x at 124M,
 2.9x at 30M, 2.5x at 7M; against a ninth, 4.1x and 5.0x. The 30M case was
 registered while the 30M pretraining run was still going, committing to
 direction plus margin -- that Alpaca's exponent would exceed its third's by
-more than 0.135 -- with the alternative on record that a smaller gap would mean
-§4.6's reading had to be reported as 124M-specific. The measured gap is 0.531.
+more than 0.135. The measured gap is 0.531.
 This is the paper's most repeated result and the one we would defend hardest.
 
 **Model size moves the exponent across the full span, but not between adjacent
 sizes.** Every point estimate is ordered the same way — all six pairs put the
 smaller model higher — and one comparison clears its bound: 1.695 against 1.055,
 a gap of 0.640 against 0.291, or 2.2x across 17x of model size. The adjacent
-steps are 1.2x and 1.3x of their bounds. So the direction is consistent across
-six comparisons and the magnitude is resolved in one of them; three sizes at
-three seeds cannot do better, and we state the claim at the span rather than at
-the step.
+steps are 1.2x and 1.3x of their bounds.
 
 ### 4.7.1 The pretraining budget is not what moves it
 
 
 Both smaller models were trained about twice as heavily for their size as the
-124M model, so we measured that axis rather than caveating it, re-running both
-comparisons from the checkpoint that matches the 124M budget at each size.
-**Halving the pretraining budget does not move the exponent:** the four pairs
-differ by 0.019, 0.002, 0.019 and 0.103 against combined bounds of 0.137, 0.198,
-0.266 and 0.424 -- between 0.0x and 0.2x of their own noise, and the smallest
-differences anywhere in this paper. **It does move both optima, and by the same
-factor:** all eight learning rates rise when the base model is the less-trained
-one, and within each pair they rise together, so the distance between the arms is
-untouched. The scale dependence survives at both checkpoints, at 3.3x and 1.8x of
-its bound. Appendix J gives the eight-row table and the limits.
+124M model, so we measured that axis rather than caveating it. **Halving the
+pretraining budget does not move the exponent:** four pairs differ by 0.019,
+0.002, 0.019 and 0.103 against combined bounds of 0.137, 0.198, 0.266 and 0.424,
+the smallest differences anywhere in this paper. **It does move both optima, and
+by the same factor**, leaving the distance between the arms untouched -- the
+right-hand panel of the figure in §4.7.2 draws it. Appendix J has the table.
 
 ### 4.7.2 Model size, or model quality?
 
@@ -526,13 +458,11 @@ would not.
 ![Base-model quality against the exponent](../resources/plots/09-lr-scaling-quality.png)
 
 *Left: the exponent against the base model's validation perplexity. The 124M
-series spans the whole quality range these three models cover and stays flat,
-while the 7M model sits at the same perplexity as its worst point and more than
-half an exponent above it. Right: the optima themselves, on the same axis. Both
-arms rise together as the base model gets worse -- by three to four times over
-this range -- while the distance between them, the only quantity this paper
-measures, is left where it was. Error bars are the seed bound of §4.5;
-perplexities are read from each model's own pretraining log.*
+series stays flat across the whole quality range these three models cover, while
+the 7M model sits at the same perplexity as its worst point and more than half an
+exponent above it. Right: the optima themselves, which rise together as the base
+model gets worse while the distance between them does not. Perplexities are read
+from each model's own pretraining log.*
 
 **What this does not settle**, all recorded in the registration before the
 runs existed: an early checkpoint of a large model is not a converged small
@@ -583,10 +513,9 @@ the optimum for a downstream pipeline.
 ## 6. What to do about it
 
 
-The result is not that packing is bad. Packed and padded runs are equivalent per
-example by construction, packing buys 4.40x the supervised tokens per second here
-at 1.02x the per-step cost, and at its own learning rate the packed run is the
-best run on both corpora. The result is that the learning rate is not part of what
+The result is not that packing is bad: packed and padded runs are equivalent per
+example by construction, and at its own learning rate the packed run is the best
+run on both corpora. The result is that the learning rate is not part of what
 packing leaves alone.
 
 **Krell et al.'s recipe is the safe one, and §4.4 is why.** Their recommendation
@@ -615,12 +544,8 @@ of the run and the size of the model.
 
 ![Every setting against the bracket that was proposed](../resources/plots/10-lr-scaling-bracket.png)
 
-*Every one of the thirteen settings against the bracket an earlier draft
-proposed. In exponent terms that bracket is 0.5 at the floor and
-log(1.2p)/log(p) at the ceiling -- about 1.12 to 1.17 over the packing factors
-here -- drawn as the grey band. Five settings fall outside it, and not at
-random: the three below the floor are the three smallest-scale settings, and the
-two above the ceiling are the two smaller models on the largest corpus. The
+*The grey band is the proposed bracket, which in exponent terms is 0.5 at the
+floor and log(1.2p)/log(p) -- about 1.12 to 1.17 here -- at the ceiling. The
 dashed verticals are the range this section recommends instead. Error bars are
 the seed bound of §4.5.*
 
@@ -652,24 +577,21 @@ diagonal is consistent with rules that disagree everywhere else.
 
 Standard advice says packing is an efficiency change and the learning rate can
 be inherited through it. It does not survive a sweep: the optimum moves by 1.7x
-to 12.7x across the settings measured here, inheriting gives back most of what
-packing offers, and on several settings a packed run at the inherited rate does
-not beat the padded run it inherited from. What packing is doing is settled as
-far as this evidence goes -- the same batch assembled by padding, at several
-times the forward-pass cost, reaches the same optimum -- which is also why Krell
-et al.'s original recipe, shrinking the batch by the packing factor, needs no
-learning-rate change. It is packing to make the step *bigger* that is exposed.
-
-How much the optimum moves is not settled, and we think it is not settleable in
-the form the question is usually asked. There is no exponent to report: it runs
-0.39 to 1.70, rises with the scale of the run and as the model shrinks, and is
-indifferent to how well the base model was pretrained. A bracket we proposed in
-an earlier draft fails on five of thirteen settings and is retracted here rather
-than quietly dropped. What would move this forward is not more seeds: it is
-model sizes above 124M, corpora drawn independently rather than sliced from two,
-batches near production scale, and a downstream metric beside held-out loss.
-Until then the honest recipe is the sweep in §6: three to six points, spanning
-`p^0.4` to `p^1.7`, and no inherited rate.
+to 12.7x across the settings measured here, and on several of them a packed run
+at the inherited rate does not beat the padded run it inherited from. What
+packing is doing is settled as far as this evidence goes -- the same batch
+assembled by padding, at several times the forward-pass cost, reaches the same
+optimum -- which is also why Krell et al.'s original recipe, shrinking the batch
+by the packing factor, needs no learning-rate change. It is packing to make the
+step *bigger* that is exposed. How much the optimum moves is not settled, and we
+think it is not settleable in the form the question is usually asked: the
+exponent runs 0.39 to 1.70, rises with the scale of the run and as the model
+shrinks, and is indifferent to how well the base model was pretrained. A bracket
+we proposed in an earlier draft fails on five of thirteen settings and is
+retracted here rather than quietly dropped. What would move this forward is not
+more seeds but model sizes above 124M, corpora drawn independently, batches near
+production scale, and a downstream metric beside held-out loss. Until then, the
+sweep in §6.
 
 ## References
 

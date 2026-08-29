@@ -817,7 +817,9 @@ def lr_scaling_bracket() -> Path:
         })
     items.sort(key=lambda d: d["exponent"])
 
-    fig, ax = plt.subplots(figsize=(9.4, 5.6))
+    # Wide and short on purpose: at \linewidth in a 5.5in NeurIPS column a
+    # taller aspect costs two-thirds of a page, and thirteen rows do not need it.
+    fig, ax = plt.subplots(figsize=(10.4, 4.9))
     y = list(range(len(items)))
 
     for i, d in enumerate(items):
