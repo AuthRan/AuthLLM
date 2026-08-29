@@ -119,3 +119,27 @@ python scripts/measure_noise_scale.py --model configs/model/medium.yaml \
 for `alpaca`, `alpaca_third`, `alpaca_ninth` at 124M, then the two smaller
 models, with the results written to `results/noise-scale.md`. The validity check
 and P1 and P2 are read off that table. No discretion.
+
+## Addendum, written the same day and before the scoring run
+
+`scripts/measure_noise_scale.py` had never been executed, so before depending on
+it I smoke-tested it on a pair that is **not** in the set above: the 7M model on
+Dolly, `--sizes 1 2 4 --repeats 2`, on CPU. It ran and printed a number.
+
+Recording this because I have now seen an output of the estimator, and a
+registration that hides that is worth less than one that admits it:
+
+* the smoke test returned `B_simple = 2,137` supervised tokens, well **below**
+  the 8,444 that P1 predicts the real settings will exceed;
+* it is a two-repeat estimate, and its own `mean tokens` column ran 97.0, 47.5,
+  268.5 across sizes 1, 2 and 4 — not monotone in the number of rows, which it
+  must be in expectation. That is sampling noise, not a measurement;
+* its R^2 of 0.9999 is not reassuring either: three points almost always fit a
+  line.
+
+**The predictions above are not revised.** P1 stands as written. If it fails,
+this addendum is the record that I had seen a hint it might and did not quietly
+move the goalposts. What the smoke test does change is the method: the scoring
+run uses more repeats than the default and reports the `mean tokens` column, so
+that a non-monotone one is visible as the failure it is rather than being
+averaged into a plausible-looking ratio.
