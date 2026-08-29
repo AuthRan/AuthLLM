@@ -210,18 +210,63 @@ Foundation Models)**, both 29 August. LIGHT in particular wanted precisely this
 paper's finding — that the cost of inheriting the rate grows as the model
 shrinks. That is the price of not checking dates for three days.
 
-### Length — now a decided problem, not a deferred one
+### Length — measured 2026-08-30, and four times worse than this file claimed
 
-~13,900 words, 29 pages compiled. Pre-to-Post's short track is 4–5 pages **with
-references and appendices excluded**, which changes the shape of the cut
-entirely: the appendices are free, so the work is to get §1–§7 down to five
-pages rather than to delete material. The cut named earlier still holds and is
-now cheap — §4.5, the estimator-robustness material and §4.7.1 move to
-appendices rather than being dropped, and §4.7's six bolded claims compress to
-the two that clear their bounds. Nothing needs to leave the paper.
+The entry that stood here called the cut "cheap" and said "nothing needs to
+leave the paper". **Both were wrong, and not by a little.** They were written
+without compiling and counting. Now counted, from the 29-page PDF:
 
-This is the one substantial piece of work between here and a submission, and it
-wants roughly a day. The arXiv version keeps its full length; arXiv has no limit.
+**§1–§7 is 21 pages.** References are page 22, appendices 23–29. The limits,
+re-checked against the call on 2026-08-30 (deadline confirmed 4 September
+11:59pm AoE, notification 29 September, non-archival, references and appendices
+excluded from both tracks):
+
+| track | limit | cut needed from 21 |
+| --- | --- | ---: |
+| short | 4–5 pages | **−16** |
+| long | 9 pages (NeurIPS 2026 main-track limit, confirmed) | **−12** |
+
+Measured cost of each section, so tomorrow's cut is arithmetic:
+
+| section | pages | | section | pages |
+| --- | ---: | --- | --- | ---: |
+| §1 Introduction | 1.70 | | §4.4 batch or packing | 1.64 |
+| §2 Related work | 1.14 | | §4.5 not a function of | 0.91 |
+| §3.1 Setup | 0.95 | | §4.6 + §4.7 | 3.79 |
+| §3.2 Confound and design | 0.59 | | §4.7.1 pretraining budget | 0.91 |
+| §3.3 Grid | 0.58 | | §4.7.2 size or quality | 0.94 |
+| §3.4 Wide-batch control | 0.29 | | §5 Threats | 1.88 |
+| §4.1 Full factorial | 0.39 | | §6 What to do | 1.77 |
+| §4.2 Second corpus | 1.43 | | §7 Conclusion | 0.56 |
+| §4.3 What does replicate | 0.82 | | | |
+
+The cut this file used to name — §4.5, the estimator-robustness material and
+§4.7.1 to appendices — is **2.7 pages against a 12-page gap.** It is not the
+job. The job is to rewrite §1–§7 as a 9-page paper that cites the arXiv version
+for everything else, and that is a day of writing, not an afternoon of moving
+blocks. §4.6+§4.7 at 3.79 pages and §5+§6 at 3.65 are where the pages actually
+are, and neither was on the old list.
+
+**Recommendation: the long track.** Nine pages can carry the factorial, the
+batch-size control, the scale result, the model-size result and the retractions.
+Four to five cannot; at that size this becomes an extended abstract and the
+retractions — which are the paper's most distinctive content — are the first
+thing to go. The author should confirm, because it is a positioning decision
+and not a mechanical one.
+
+The arXiv version keeps its full length; arXiv has no limit.
+
+### Anonymity — an open question that changes the title page
+
+NeurIPS 2026's main track is double-blind and its handbook forbids identifying
+information. **The workshop's own call does not say** whether it inherits that,
+and OpenReview renders through JavaScript so the group page could not be read
+from here. This has to be settled before submitting, but it is
+cheap either way: `paper/paper.md` was grepped on 2026-08-30 for the repository,
+the published web version, the author's name and the address, and **carries none
+of them**. All four live only in `build_tex.py`'s `AUTHOR`/`AFFILIATION`/
+`CONTACT`, so a blind build is a flag that suppresses one title block, not a
+pass over the prose. The arXiv build keeps all of it either way.
 
 ### Still open
 
