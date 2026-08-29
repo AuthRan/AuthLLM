@@ -47,6 +47,13 @@ AUTHOR = "Ashutosh Ranjan"
 AFFILIATION = "Independent Researcher"
 CONTACT = "authran.off@gmail.com"
 
+# Kept as one named string so `--anonymous` removes the whole block rather than
+# matching a template fragment that a later edit could silently reword.
+AUTHOR_BLOCK = (
+    r"\author{@AUTHOR@ \\ \small @AFFILIATION@ \\" "\n"
+    r"        \small \href{mailto:@CONTACT@}{\texttt{@CONTACT@}}}"
+)
+
 # Private-use code points, so a placeholder cannot collide with anything in the
 # text and is not touched by the escaper.
 CODE, BOLD, ITAL = "\ue000", "\ue001", "\ue002"
@@ -237,8 +244,7 @@ PREAMBLE = r"""\documentclass[11pt]{article}
 \sloppy
 
 \title{@TITLE@}
-\author{@AUTHOR@ \\ \small @AFFILIATION@ \\
-        \small \href{mailto:@CONTACT@}{\texttt{@CONTACT@}}}
+@AUTHOR_BLOCK@
 \date{}
 
 \begin{document}
@@ -254,6 +260,13 @@ def main() -> None:
     # whenever the paper had moved ahead of its last build.
     parser.add_argument("--outdir", type=Path, default=OUTDIR,
                         help="Where to write main.tex and figures/")
+    # NeurIPS 2026's main track is double-blind and forbids identifying
+    # information; the Pre-to-Post call does not say whether it inherits that.
+    # The prose carries nothing identifying -- no repository, no link to the
+    # published version, no name -- so blinding is exactly this one title
+    # block, and is a flag rather than a pass over the paper.
+    parser.add_argument("--anonymous", action="store_true",
+                        help="Omit the author block, for a double-blind venue")
     args = parser.parse_args()
     outdir = args.outdir
     out_path = outdir / "main.tex"
@@ -375,7 +388,11 @@ def main() -> None:
     if state.pop("in_references", False):
         out.append("\\endgroup")
 
+    # \author{} rather than a dropped line: \maketitle without an author warns,
+    # and an empty group is what the NeurIPS template's anonymous mode leaves.
+    block = "\\author{}" if args.anonymous else AUTHOR_BLOCK
     preamble = (PREAMBLE
+                .replace("@AUTHOR_BLOCK@", block)
                 .replace("@TITLE@", escape(title))
                 .replace("@AUTHOR@", escape(AUTHOR))
                 .replace("@AFFILIATION@", escape(AFFILIATION))
