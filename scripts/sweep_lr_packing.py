@@ -45,11 +45,13 @@ is already in it.
 from __future__ import annotations
 
 import argparse
+import atexit
 import csv
 import os
 import queue
 import re
 import shutil
+import signal
 import subprocess
 import threading
 import time
@@ -331,6 +333,52 @@ def completed_runs() -> set[tuple[str, float, int]]:
         }
 
 
+# Every finetune subprocess this driver has started and has not yet reaped.
+# The OOM postmortem left one thing open: worker threads are daemons, so when
+# the driver goes away -- Ctrl-C, SIGTERM, or the circuit breaker tripping --
+# its `finetune.py` children keep training with nobody left to record them,
+# each holding ~8.6 GB of an 11.26 GB card. That is how two orphans kept the
+# cards blocked after the sweep had already given up on them. `harvest`
+# recovers such a run's result from its log afterwards; this stops the run
+# from outliving the driver in the first place.
+_children: set[subprocess.Popen] = set()
+_children_lock = threading.Lock()
+
+# Set when a signal arrives, so workers stop pulling new work instead of
+# starting a run the driver is about to abandon.
+_stopping = threading.Event()
+
+
+def _reap_children(grace: float = 10.0) -> None:
+    """Terminate every surviving child, and SIGKILL whatever ignores that."""
+    with _children_lock:
+        live = [child for child in _children if child.poll() is None]
+    if not live:
+        return
+    print(f"reaping {len(live)} training subprocess(es) still on the cards", flush=True)
+    for child in live:
+        child.terminate()
+    deadline = time.monotonic() + grace
+    for child in live:
+        try:
+            child.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            # Reaped after the kill, not just signalled: an unwaited child is a
+            # zombie holding its card, which is the condition being fixed.
+            child.kill()
+            child.wait()
+
+
+def _on_signal(signum: int, _frame: object) -> None:
+    """Raise rather than reap inline.
+
+    SystemExit unwinds main, the atexit hook does the reaping on the way out,
+    and the exit status still records which signal arrived.
+    """
+    _stopping.set()
+    raise SystemExit(128 + signum)
+
+
 RUN_NAME = re.compile(
     r"^(?:(?P<dataset>alpaca|dolly)_)?"
     r"(?P<pack>packed|unpacked)_(?P<steps>\d+)_lr(?P<lr>[^_]+)_seed(?P<seed>\d+)$"
@@ -448,17 +496,24 @@ def train_one(dataset: Dataset, cell: Cell, lr: float, seed: int, gpu: int,
     print(f"[gpu {gpu}] start {name}", flush=True)
     started = time.monotonic()
     with stdout_path.open("w") as sink:
-        result = subprocess.run(
+        child = subprocess.Popen(
             command,
             cwd=REPO,
             stdout=sink,
             stderr=subprocess.STDOUT,
             env={**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)},
         )
+        with _children_lock:
+            _children.add(child)
+        try:
+            returncode = child.wait()
+        finally:
+            with _children_lock:
+                _children.discard(child)
     elapsed = time.monotonic() - started
 
-    if result.returncode != 0:
-        print(f"[gpu {gpu}] FAILED {name} (exit {result.returncode}) -- see {stdout_path}", flush=True)
+    if returncode != 0:
+        print(f"[gpu {gpu}] FAILED {name} (exit {returncode}) -- see {stdout_path}", flush=True)
         return False
 
     curve = read_val_curve(log_path)
@@ -607,7 +662,7 @@ def main() -> None:
 
     def worker(gpu: int) -> None:
         while True:
-            if state["tripped"]:
+            if state["tripped"] or _stopping.is_set():
                 return
             try:
                 cell, lr, seed = work.get_nowait()
@@ -633,6 +688,12 @@ def main() -> None:
                             )
             finally:
                 work.task_done()
+
+    # Installed before the first child exists, so there is no window in which
+    # a run is on a card with no reaper behind it.
+    atexit.register(_reap_children)
+    for received in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(received, _on_signal)
 
     threads = [threading.Thread(target=worker, args=(gpu,), daemon=True) for gpu in args.gpus]
     started = time.monotonic()
