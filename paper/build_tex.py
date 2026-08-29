@@ -252,6 +252,43 @@ PREAMBLE = r"""\documentclass[11pt]{article}
 """
 
 
+# The submission preamble. Two things differ from the arXiv one and both matter:
+# the NeurIPS style sets its own geometry (textwidth 5.5in, textheight 9in), so
+# loading `geometry` here would silently change the page budget the limit is
+# defined in; and the style anonymises the title block itself under
+# `dblblindworkshop`, printing "Anonymous Author(s)" whatever \author says.
+NEURIPS_PREAMBLE = r"""\documentclass{article}
+
+\usepackage[@TRACK@]{neurips_2026}
+\workshoptitle{@WORKSHOP@}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{caption}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+
+\captionsetup{font=small}
+\setlength{\emergencystretch}{3em}
+\sloppy
+
+\title{@TITLE@}
+@AUTHOR_BLOCK@
+
+\begin{document}
+\maketitle
+"""
+
+# Named in the footer of the first page by the style.
+WORKSHOP = "Transitioning from Pre-Training to Post-Training"
+
+STYLE_DIR = ROOT / "paper" / "styles"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -274,6 +311,12 @@ def main() -> None:
     # other.
     parser.add_argument("--source", type=Path, default=SOURCE,
                         help="Markdown to render (default: paper/paper.md)")
+    # The page limit is defined in the NeurIPS style, not in a word count, so a
+    # length measured against the arXiv preamble is measured against the wrong
+    # ruler. This builds the submission in the style it will be judged in.
+    parser.add_argument("--neurips", action="store_true",
+                        help="Build in the vendored NeurIPS 2026 style, as a "
+                             "workshop submission (see paper/styles/README.md)")
     args = parser.parse_args()
     outdir = args.outdir
     out_path = outdir / "main.tex"
@@ -303,7 +346,11 @@ def main() -> None:
                 block.append(lines[i])
                 i += 1
             i += 1
-            out += ["", "\\begin{verbatim}", *block, "\\end{verbatim}", ""]
+            # Wrapped in \small: verbatim does not wrap, and the longest
+            # command lines in Appendix D overrun the NeurIPS text width,
+            # which is an inch narrower than the arXiv build's.
+            out += ["", "\\begingroup\\small", "\\begin{verbatim}", *block,
+                    "\\end{verbatim}", "\\endgroup", ""]
             continue
 
         if line.startswith("|"):
@@ -397,8 +444,18 @@ def main() -> None:
 
     # \author{} rather than a dropped line: \maketitle without an author warns,
     # and an empty group is what the NeurIPS template's anonymous mode leaves.
-    block = "\\author{}" if args.anonymous else AUTHOR_BLOCK
-    preamble = (PREAMBLE
+    # Under --neurips the style anonymises the block itself, so the real one is
+    # passed through and the track option decides whether it is printed.
+    if args.neurips:
+        block = AUTHOR_BLOCK
+        track = "dblblindworkshop" if args.anonymous else "sglblindworkshop"
+        template = (NEURIPS_PREAMBLE
+                    .replace("@TRACK@", track)
+                    .replace("@WORKSHOP@", escape(WORKSHOP)))
+    else:
+        block = "\\author{}" if args.anonymous else AUTHOR_BLOCK
+        template = PREAMBLE
+    preamble = (template
                 .replace("@AUTHOR_BLOCK@", block)
                 .replace("@TITLE@", escape(title))
                 .replace("@AUTHOR@", escape(AUTHOR))
@@ -411,6 +468,10 @@ def main() -> None:
     outdir.mkdir(parents=True, exist_ok=True)
     figdir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(text)
+    if args.neurips:
+        # Vendored beside main.tex rather than assumed present: the submission
+        # has to build from the files that are uploaded.
+        shutil.copy2(STYLE_DIR / "neurips_2026.sty", outdir / "neurips_2026.sty")
 
     # arXiv's submission form wants the abstract as plain text, separately from
     # the source. Taken from the same markdown so the two cannot disagree.

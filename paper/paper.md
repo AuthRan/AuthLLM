@@ -1006,6 +1006,17 @@ half: a practitioner reading an optimum off this paper would be wrong by 4x if
 their base model were as undertrained as this one, while reading the *shift* off
 it would not.
 
+![Base-model quality against the exponent](../resources/plots/09-lr-scaling-quality.png)
+
+*Left: the exponent against the base model's validation perplexity. The 124M
+series spans the whole quality range these three models cover and stays flat,
+while the 7M model sits at the same perplexity as its worst point and more than
+half an exponent above it. Right: the optima themselves, on the same axis. Both
+arms rise together as the base model gets worse -- by three to four times over
+this range -- while the distance between them, the only quantity this paper
+measures, is left where it was. Error bars are the seed bound of §4.5;
+perplexities are read from each model's own pretraining log.*
+
 **What this does not settle**, all of it recorded in the registration before the
 runs existed. An early checkpoint of a large model is not a converged small one:
 at step 500 of 20,000 the weights are 2.5% of the way through a cosine schedule,
@@ -1199,6 +1210,17 @@ where it is 1.300 and 1.695, and the second misses by a factor of 2.4. A bracket
 fixed in `p` cannot work when the exponent itself moves with the scale of the
 run and with the size of the model, and reporting one would have been the most
 quotable and least durable thing in this paper.
+
+![Every setting against the bracket that was proposed](../resources/plots/10-lr-scaling-bracket.png)
+
+*Every one of the thirteen settings against the bracket an earlier draft
+proposed. In exponent terms that bracket is 0.5 at the floor and
+log(1.2p)/log(p) at the ceiling -- about 1.12 to 1.17 over the packing factors
+here -- drawn as the grey band. Five settings fall outside it, and not at
+random: the three below the floor are the three smallest-scale settings, and the
+two above the ceiling are the two smaller models on the largest corpus. The
+dashed verticals are the range this section recommends instead. Error bars are
+the seed bound of §4.5.*
 
 What the measurements support instead is a range. Across all thirteen settings
 the exponent runs from **0.385 to 1.695**, so the packed optimum sits somewhere

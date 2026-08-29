@@ -517,6 +517,12 @@ base model & perplexity & lr* padded & lr* packed & shift & exponent \\
 
 \textbf{It does move both optima, by three to four times.} The padded optimum rises 4.00x against the fully pretrained model and the packed one 3.20x. That is \S{}4.7.1's finding over a much longer range: a less well trained base model wants a larger fine-tuning rate in both arms, while the \emph{distance} between the arms --- the only quantity this paper measures --- is left where it was. The registration expected this and recorded in advance that it discriminates nothing between the two hypotheses, which it does not. It is reported because it is the practical half: a practitioner reading an optimum off this paper would be wrong by 4x if their base model were as undertrained as this one, while reading the \emph{shift} off it would not.
 
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/09-lr-scaling-quality.png}
+\caption{Left: the exponent against the base model's validation perplexity. The 124M series spans the whole quality range these three models cover and stays flat, while the 7M model sits at the same perplexity as its worst point and more than half an exponent above it. Right: the optima themselves, on the same axis. Both arms rise together as the base model gets worse -- by three to four times over this range -- while the distance between them, the only quantity this paper measures, is left where it was. Error bars are the seed bound of \S{}4.5; perplexities are read from each model's own pretraining log.}
+\end{figure}
+
 \textbf{What this does not settle}, all of it recorded in the registration before the runs existed. An early checkpoint of a large model is not a converged small one: at step 500 of 20,000 the weights are 2.5\% of the way through a cosine schedule, so matching on perplexity matches one number and not the state, and this is the main reason to read the result as evidence about the confound rather than as its dissolution. Perplexity is also one axis of quality among several, and the two models are matched on held-out FineWeb-Edu loss rather than on any downstream capability. And it is one corpus at one packing factor: the middle point of the series, \texttt{step\_\allowbreak{}2500} at perplexity 39.4 against the 30M model's 38.0, is unswept, so the quality axis has two points rather than three.
 
 \section{Threats to validity}
@@ -575,6 +581,12 @@ Alpaca whole, 7M & 136\% \textbf{above} the ceiling \\
 \end{center}
 
 The three misses below the floor are the three smallest-scale settings, where the exponent is 0.385, 0.456 and 0.456 --- under the 0.5 that \texttt{sqrt(p)} assumes. The two above the ceiling are the two smaller models on the largest corpus, where it is 1.300 and 1.695, and the second misses by a factor of 2.4. A bracket fixed in \texttt{p} cannot work when the exponent itself moves with the scale of the run and with the size of the model, and reporting one would have been the most quotable and least durable thing in this paper.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/10-lr-scaling-bracket.png}
+\caption{Every one of the thirteen settings against the bracket an earlier draft proposed. In exponent terms that bracket is 0.5 at the floor and log(1.2p)/log(p) at the ceiling -- about 1.12 to 1.17 over the packing factors here -- drawn as the grey band. Five settings fall outside it, and not at random: the three below the floor are the three smallest-scale settings, and the two above the ceiling are the two smaller models on the largest corpus. The dashed verticals are the range this section recommends instead. Error bars are the seed bound of \S{}4.5.}
+\end{figure}
 
 What the measurements support instead is a range. Across all thirteen settings the exponent runs from \textbf{0.385 to 1.695}, so the packed optimum sits somewhere in
 
@@ -732,6 +744,7 @@ ledger & base model & sections \\
 
 They are separate files rather than one file with a model column because they were not always: \texttt{run\_\allowbreak{}id} is (dataset, cell, learning rate, seed) and says nothing about the base model, so the first 30M sweep appended its curves to the 124M runs' log files and its \texttt{best\_\allowbreak{}val\_\allowbreak{}loss} picked up 124M minima. Logs, configs and checkpoints are now namespaced per ledger, and that ledger was discarded and re-run.
 
+\begingroup\small
 \begin{verbatim}
 # the two factorials (28 runs each, seed 1337)
 python scripts/sweep_lr_packing.py --gpus 0 1
@@ -778,6 +791,7 @@ python scripts/analyze_optimum_sharpness.py
 # the figures in 4.1, 4.4 and 4.6
 python scripts/plot_results.py --only lr-scaling
 \end{verbatim}
+\endgroup
 
 \texttt{scripts/\allowbreak{}analyze\_\allowbreak{}metric\_\allowbreak{}bias.py} reports the endpoint-versus-best-checkpoint comparison, and \texttt{scripts/\allowbreak{}analyze\_\allowbreak{}packing\_\allowbreak{}series.py} the packing-ratio series.
 

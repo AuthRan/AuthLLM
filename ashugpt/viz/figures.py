@@ -615,6 +615,252 @@ def lr_scaling_regime() -> Path:
     return save(fig, OUT / "08-lr-scaling-regime.png")
 
 
+
+# Which pretraining checkpoint each row of results/exponents.csv was fine-tuned
+# from, as (metrics log, step). The perplexities themselves are NOT written
+# here: they are read out of the log at draw time, because they are recorded and
+# a recorded number that is typed by hand is a number that drifts. Only the
+# checkpoint identity is structural enough to state.
+BASE_CHECKPOINT = {
+    "124M": ("medium_metrics.csv", None),      # None = the final validated step
+    "124M@ppl39": ("medium_metrics.csv", 2500),
+    "124M@ppl107": ("medium_metrics.csv", 500),
+    "30M": ("small.csv", None),
+    "30M@19.7": ("small.csv", 9000),
+    "7M": ("mini.csv", None),
+    "7M@18.0": ("mini.csv", 2000),
+}
+
+# Which model each row belongs to, and how to draw that family.
+FAMILY = {
+    "124M": ("124M", COLORS["pretrain"], "o"),
+    "124M@ppl39": ("124M", COLORS["pretrain"], "o"),
+    "124M@ppl107": ("124M", COLORS["pretrain"], "o"),
+    "30M": ("30M", COLORS["stage2"], "s"),
+    "30M@19.7": ("30M", COLORS["stage2"], "s"),
+    "7M": ("7M", COLORS["stage1"], "D"),
+    "7M@18.0": ("7M", COLORS["stage1"], "D"),
+}
+
+
+def _base_perplexity(log_name: str, step: int | None) -> float:
+    """Validation perplexity of one pretraining checkpoint, from its own log."""
+    import csv
+
+    rows = [r for r in csv.DictReader((LOGS / log_name).open())
+            if r.get("val_perplexity")]
+    if step is None:
+        return float(rows[-1]["val_perplexity"])
+    for r in rows:
+        if int(float(r["step"])) == step:
+            return float(r["val_perplexity"])
+    raise SystemExit(f"{log_name} has no validated step {step}")
+
+
+def lr_scaling_quality() -> Path:
+    """Base-model quality moves where the optimum is, not how far packing moves it.
+
+    Left: the exponent against the base model's validation perplexity. The 124M
+    series spans a 4.6x range of perplexity -- the converged model, an early
+    checkpoint at the 30M model's quality, and one at the 7M model's -- and stays
+    flat. The 7M model sits at the same perplexity as the last of those and more
+    than half an exponent above it, which is the whole of sections 4.7.1 and
+    4.7.2 in one picture: at matched quality the exponent follows the parameter
+    count.
+
+    Right: the optima themselves, on the same axis. Both arms rise together as
+    the base model gets worse, by three to four times over this range, while the
+    vertical distance between them -- the only quantity the paper measures --
+    is left where it was. A practitioner can transfer the distance and not the
+    level.
+
+    Exponents and optima come from results/exponents.csv and perplexities from
+    the pretraining logs, so nothing on either axis is typed by hand.
+    """
+    import csv
+
+    path = OUT.parent.parent / "results" / "exponents.csv"
+    if not path.exists():
+        raise SystemExit("run scripts/export_exponents.py first")
+    rows = [r for r in csv.DictReader(path.open())
+            if r["dataset"] == "alpaca" and r["model"] in BASE_CHECKPOINT]
+    if not rows:
+        raise SystemExit("no whole-Alpaca rows in results/exponents.csv")
+
+    points = []
+    for r in rows:
+        log_name, step = BASE_CHECKPOINT[r["model"]]
+        family, color, marker = FAMILY[r["model"]]
+        points.append({
+            "family": family, "color": color, "marker": marker,
+            "ppl": _base_perplexity(log_name, step),
+            "exponent": float(r["exponent"]), "bound": float(r["bound"]),
+            "padded": float(r["lr_padded"]), "packed": float(r["lr_packed"]),
+        })
+
+    fig, (left, right) = plt.subplots(1, 2, figsize=(11.6, 4.4))
+
+    for family in ("124M", "30M", "7M"):
+        pts = sorted((p for p in points if p["family"] == family),
+                     key=lambda p: p["ppl"])
+        if not pts:
+            continue
+        color, marker = pts[0]["color"], pts[0]["marker"]
+        left.errorbar([p["ppl"] for p in pts], [p["exponent"] for p in pts],
+                      yerr=[p["bound"] for p in pts], color=color, marker=marker,
+                      markersize=6, linewidth=2, capsize=3, elinewidth=1.2,
+                      label=f"{family} base model")
+        for arm, style in (("padded", "--"), ("packed", "-")):
+            right.plot([p["ppl"] for p in pts], [p[arm] for p in pts],
+                       color=color, marker=marker, markersize=5, linewidth=1.8,
+                       linestyle=style, label=f"{family}, {arm}")
+
+    # A readable ladder rather than one tick per point: the measured
+    # perplexities include 107, 115 and 142, whose labels collide at this width.
+    ticks = [20, 30, 40, 60, 80, 100, 150]
+    for ax in (left, right):
+        ax.set_xscale("log")
+        ax.set_xlabel("base-model validation perplexity")
+        from matplotlib.ticker import FixedFormatter, FixedLocator
+        ax.xaxis.set_major_locator(FixedLocator(ticks))
+        ax.xaxis.set_major_formatter(FixedFormatter([str(t) for t in ticks]))
+        ax.xaxis.set_minor_locator(FixedLocator([]))
+
+    left.set_ylabel("exponent against the packing factor")
+    left.set_title("Quality does not move the exponent")
+    left.legend(loc="upper left", fontsize=8.5)
+    for value, name in ((0.5, "square-root"), (1.0, "linear")):
+        left.axhline(value, color=MUTED, linestyle=":", linewidth=1, alpha=0.6)
+        left.text(0.015, value, name, transform=left.get_yaxis_transform(),
+                  ha="left", va="bottom", fontsize=8, color=MUTED)
+
+    # The comparison the figure exists for: two base models of the same quality
+    # and 17x apart in parameters, which is the control section 4.7.2 registered.
+    worst_124 = max((p for p in points if p["family"] == "124M"), key=lambda p: p["ppl"])
+    small_7m = min((p for p in points if p["family"] == "7M"), key=lambda p: p["ppl"])
+    left.annotate(
+        "", xy=(small_7m["ppl"], small_7m["exponent"]),
+        xytext=(worst_124["ppl"], worst_124["exponent"]),
+        arrowprops={"arrowstyle": "<->", "color": COLORS["dpo"], "linewidth": 1.4})
+    left.text(worst_124["ppl"] * 0.93,
+              (small_7m["exponent"] + worst_124["exponent"]) / 2,
+              "same perplexity,\n17x the parameters", fontsize=8.5,
+              color=COLORS["dpo"], linespacing=1.4, va="center", ha="right")
+
+    right.set_yscale("log")
+    right.set_ylabel("optimal peak learning rate")
+    right.set_title("It moves both optima, together")
+    right.legend(loc="upper left", fontsize=7.5, ncol=3)
+    right.text(0.97, 0.04,
+               "both arms rise together;\nthe gap between them is what this paper measures",
+               transform=right.transAxes, fontsize=8.5, color=MUTED,
+               linespacing=1.5, ha="right")
+
+    return save(fig, OUT / "09-lr-scaling-quality.png")
+
+
+
+# How each corpus reads on an axis label. The exponent export writes the slug.
+CORPUS_LABEL = {
+    "alpaca": "Alpaca whole", "alpaca_third": "Alpaca third",
+    "alpaca_ninth": "Alpaca ninth", "alpaca_short": "Alpaca short tercile",
+    "alpaca_mid": "Alpaca middle tercile", "alpaca_long": "Alpaca long tercile",
+    "dolly": "Dolly whole", "dolly_third": "Dolly third",
+}
+
+# The three base models that are settings rather than controls. The `@` rows of
+# results/exponents.csv hold a size fixed and vary the pretraining budget or the
+# base model's quality, so they are the same setting measured again and would
+# double-count in a figure about how many settings a rule covers.
+SETTING_MODELS = ("124M", "30M", "7M")
+
+
+def lr_scaling_bracket() -> Path:
+    """Every setting against the bracket an earlier draft of this paper proposed.
+
+    That bracket was `[lr_pad * sqrt(p), lr_pad * 1.2p]`, which in exponent terms
+    is 0.5 at the floor and log(1.2p)/log(p) at the ceiling -- about 1.12 to 1.17
+    over the packing factors here. It held on the five settings it was drawn from
+    and fails on five of the thirteen now measured, and the failures are not
+    scattered: the three below the floor are the three smallest-scale settings,
+    where the exponent is under the 0.5 that sqrt(p) assumes, and the two above
+    the ceiling are the two smaller models on the largest corpus.
+
+    Drawn because the table it replaces reports the five failures without showing
+    that a fixed bracket cannot work: the measured exponents span 0.385 to 1.695,
+    and no interval of the shape `[sqrt(p), c*p]` covers that at any single c.
+    The dashed verticals are the range section 6 recommends instead.
+
+    Reads results/exponents.csv, so it cannot disagree with the paper about what
+    an optimum is.
+    """
+    import csv
+    import math
+
+    path = OUT.parent.parent / "results" / "exponents.csv"
+    if not path.exists():
+        raise SystemExit("run scripts/export_exponents.py first")
+    rows = [r for r in csv.DictReader(path.open()) if r["model"] in SETTING_MODELS]
+    if not rows:
+        raise SystemExit("no setting rows in results/exponents.csv")
+
+    items = []
+    for r in rows:
+        p_factor = float(r["packing_factor"])
+        ceiling = math.log(1.2 * p_factor) / math.log(p_factor)
+        exponent, bound = float(r["exponent"]), float(r["bound"])
+        items.append({
+            "label": f"{r['model']}  {CORPUS_LABEL.get(r['dataset'], r['dataset'])}",
+            "exponent": exponent, "bound": bound,
+            "floor": 0.5, "ceiling": ceiling,
+            "misses": exponent < 0.5 or exponent > ceiling,
+        })
+    items.sort(key=lambda d: d["exponent"])
+
+    fig, ax = plt.subplots(figsize=(9.4, 5.6))
+    y = list(range(len(items)))
+
+    for i, d in enumerate(items):
+        ax.plot([d["floor"], d["ceiling"]], [i, i], color=MUTED, linewidth=7,
+                alpha=0.22, solid_capstyle="butt", zorder=1)
+    # One legend entry for the band, drawn off the visible rows.
+    ax.plot([], [], color=MUTED, linewidth=7, alpha=0.22,
+            label=r"the bracket that was proposed: $[\sqrt{p},\ 1.2p]$")
+
+    for i, d in enumerate(items):
+        color = COLORS["dpo"] if d["misses"] else COLORS["pretrain"]
+        ax.errorbar(d["exponent"], i, xerr=d["bound"], color=color, marker="o",
+                    markersize=6, capsize=3, elinewidth=1.2, linestyle="none",
+                    zorder=3)
+    ax.plot([], [], color=COLORS["pretrain"], marker="o", linestyle="none",
+            label="measured, inside the bracket")
+    ax.plot([], [], color=COLORS["dpo"], marker="o", linestyle="none",
+            label="measured, outside it")
+
+    for value in (0.4, 1.7):
+        ax.axvline(value, color=COLORS["accent"], linestyle="--", linewidth=1.3,
+                   alpha=0.85, zorder=2)
+    ax.plot([], [], color=COLORS["accent"], linestyle="--",
+            label=r"the range section 6 recommends: $p^{0.4}$ to $p^{1.7}$")
+
+    ax.set_yticks(y)
+    ax.set_yticklabels([d["label"] for d in items], fontsize=8.5)
+    ax.set_ylim(-0.8, len(items) - 0.2)
+    ax.set_xlabel("exponent against the packing factor")
+    ax.set_title("A bracket fixed in $p$ cannot cover thirteen settings")
+    ax.legend(loc="lower right", fontsize=8.5)
+    ax.grid(axis="y", alpha=0.35)
+
+    missed = sum(1 for d in items if d["misses"])
+    # Boxed: it sits over the topmost bracket band, which is the row it is
+    # describing and the one a reader looks at first.
+    ax.text(0.02, 0.97, f"{missed} of {len(items)} settings fall outside",
+            transform=ax.transAxes, fontsize=9, color=COLORS["dpo"], va="top",
+            bbox={"facecolor": "white", "edgecolor": "none", "pad": 2.5})
+
+    return save(fig, OUT / "10-lr-scaling-bracket.png")
+
+
 ALL = {
     "pretraining": pretraining_curve,
     "scaling": scaling_ladder,
@@ -624,4 +870,6 @@ ALL = {
     "lr-scaling": lr_scaling,
     "lr-scaling-control": lr_scaling_control,
     "lr-scaling-regime": lr_scaling_regime,
+    "lr-scaling-quality": lr_scaling_quality,
+    "lr-scaling-bracket": lr_scaling_bracket,
 }
