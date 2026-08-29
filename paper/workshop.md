@@ -79,13 +79,13 @@ committed to in advance on two corpora and at three model sizes.
 **Sequence packing.** Krell et al. (2021) introduce packing without
 cross-contamination for BERT, with the block-diagonal masking that makes a
 packed example equivalent to an unpacked one, and address the hyperparameter
-question in their §3.3: reduce the computational batch size by the packing
+question in their Section 3.3: reduce the computational batch size by the packing
 factor and otherwise change nothing; where the batch is kept, adjust LAMB's
 decay parameters; and do not scale the learning rate, which reduced convergence
 speed in their experiments. Their setting is BERT pretraining with LAMB, not
 AdamW fine-tuning. Wang et al. (2025) study packing for supervised fine-tuning
 at 8B and 70B over corpora from 69K to 1.2M conversations, keep the rate at 1e-5
-in both arms, and report in their §5.3 that the linear relationship between
+in both arms, and report in their Section 5.3 that the linear relationship between
 batch size and learning rate holds for padding and not for packing --
 attributing this to packing not holding the number of conversations per batch
 constant. That tests the linear rule along its own diagonal and points the same
