@@ -169,28 +169,91 @@ Kept deliberately — the paper reports them as retractions.
 
 ## What is left
 
-- **Venue.** An efficiency or post-training workshop is the honest target;
-  ENLSP and OPT at NeurIPS fit the scaling framing, *Insights from Negative
-  Results in NLP* fits the falsifications. Deadlines not checked.
-- **Length.** ~13,900 words. This is a workshop problem and not an arXiv one —
-  arXiv has no limit — so it is deferred until a venue is chosen rather than
-  done speculatively. The cut, when it comes: §4.5, the estimator-robustness
-  material and §4.7.1 to an appendix, and §4.7's six bolded claims compressed to
-  the two that clear their bounds.
+*Rewritten 2026-08-29. Three of these were open only because the machine was
+believed to have no network. It has one.*
+
+### Deadlines, now checked
+
+**Pre-to-Post — Transitioning from Pre-Training to Post-Training**, NeurIPS
+2026, <https://pretrain2posttrain.github.io/>, is the best fit this project has
+found, and it is the target unless the author disagrees.
+
+| | |
+| --- | --- |
+| deadline | **4 September 2026, 11:59pm AoE** (extended from 29 August) |
+| notification | 29 September 2026 |
+| archival? | **non-archival** — arXiv is unaffected, and posting first is fine |
+| length | short 4–5 pages, or long at the NeurIPS main-conference limit |
+| **references and appendices do not count toward either limit** | |
+
+Its call lists *interactions between pre-training and post-training* as a topic.
+That is §4.7.1 and §4.7.2 exactly: what a base model's pretraining budget, and
+its quality, do to the fine-tuning learning rate. The paper was not written for
+this workshop and reads as though it was.
+
+Also on 4 September, and a real second option: **OPT 2026**, <https://opt-ml.org/>,
+deadline 4 September AoE, notification 29 September, this year themed *Can
+Anything Beat Adam? Frontier Optimizers*. The batch-size framing fits; the theme
+is about optimizers rather than their hyperparameters, so it is the weaker fit
+of the two.
+
+Two others were checked and are out. **ENLSP does not exist at NeurIPS 2026** —
+it ran 2022 through 2024 and is not in this year's accepted list, so the plan's
+first-named venue is gone. **Insights from Negative Results in NLP** is alive and
+co-located with EMNLP in Budapest, 22–29 October 2026, but its site publishes no
+call yet; worth a second look, since the retractions in this paper are exactly
+its subject.
+
+Two deadlines were missed by hours while this was being checked: **AXIOM
+(Foundations of Efficient Deep Learning)** and **LIGHT (Deployable Small
+Foundation Models)**, both 29 August. LIGHT in particular wanted precisely this
+paper's finding — that the cost of inheriting the rate grows as the model
+shrinks. That is the price of not checking dates for three days.
+
+### Length — now a decided problem, not a deferred one
+
+~13,900 words, 29 pages compiled. Pre-to-Post's short track is 4–5 pages **with
+references and appendices excluded**, which changes the shape of the cut
+entirely: the appendices are free, so the work is to get §1–§7 down to five
+pages rather than to delete material. The cut named earlier still holds and is
+now cheap — §4.5, the estimator-robustness material and §4.7.1 move to
+appendices rather than being dropped, and §4.7's six bolded claims compress to
+the two that clear their bounds. Nothing needs to leave the paper.
+
+This is the one substantial piece of work between here and a submission, and it
+wants roughly a day. The arXiv version keeps its full length; arXiv has no limit.
+
+### Still open
+
 - **Author list and affiliation.** `paper/build_tex.py` carries `AUTHOR` and
   `AFFILIATION` near the top and there is a `% TODO` beside them in the
-  generated preamble. This is the one thing in the arXiv package not derived
-  from the markdown.
-- **Compile it once.** `paper/arxiv/main.tex` has never been run through LaTeX;
-  this machine has no TeX and no network to install one. Two `pdflatex` passes.
-- **The abstract does not fit arXiv's form.** ~2,460 characters against a field
-  capped near 1,920. `paper/arxiv/abstract.txt` is the text to cut down; the
-  paper's own abstract need not change.
+  generated preamble. They currently read "Ashutosh Ranjan / Independent
+  Researcher", with no contact address. This is the one thing in the arXiv
+  package not derived from the markdown, and the only item on this list that
+  needs the author rather than the machine.
 - **Endorsement.** A first `cs.LG` submission needs one, which is an
-  account-level step.
-- **Cheapest open check.** `checkpoints/medium/step_2500.pt` (perplexity 39.4,
-  against the 30M model's 38.0) is unswept. It is the middle point of §4.7.2's
-  quality series, which currently has two points; §4.7.2 and §5 both say so.
+  account-level step and cannot be done from here.
+- **Cheapest open check — running now.** `checkpoints/medium/step_2500.pt`
+  (perplexity 39.4, against the 30M model's 38.0), the middle point of §4.7.2's
+  quality series. Ledger `results/lr_scaling_quality2500.csv`, prediction
+  registered in `results/registered-prediction-quality-midpoint.md` before the
+  answer existed (with the one row that had already landed quoted in it). When
+  it finishes: register the ledger in `export_exponents.py` **and** in
+  `update_paper_counts.py`, replicate the bracketing window to seeds 1338/1339,
+  score the prediction, then rewrite §4.7.2's closing caveat and §5's, both of
+  which currently say the quality axis has two points.
+
+### Closed since this list was written
+
+- **Compiled.** Tectonic 0.17.0's static binary needs no TeX install and no
+  sudo, only network. 29 pages, no overfull or underfull boxes, no LaTeX
+  warnings, no undefined references. The command is in `paper/arxiv/README.md`.
+  Compiling also found a stale paragraph in Appendix F that described a table
+  row no longer in the table, and confirmed the two checklist items that were
+  waiting on it: Appendix F's nine-column table sets legibly with no landscape
+  page, and LaTeX's section numbers match the ones the prose cites.
+- **The abstract fits arXiv's form.** 1,890 characters against the ~1,920 cap.
+  `build_tex.py` now fails loudly if an edit pushes it back over.
 
 ## Standing constraints
 
