@@ -37,6 +37,9 @@ SOURCE = ROOT / "paper" / "paper.md"
 OUTDIR = ROOT / "paper" / "arxiv"
 OUT = OUTDIR / "main.tex"
 FIGDIR = OUTDIR / "figures"
+# arXiv's submission form truncates the abstract field past roughly this many
+# characters. Checked at build time so it is not discovered while submitting.
+ABSTRACT_CAP = 1920
 
 # The author block is the one thing in this file that is not derived from the
 # markdown, because the markdown does not carry it. Edit here.
@@ -400,10 +403,14 @@ def main() -> None:
         copied += 1
 
     print(f"{len(text.splitlines())} lines, {copied} figures -> {out_path}")
-    # arXiv's abstract field is capped, and this one is long. Say so at build
-    # time rather than leaving it to be discovered in the submission form.
-    print(f"abstract.txt is {abstract_chars} characters; arXiv's field is capped "
-          f"(about 1,920) -- check it against the form before pasting")
+    # Say so at build time rather than leaving it to be discovered in the
+    # submission form.
+    if abstract_chars > ABSTRACT_CAP:
+        print(f"abstract.txt is {abstract_chars} characters, over arXiv's "
+              f"~{ABSTRACT_CAP:,} cap -- cut it before pasting")
+    else:
+        print(f"abstract.txt is {abstract_chars} characters, inside arXiv's "
+              f"~{ABSTRACT_CAP:,} cap")
 
 
 if __name__ == "__main__":
