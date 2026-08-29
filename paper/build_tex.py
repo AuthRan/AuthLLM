@@ -267,12 +267,19 @@ def main() -> None:
     # block, and is a flag rather than a pass over the paper.
     parser.add_argument("--anonymous", action="store_true",
                         help="Omit the author block, for a double-blind venue")
+    # The workshop version is a second document, not a transform of the first:
+    # sections 1-7 are compressed to nine pages and the material they shed
+    # moves into appendices, which the venue does not count. Both build with
+    # this script so a change to the converter cannot fix one and break the
+    # other.
+    parser.add_argument("--source", type=Path, default=SOURCE,
+                        help="Markdown to render (default: paper/paper.md)")
     args = parser.parse_args()
     outdir = args.outdir
     out_path = outdir / "main.tex"
     figdir = outdir / "figures"
 
-    raw = SOURCE.read_text()
+    raw = args.source.read_text()
     title = re.search(r"^# (.+)$", raw, re.M).group(1)
 
     # The status block is working state -- what is left to do, which venue --
