@@ -1613,7 +1613,7 @@ project's own write-up swept only as far as 1.5e-4 and could not bracket.
 
 
 The paper's central claim is that the exponent has no single value, and that
-claim is spread across §4.5 to §4.7.1 a few settings at a time. This is all of
+claim is spread across §4.5 to §4.7.2 a few settings at a time. This is all of
 it at once, so that the spread can be read rather than taken on the text's word.
 
 Every row is a matched-budget comparison: one epoch padded against one epoch
@@ -1648,9 +1648,15 @@ through that ratio, so it is a range and not a standard error (§4.5).
 
 Read down a group and the scale dependence of §4.6 is the trend; read the same
 corpus across groups and the model-size dependence of §4.7 is the trend. The
-last group is not a fourth model size but the same 30M weights taken from an
-earlier pretraining checkpoint, and is the control of §4.7.1: its exponents sit
-on top of 30M's while its learning rates sit half again above them.
+last three groups are not further model sizes but controls. The two
+`tok/param` groups are §4.7.1's, the same 30M and 7M architectures pretrained
+on about half the token budget: their exponents sit on top of the fully
+pretrained ones — the four differences are 0.019, 0.002, 0.019 and 0.103,
+every one inside its bound — while their learning rates sit 1.4x to 1.8x above
+them, in both arms. The final row is §4.7.2's, 124M weights from an early
+pretraining checkpoint at the 7M model's perplexity: its learning rates are
+three to four times the fully pretrained 124M model's, and its exponent stays
+with 124M's own rather than moving to 7M's.
 
 The table is regenerated from `results/exponents.csv` by
 `scripts/update_paper_counts.py` rather than transcribed, so it cannot drift

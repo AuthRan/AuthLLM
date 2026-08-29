@@ -832,7 +832,7 @@ Every optimum in both grids is bracketed --- an interior minimum with a rise on 
 
 \section{Every comparison in one table}
 
-The paper's central claim is that the exponent has no single value, and that claim is spread across \S{}4.5 to \S{}4.7.1 a few settings at a time. This is all of it at once, so that the spread can be read rather than taken on the text's word.
+The paper's central claim is that the exponent has no single value, and that claim is spread across \S{}4.5 to \S{}4.7.2 a few settings at a time. This is all of it at once, so that the spread can be read rather than taken on the text's word.
 
 Every row is a matched-budget comparison: one epoch padded against one epoch packed, each arm solved for its own optimum on its own seed's curve, aggregated across seeds as \S{}3.1 requires. \texttt{p} is the ratio of supervised tokens per optimizer step, measured rather than assumed. The exponent is \texttt{log(shift) /\allowbreak{} log(p)}, and the bound carries both cells' max/min seed ranges through that ratio, so it is a range and not a standard error (\S{}4.5).
 
@@ -866,7 +866,7 @@ base model & corpus & examples & \texttt{p} & lr* padded & lr* packed & shift & 
 \ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
-Read down a group and the scale dependence of \S{}4.6 is the trend; read the same corpus across groups and the model-size dependence of \S{}4.7 is the trend. The last group is not a fourth model size but the same 30M weights taken from an earlier pretraining checkpoint, and is the control of \S{}4.7.1: its exponents sit on top of 30M's while its learning rates sit half again above them.
+Read down a group and the scale dependence of \S{}4.6 is the trend; read the same corpus across groups and the model-size dependence of \S{}4.7 is the trend. The last three groups are not further model sizes but controls. The two \texttt{tok/\allowbreak{}param} groups are \S{}4.7.1's, the same 30M and 7M architectures pretrained on about half the token budget: their exponents sit on top of the fully pretrained ones --- the four differences are 0.019, 0.002, 0.019 and 0.103, every one inside its bound --- while their learning rates sit 1.4x to 1.8x above them, in both arms. The final row is \S{}4.7.2's, 124M weights from an early pretraining checkpoint at the 7M model's perplexity: its learning rates are three to four times the fully pretrained 124M model's, and its exponent stays with 124M's own rather than moving to 7M's.
 
 The table is regenerated from \texttt{results/\allowbreak{}exponents.csv} by \texttt{scripts/\allowbreak{}update\_\allowbreak{}paper\_\allowbreak{}counts.py} rather than transcribed, so it cannot drift from the estimator in \texttt{scripts/\allowbreak{}analyze\_\allowbreak{}lr\_\allowbreak{}scaling.py} that produced it.
 
