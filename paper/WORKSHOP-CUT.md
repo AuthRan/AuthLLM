@@ -1,70 +1,83 @@
-# The workshop cut, costed
+# The workshop cut, as done
 
-*Written 2026-08-30 against the compiled PDF, not against the markdown. Every
-page number here was measured; none was estimated. Companion to the length
-section of `NIGHT-PLAN.md`.*
+*Rewritten 2026-08-30 after the cut landed. The costed plan this file used to
+hold was measured in the wrong LaTeX style and is superseded by what actually
+happened.*
 
-## The gap
+## Where it ended
 
-Sections 1–7 compile to **21 pages**. References are page 22, appendices 23–29,
-and Pre-to-Post excludes both from both tracks. So:
+`paper/workshop.md` fits **nine content pages** in the NeurIPS 2026 style: the
+conclusion ends at the bottom of page 9 and page 10 opens with the references.
+Build it with
 
-| track | limit | must remove |
-| --- | ---: | ---: |
-| long (NeurIPS main-track limit, confirmed) | 9 | **12 pages** |
-| short | 4–5 | 16–17 pages |
+```
+python paper/build_tex.py --source paper/workshop.md --neurips --anonymous \
+    --outdir <dir>
+```
 
-**Only about 3 of those 12 pages can be moved.** Relocation to the appendix is
-free but finite: §4.5 (0.91), §4.7.1 (0.91) and §4.3 (0.82) are the three
-sections that stand alone well enough to go whole, and that is 2.6 pages. The
-other **9 pages have to be written away**, which is why this is a day of prose
-and not an afternoon of moving blocks.
+`--anonymous` selects the style's `dblblindworkshop` option, which prints
+"Anonymous Author(s)" in place of the title block; drop it for
+`sglblindworkshop`, which prints the real one. Whether the venue is blind is
+still unconfirmed (§ below).
 
-## Proposed budget for the long track
+## The measurement mistake worth remembering
 
-Targets, not measurements. They sum to 9.0 and want one compile-and-trim pass.
+The first estimate said sections 1–7 were 21 pages against a 9-page limit, a
+twelve-page gap. That was measured in the paper's own arXiv preamble --
+`article` at 11pt with 1in margins -- and the limit is not defined there. In the
+NeurIPS style the same text is **9.6 pages, not 11.9**: `textwidth` is 5.5in
+rather than 6.5in, but the style sets Times at 10pt against Computer Modern at
+11pt, and the typeface change dominates. An arithmetic estimate of the
+difference put it at 2.6% and it is nearer 16%.
 
-| section | now | target | how |
-| --- | ---: | ---: | --- |
-| §1 Introduction | 1.70 | 0.90 | keep the finding and the cost of getting it wrong; the survey of what the paper will do goes |
-| §2 Related work | 1.14 | 0.50 | one dense paragraph; the workshop audience knows the packing literature |
-| §3 Method (3.1–3.4) | 2.41 | 1.20 | one setup paragraph, the confound stated once, the grid as a table; §3.4 folds into §4.4 where it is used |
-| §4.1 Full factorial | 0.39 | 0.40 | keep whole — it is the result |
-| §4.2 Second corpus | 1.43 | 0.50 | keep Dolly's numbers and the failed prediction; drop the walk-through |
-| §4.3 Inherit vs retune | 0.82 | 0.00 | **to appendix**, cited in §6 where the cost is claimed |
-| §4.4 Batch or packing | 1.64 | 0.90 | the strongest control in the paper; keep the design, compress the discussion |
-| §4.5 Not a function of | 0.91 | 0.00 | **to appendix** — it is two rule-outs and one retraction, all citable |
-| §4.6 Scale | ~2.4 | 1.20 | the three-point series and the two registered predictions; the decomposition goes to the appendix |
-| §4.7 Model sizes | ~1.4 | 0.90 | keep; it is half of why this fits the workshop |
-| §4.7.1 Pretraining budget | 0.91 | 0.00 | **to appendix**, one sentence in §4.7 carries the null |
-| §4.7.2 Size or quality | 0.94 | 0.50 | keep the control and its registered prediction; the series table goes |
-| §5 Threats | 1.88 | 0.80 | keep the retractions, which are the distinctive content; cut the enumeration |
-| §6 What to do | 1.77 | 0.80 | keep the range and the sweep recipe; drop the worked example |
-| §7 Conclusion | 0.56 | 0.40 | |
-| | **21** | **9.0** | |
+**Measure the submission in the style it will be judged in, from the first
+count.** `--neurips` exists so this cannot happen again.
 
-## What must not be cut
+## What actually reduced it
 
-The retractions. Four findings in this paper were withdrawn after replication
-(§4.5's packing-ratio trend, §4.6's linearity, §6's bracket, and the ±0.006
-bound), and the registered predictions that were written before the deciding
-runs. That is the paper's most distinctive content and the reason a
-negative-results venue was on the list at all. A cut that keeps the results and
-drops the retractions produces a more ordinary paper.
+Twelve passes of compression took 21 pages to about 10 and then stopped dead:
+two consecutive passes rewrote whole sections and saved 0.08 and 0.00 pages.
+Dense prose, rewritten by the same hand, comes out the same length.
 
-This is the argument against the short track. Four to five pages cannot hold
-thirteen settings, three model sizes, six registered predictions and four
-retractions; it would have to become an extended abstract about the headline
-number, and the headline number is the least interesting thing here.
+The last page and a half came from three things:
 
-## Mechanical, and already done
+1. **Deleting claims made twice**, without replacement — the significance-test
+   caveat in 3.1 repeated in 4.2, the grid-point caveat in 4.3 that section 5
+   also carries, the rows-rule result stated twice in 4.4, the batch/step
+   decomposition already moved to Appendix L, and three figure captions that
+   restated the paragraphs beside them.
+2. **The abstract**, which was 1,890 characters because that is arXiv's form cap.
+   The workshop has no such form; it is now 1,291.
+3. **Figure aspect ratio.** The bracket figure was drawn 9.4x5.6, which at
+   `\linewidth` in a 5.5in column is 3.3in tall — two-thirds of a page for
+   thirteen rows. At 10.4x4.9 it costs 2.6in and reads the same.
 
-- Relocation needs no new machinery beyond renumbering: the markdown writes its
-  own section numbers into the headings and the prose cites them as plain text,
-  so a moved section means rewriting every "section 4.5" that points at it.
-  `tests/unit/test_build_tex.py` simulates LaTeX's counters and will catch a
-  heading whose number no longer matches what the prose claims.
-- Blinding is `python paper/build_tex.py --anonymous`. `paper.md` carries no
-  repository link, no link to the published version, and no name; all of that
-  lives in `build_tex.py` alone. Whether the workshop needs it is still open.
-- The arXiv version keeps all 29 pages. Nothing here touches it.
+## What moved where
+
+Nothing was dropped. Appendices are excluded from the limit, so sections 1–7
+keep a summary in place and send the rest to six new appendices — which also
+preserved the section numbering the prose cites, rather than renumbering
+everything after a hole.
+
+| appendix | holds |
+| --- | --- |
+| H | section 4.3 in full, the inherit-versus-retune comparison |
+| I | section 4.5 in full, the corpus and packing-ratio rule-outs |
+| J | section 4.7.1 in full, the pretraining-budget control |
+| K | the wide-batch control's match table, residual diagnosis, and figure |
+| L | the exponent decomposed into a batch term and a step term |
+| M | numerical stability, the warmup and data-seen confounds, sweep sharpness |
+
+All three main-body figures stayed: the regime figure in 4.6, the base-model
+quality figure in 4.7.2, and the bracket figure in 6.
+
+## Still open
+
+- **Anonymity.** NeurIPS 2026's main track is double-blind; the Pre-to-Post call
+  does not say whether the workshop inherits that, and OpenReview renders
+  through JavaScript so the group page could not be read from here. It is a
+  build flag either way, and `paper.md` carries no repository link, no link to
+  the published version and no name — all of that lives in `build_tex.py`.
+- **arXiv endorsement**, which is an account-level step for a first `cs.LG`
+  submission and cannot be done from here.
+- The arXiv version keeps its full length. Nothing in this file touches it.

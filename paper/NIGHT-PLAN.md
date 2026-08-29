@@ -210,51 +210,27 @@ Foundation Models)**, both 29 August. LIGHT in particular wanted precisely this
 paper's finding — that the cost of inheriting the rate grows as the model
 shrinks. That is the price of not checking dates for three days.
 
-### Length — measured 2026-08-30, and four times worse than this file claimed
+### Length — done. The workshop version fits nine pages.
 
-The entry that stood here called the cut "cheap" and said "nothing needs to
-leave the paper". **Both were wrong, and not by a little.** They were written
-without compiling and counting. Now counted, from the 29-page PDF:
+`paper/workshop.md` fits **nine content pages** in the NeurIPS style: the
+conclusion ends at the bottom of page 9 and page 10 opens with the references.
+`paper/WORKSHOP-CUT.md` records what moved and what it cost.
 
-**§1–§7 is 21 pages.** References are page 22, appendices 23–29. The limits,
-re-checked against the call on 2026-08-30 (deadline confirmed 4 September
-11:59pm AoE, notification 29 September, non-archival, references and appendices
-excluded from both tracks):
+Two corrections to what this file said earlier, both worth keeping:
 
-| track | limit | cut needed from 21 |
-| --- | --- | ---: |
-| short | 4–5 pages | **−16** |
-| long | 9 pages (NeurIPS 2026 main-track limit, confirmed) | **−12** |
+- The "21 pages against 9" figure was measured in the arXiv preamble, and the
+  limit is not defined there. In the NeurIPS style the same text was 9.6 pages,
+  not 11.9 — `textwidth` is an inch narrower but Times at 10pt beats Computer
+  Modern at 11pt by more than the width costs. `build_tex.py --neurips` now
+  builds in the real style so this cannot recur.
+- Compression by rewriting stalled completely at about 10 pages: two passes in a
+  row saved 0.08 and 0.00 pages. What worked was deleting claims the paper made
+  twice, shortening an abstract that was sized for arXiv's submission form, and
+  reshaping a figure that was drawn tall.
 
-Measured cost of each section, so tomorrow's cut is arithmetic:
-
-| section | pages | | section | pages |
-| --- | ---: | --- | --- | ---: |
-| §1 Introduction | 1.70 | | §4.4 batch or packing | 1.64 |
-| §2 Related work | 1.14 | | §4.5 not a function of | 0.91 |
-| §3.1 Setup | 0.95 | | §4.6 + §4.7 | 3.79 |
-| §3.2 Confound and design | 0.59 | | §4.7.1 pretraining budget | 0.91 |
-| §3.3 Grid | 0.58 | | §4.7.2 size or quality | 0.94 |
-| §3.4 Wide-batch control | 0.29 | | §5 Threats | 1.88 |
-| §4.1 Full factorial | 0.39 | | §6 What to do | 1.77 |
-| §4.2 Second corpus | 1.43 | | §7 Conclusion | 0.56 |
-| §4.3 What does replicate | 0.82 | | | |
-
-The cut this file used to name — §4.5, the estimator-robustness material and
-§4.7.1 to appendices — is **2.7 pages against a 12-page gap.** It is not the
-job. The job is to rewrite §1–§7 as a 9-page paper that cites the arXiv version
-for everything else, and that is a day of writing, not an afternoon of moving
-blocks. §4.6+§4.7 at 3.79 pages and §5+§6 at 3.65 are where the pages actually
-are, and neither was on the old list.
-
-**Recommendation: the long track.** Nine pages can carry the factorial, the
-batch-size control, the scale result, the model-size result and the retractions.
-Four to five cannot; at that size this becomes an extended abstract and the
-retractions — which are the paper's most distinctive content — are the first
-thing to go. The author should confirm, because it is a positioning decision
-and not a mechanical one.
-
-The arXiv version keeps its full length; arXiv has no limit.
+Nothing was dropped: appendices are excluded from the limit, so sections 1-7
+keep a summary in place and the rest moved to appendices H through M. All three
+main-body figures stayed.
 
 ### Anonymity — an open question that changes the title page
 
