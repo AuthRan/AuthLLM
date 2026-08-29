@@ -30,20 +30,36 @@ REPO = Path(__file__).resolve().parent.parent
 PYTHON = REPO / ".venv" / "bin" / "python"
 OUT = REPO / "results" / "noise-scale.md"
 
-# (label, model config, checkpoint, corpus, exponent from results/exponents.csv,
-#  padded supervised tokens/step, packed supervised tokens/step, of_record)
+# (label, model config, checkpoint, corpus, of_record). The exponent and the
+# supervised-token counts are NOT here: they are read from
+# results/exponents.csv and from analyze_lr_scaling.SUPERVISED_TOKENS at run
+# time. A first draft of this file typed them by hand and had alpaca_ninth at
+# 1,875/8,494 against the real 1,824/8,263, which is the drift this repository
+# has a test suite about.
 SETTINGS = [
-    ("124M, Alpaca whole", "medium.yaml", "medium/step_20000.pt", "alpaca",
-     1.055, 1888, 8444, True),
-    ("124M, Alpaca third", "medium.yaml", "medium/step_20000.pt", "alpaca_third",
-     0.670, 1841, 8296, True),
-    ("124M, Alpaca ninth", "medium.yaml", "medium/step_20000.pt", "alpaca_ninth",
-     0.385, 1875, 8494, True),
-    ("30M, Alpaca whole", "small.yaml", "small/step_18000.pt", "alpaca",
-     1.300, 1888, 8444, False),
-    ("7M, Alpaca whole", "mini.yaml", "mini/step_4400.pt", "alpaca",
-     1.695, 1888, 8444, False),
+    ("124M, Alpaca whole", "medium.yaml", "medium/step_20000.pt", "alpaca", True),
+    ("124M, Alpaca third", "medium.yaml", "medium/step_20000.pt", "alpaca_third", True),
+    ("124M, Alpaca ninth", "medium.yaml", "medium/step_20000.pt", "alpaca_ninth", True),
+    ("30M, Alpaca whole", "small.yaml", "small/step_18000.pt", "alpaca", False),
+    ("7M, Alpaca whole", "mini.yaml", "mini/step_4400.pt", "alpaca", False),
 ]
+
+MODEL_KEY = {"medium.yaml": "124M", "small.yaml": "30M", "mini.yaml": "7M"}
+
+
+def exponent_of(model_config: str, corpus: str) -> float:
+    """The measured exponent for one row of results/exponents.csv."""
+    import csv
+
+    path = REPO / "results" / "exponents.csv"
+    if not path.exists():
+        raise SystemExit(f"{path} missing; run scripts/export_exponents.py first")
+    want = MODEL_KEY[model_config]
+    for row in csv.DictReader(path.open()):
+        if row["model"] == want and row["dataset"] == corpus:
+            return float(row["exponent"])
+    raise SystemExit(f"no {want}/{corpus} row in {path}")
+
 
 FIELDS = {
     "intercept": re.compile(r"\|G\|\^2\s+\(intercept\) = ([-\d.e+]+)"),
@@ -88,11 +104,17 @@ def main() -> None:
                         help="Measure the packed dataset as well as the padded one")
     args = parser.parse_args()
 
+    sys.path.insert(0, str(REPO / "scripts"))
+    from analyze_lr_scaling import SUPERVISED_TOKENS  # noqa: E402
+
     rows = []
-    for label, config, checkpoint, corpus, exponent, pad_tok, pack_tok, record in SETTINGS:
+    for label, config, checkpoint, corpus, record in SETTINGS:
+        tokens = SUPERVISED_TOKENS[corpus]
         got = measure(config, checkpoint, corpus, args.repeats, packed=False)
-        rows.append({"label": label, "corpus": corpus, "exponent": exponent,
-                     "pad": pad_tok, "pack": pack_tok, "record": record, **got})
+        rows.append({"label": label, "corpus": corpus,
+                     "exponent": exponent_of(config, corpus),
+                     "pad": tokens[False], "pack": tokens[True],
+                     "record": record, **got})
 
     lines = [
         "# Gradient noise scale, measured",
