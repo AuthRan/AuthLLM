@@ -13,36 +13,44 @@ paper/arxiv/
 
 ## Before submitting
 
-1. **Compile it once.** The machine this was generated on has no TeX
-   installation, so `main.tex` has never been run through LaTeX. It is written
-   against a base texlive -- no package outside `graphicx`, `booktabs`,
-   `amsmath`, `amssymb`, `caption`, `microtype`, `hyperref`, `geometry` -- and
-   `tests/unit/test_build_tex.py` checks the failures a compiler would catch
-   (brace and environment balance, table column counts, unescaped specials,
-   markdown that survived conversion, and that LaTeX's section numbering
-   reproduces the numbers the prose cites). That is not the same as compiling.
+1. **Compiled.** `main.tex` builds clean: 29 pages, no overfull or underfull
+   boxes, no LaTeX warnings, no undefined references. Built with Tectonic
+   0.17.0, which is a XeTeX engine; arXiv runs pdfLaTeX, so the one difference
+   to expect is that `inputenc` is a no-op under XeTeX and active under
+   pdfLaTeX. It is kept in the preamble because pdfLaTeX is what arXiv uses.
+
+   This machine has no TeX installation and no sudo, but it does have network,
+   and Tectonic ships a static binary that needs neither:
 
    ```
-   cd paper/arxiv && pdflatex main.tex && pdflatex main.tex
+   curl -sSL -o tectonic.tar.gz https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.17.0/tectonic-0.17.0-x86_64-unknown-linux-musl.tar.gz
+   tar -xzf tectonic.tar.gz
+   ./tectonic -X compile main.tex
    ```
 
-   Twice, for the table of contents and any reference LaTeX resolves on a
-   second pass.
+   It fetches the packages it needs on first run and caches them in
+   `~/.cache/Tectonic`. `tests/unit/test_build_tex.py` still runs the cheap
+   structural checks -- brace and environment balance, table column counts,
+   unescaped specials, surviving markdown, and LaTeX's section numbering
+   against the numbers the prose cites -- so a build that cannot reach the
+   network still catches most of what a compiler would.
 
 2. **Fill in the author block.** `paper/build_tex.py` carries `AUTHOR` and
    `AFFILIATION` near the top; they are the only content in the build script
    that is not derived from the markdown, because the markdown does not carry
-   them. There is a `% TODO` beside them in the generated preamble.
+   them. They currently read "Ashutosh Ranjan / Independent Researcher" and
+   there is no contact address. There is a `% TODO` beside them in the
+   generated preamble.
 
-3. **Check the two figures that are wide.** Appendix F's table is scaled to the
-   text width with `\resizebox`; at nine columns it may set very small. If it
-   does, the alternative is a landscape page (`lscape`) or splitting the table.
+3. **The wide tables set legibly.** Every table is wrapped in a conditional
+   `\resizebox` that shrinks it only if it overruns the text width. Checked in
+   the compiled PDF: Appendix F's nine-column table is the widest and is
+   comfortably readable at the size it lands on. No landscape page needed.
 
-4. **The abstract will not fit the form as it stands.** `abstract.txt` is the
-   paper's abstract as plain text, and it is about 2,370 characters against an
-   arXiv field capped near 1,920. It needs cutting for the form -- the paper's
-   own abstract does not have to change, and the two are allowed to differ, but
-   whatever is pasted should still name the result and the control.
+4. **The abstract fits the form.** `abstract.txt` is the paper's abstract as
+   plain text, cut to 1,890 characters against arXiv's cap of about 1,920.
+   `build_tex.py` checks the length on every build and says so if an edit
+   pushes it back over.
 
 5. **Endorsement.** arXiv requires an endorsement for a first submission to
    `cs.LG` from an author with no submission history. That is an account-level
