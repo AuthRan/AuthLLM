@@ -495,7 +495,9 @@ def lr_scaling_control() -> Path:
 
             ax.set_xscale("log")
             ax.set_xlabel("peak learning rate")
-            ax.set_title(f"{title} — {pk_tok:,} vs {wd_tok:,} supervised tokens/step")
+            # The counts are in the caption and in Appendix K: spelled out here
+            # they make a title wider than its own panel at paper type size.
+            ax.set_title(f"{title} — matched to {abs(wd_tok - pk_tok) / pk_tok:.1%}")
             ax.legend(loc="upper left", fontsize=8.5)
 
             if len(marks) == 2:
@@ -512,7 +514,7 @@ def lr_scaling_control() -> Path:
                         transform=ax.transAxes, ha="right", va="top", fontsize=9,
                         color=TEXT, linespacing=1.6)
 
-        axes[0].set_ylabel("held-out loss (nats), seed 1337")
+        axes[0].set_ylabel("held-out loss (nats)")
         return save(fig, OUT / "07-lr-scaling-control.png")
 
 
