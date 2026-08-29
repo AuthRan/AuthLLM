@@ -61,6 +61,13 @@ def exponent_of(model_config: str, corpus: str) -> float:
     raise SystemExit(f"no {want}/{corpus} row in {path}")
 
 
+# The per-size rows the script prints before its fit. `mean tokens` must rise
+# with `rows` in expectation, and the registration's addendum commits to
+# reporting it: a two-repeat smoke test produced 97.0, 47.5, 268.5 across sizes
+# 1, 2 and 4, which is sampling noise wearing the shape of a measurement, and an
+# R^2 of 0.9999 did nothing to reveal it.
+ROW = re.compile(r"^\s*(\d+)\s+([\d.]+)\s+([-\d.e+]+)\s+(\d+)\s*$", re.M)
+
 FIELDS = {
     "intercept": re.compile(r"\|G\|\^2\s+\(intercept\) = ([-\d.e+]+)"),
     "slope": re.compile(r"tr\(S\)\s+\(slope\)\s+= ([-\d.e+]+)"),
@@ -92,6 +99,9 @@ def measure(config: str, checkpoint: str, corpus: str, repeats: int,
     for name, pattern in FIELDS.items():
         match = pattern.search(result.stdout)
         out[name] = match.group(1).replace(",", "") if match else None
+    tokens = [float(m.group(2)) for m in ROW.finditer(result.stdout)]
+    out["mean_tokens"] = tokens
+    out["monotonic"] = all(a < b for a, b in zip(tokens, tokens[1:])) if tokens else False
     out["raw"] = result.stdout
     return out
 
@@ -126,18 +136,28 @@ def main() -> None:
         "`B_simple = tr(S)/|G|^2` in supervised tokens per step, so it compares",
         "directly against the padded and packed columns beside it.",
         "",
-        "| setting | exponent | padded | packed | `B_simple` | packed / `B_simple` | R^2 |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| setting | exponent | padded | packed | `B_simple` | packed / `B_simple` | R^2 | tokens rise with rows |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |",
     ]
     for r in rows:
         b = r["b_simple"]
         ratio = f"{r['pack'] / float(b):.2f}x" if b else "—"
+        mono = "yes" if r["monotonic"] else "**no**"
+        value = f"{int(float(b)):,}" if b else "fit failed"
         lines.append(
             f"| {r['label']} | {r['exponent']:.3f} | {r['pad']:,} | {r['pack']:,} | "
-            f"{int(float(b)):,} | {ratio} | {float(r['r2']):.4f} |"
-            if b else
-            f"| {r['label']} | {r['exponent']:.3f} | {r['pad']:,} | {r['pack']:,} | "
-            f"fit failed | — | {float(r['r2']):.4f} |")
+            f"{value} | {ratio} | {float(r['r2']):.4f} | {mono} |")
+
+    bad = [r["label"] for r in rows if not r["monotonic"]]
+    if bad:
+        lines += [
+            "",
+            "## These settings did not measure anything",
+            "",
+            "`mean tokens` must rise with the number of rows in a batch. Where it",
+            "does not, the estimator saw sampling noise and its fit describes that",
+            "noise, whatever the R^2 says. Affected: " + ", ".join(bad) + ".",
+        ]
 
     on_record = [r for r in rows if r["record"] and r["b_simple"]]
     if len(on_record) == len(SETTINGS[:3]):
