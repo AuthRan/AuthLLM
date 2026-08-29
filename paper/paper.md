@@ -75,7 +75,12 @@ step's contents fixed, and on our evidence needs no learning-rate change at all
 (§6). The recent packing study of Wang et al. (2025) states that "in packing
 mode, the batch size is no longer directly proportional to the learning rate,"
 and holds the learning rate at 1e-5 across both padded and packed runs of
-LLaMA-3-8B and 70B. Neither swept the learning rate under packing. To our
+LLaMA-3-8B and 70B. They do vary it once, in an analysis that moves batch size
+and learning rate together along the linear rule and finds the relationship
+holds under padding and breaks under packing -- which points the same way as our
+result without saying where the optimum goes. Neither paper sweeps the rate at a
+fixed batch to locate it, which is the measurement that decides whether
+inheriting it is safe. To our
 knowledge no published work does, which leaves the advice that matters for the
 common case — pack, keep the batch, inherit the rate — resting on an assertion
 rather than a measurement.
@@ -173,12 +178,18 @@ experiments. Their setting is BERT pretraining with LAMB, not AdamW
 fine-tuning, and they report no learning-rate sweep.
 
 Wang et al. (2025) study packing for supervised fine-tuning at 8B and 70B
-across four instruction corpora, finding that packing generally matches or
+across corpora from 69K to 1.2M conversations, finding that packing generally matches or
 beats padding and that the gap widens with model and dataset size. They keep
 the learning rate fixed at 1e-5 for both arms and note that packing breaks the
 proportionality between batch size and learning rate, attributing this to
 packing not holding the number of conversations per batch constant. The claim
-is not accompanied by a sweep.
+is accompanied by a comparison rather than a sweep: their section 5.3
+fine-tunes LLaMA-3-8B on TULU across "different linear combinations of batch
+size and learning rate" and scores IFEval, reporting that the linear
+relationship holds for padding and not for packing. That tests the linear rule
+along its own diagonal; it does not locate the optimum at a fixed batch, which
+is what section 4 of this paper measures, and its finding points the same way as
+ours.
 
 **Learning rate and batch size.** The linear scaling rule is standard for SGD
 (Goyal et al., 2017), and Smith et al. (2018) show how far the equivalence
@@ -1329,6 +1340,10 @@ three to six points, spanning `p^0.4` to `p^1.7`, and no inherited rate.
 Anthology records. The three claims attributed to Krell et al. in section 2 —
 the advice against learning-rate scaling, the LAMB heuristic, and reducing the
 computational batch size by the packing factor — are their section 3.3. The
+three claims attributed to Wang et al. -- the quoted sentence, the 1e-5 held
+across both arms, and the batch-size-and-learning-rate comparison -- are their
+section 5.3 and their training-details table, checked against arXiv:2410.08081v3
+on 2026-08-30. The
 linear-scaling claim attributed to Wang and Aitchison, including their remark
 that the linear and square-root rules are "not a contradiction: both are
 correct in their respective setups", is their section 1; the square-root camp
