@@ -49,6 +49,12 @@ LEDGERS = [
     # matched instead on base-model quality to the smallest model: the control
     # that separates size from quality (results/registered-prediction-size-vs-quality.md).
     ("124M@ppl107", REPO / "results" / "lr_scaling_quality.csv"),
+    # The middle point of that quality axis: the same 124M weights at
+    # perplexity 39.4, between the converged model's 23.5 and the step_500
+    # checkpoint's 107.0. Registered before it ran, in
+    # results/registered-prediction-quality-midpoint.md, because a control with
+    # one offset and a control with two are different objects.
+    ("124M@ppl39", REPO / "results" / "lr_scaling_quality2500.csv"),
 ]
 
 # Training examples behind each corpus, for the scale axis.
