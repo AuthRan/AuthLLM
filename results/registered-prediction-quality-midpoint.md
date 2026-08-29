@@ -129,3 +129,88 @@ against the two conditions above. No discretion.
    finding.
 4. **One corpus, one packing factor.** Alpaca whole at 4.47x, as everywhere else
    on this axis.
+
+---
+
+# Scoring, 2026-08-30
+
+**Both conditions of record are met. H1 is confirmed, and the point estimate was
+wrong in a way worth stating plainly.**
+
+`results/lr_scaling_quality2500.csv` holds 22 runs. Every one of the six curves —
+two cells at three seeds — brackets its optimum with no seed dropped and no
+window extended, which is the cleanest ledger in this project and is not what the
+last two additions managed.
+
+| base model | perplexity | lr* padded | lr* packed | shift | exponent |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 124M, step 20,000 | 23.5 | 2.81e-5 | 1.37e-4 | 4.86x | 1.055 ± 0.128 |
+| **124M, step 2,500** | **39.4** | **5.22e-5** | **2.85e-4** | **5.46x** | **1.133 ± 0.107** |
+| 124M, step 500 | 107.0 | 1.12e-4 | 4.36e-4 | 3.89x | 0.906 ± 0.204 |
+
+**Condition 1, side.** The criterion was to land below 1.178, the midpoint of
+124M's 1.055 and 30M's 1.300. Measured **1.133**. Passes — **by 0.045**. That is
+a narrow pass and much narrower than §4.7.2's step_500 result, which cleared its
+registered margin by 2.7x. It should be read as such.
+
+**Condition 2, flatness.** The criterion was a spread across the three 124M
+points no larger than 0.332. Measured **0.227**. Passes.
+
+**The point estimate was wrong.** I registered 1.00 and said I expected the value
+between 0.90 and 1.10. It came in at 1.133, outside the range I named. The
+interpolation on log-perplexity that produced 1.00 assumed the axis was monotone
+between its two ends, and it is not.
+
+## The axis is non-monotone, and the registration's reasoning about that was loose
+
+The three point estimates run **1.055 → 1.133 → 0.906** as the base model gets
+worse. That is non-monotone: the midpoint sits *above* the converged model.
+
+The registration tied non-monotonicity to landing at or above 1.178, which was
+imprecise. Any value above 1.055 makes the axis non-monotone, and 1.133 is above
+1.055. The falsification criterion was still the right one to score against —
+1.178 separates "with the parameter count" from "with the quality-matched model"
+— but the sentence claiming that only a value ≥ 1.178 would imply
+non-monotonicity was wrong when written, and is corrected here rather than left
+standing.
+
+**What rescues the reading is that no pair of the three separates:**
+
+| pair | gap | combined bound | ratio |
+| --- | ---: | ---: | ---: |
+| ppl 23.5 vs ppl 39.4 | 0.078 | 0.167 | 0.46x |
+| ppl 23.5 vs ppl 107 | 0.149 | 0.241 | 0.62x |
+| ppl 39.4 vs ppl 107 | 0.227 | 0.230 | 0.98x |
+
+All three are mutually indistinguishable at three seeds. The honest statement is
+therefore **not** that the exponent rises and then falls with base-model quality;
+it is that the exponent is flat across a 4.6-fold range of base-model perplexity
+to within the resolution of this study, and that the non-monotone ordering of the
+point estimates is not resolved by the data. The widest of the three gaps sits at
+0.98x of its own bound — as close to separating as a pair can get without doing
+so.
+
+## The test this registration declined to make the criterion, and why it was right to
+
+The registration argued in advance that a margin test against the quality-matched
+30M model (1.300) was unsatisfiable and would be dishonest to register. Scored
+anyway, now that it can be: the gap is 0.167 against a combined bound of 0.191,
+or **0.87x — it does not separate.** The prediction would have failed on that
+criterion even though H1 is true, exactly as the registration said. That is the
+clearest vindication in this file, and it is of the *method* rather than of the
+hypothesis.
+
+## Secondary, which was not of record
+
+*The optima.* Both rise as the base model gets worse, and the guess recorded in
+advance was close on one arm and low on the other: the padded optimum was
+expected near 4–6e-5 and came in at **5.22e-5**; the packed optimum was expected
+near 2–2.5e-4 and came in at **2.85e-4**, above the range guessed. Against the
+fully pretrained model the two arms rise 1.86x and 2.09x, sitting between that
+model and the step_500 checkpoint's 4.00x and 3.20x. §4.7.1's finding — a
+less-pretrained base model wants a larger rate in both arms while the distance
+between them is left alone — holds at a third point on a much longer range.
+
+*The grid.* It bracketed on the first pass at every seed. The advance guess about
+where the optima would fall is what made that happen, and it is recorded above as
+a guess rather than rewritten as a plan.
