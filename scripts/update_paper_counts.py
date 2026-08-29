@@ -28,7 +28,11 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PAPER = REPO / "paper" / "paper.md"
+# Both versions of the paper are rewritten, because both quote the same
+# regenerated numbers and a workshop submission built from a stale table is
+# the failure this script exists to prevent. The workshop version carries a
+# subset of the markers: it has no status block, so no <!--runs-->.
+PAPERS = [REPO / "paper" / "paper.md", REPO / "paper" / "workshop.md"]
 # One entry per base model the sweep was run against. Keep this in step with
 # `export_exponents.py`: a ledger missing here is compute the paper spent and
 # does not admit to.
@@ -43,6 +47,8 @@ LEDGERS = [
     # perplexity to the 7M model rather than on parameter count: the control that
     # separates model size from base-model quality (section 4.7.2).
     (REPO / "results" / "lr_scaling_quality.csv", "124M at the 7M model's quality"),
+    # The middle point of the same quality axis, at perplexity 39.4.
+    (REPO / "results" / "lr_scaling_quality2500.csv", "124M at perplexity 39.4"),
 ]
 
 
@@ -67,15 +73,17 @@ def tally() -> tuple[int, int, float, list[str]]:
 # How each ledger's base model should read in Appendix F, and the order the rows
 # are grouped in: the three model sizes largest-first, then the controls. The
 # controls sit last because none of them is a fourth size -- two hold the size
-# and halve the pretraining budget, and the third holds the size at 124M and
-# drops the base model to the 7M model's perplexity.
-MODEL_ORDER = ["124M", "30M", "7M", "30M@19.7", "7M@18.0", "124M@ppl107"]
+# and halve the pretraining budget, and the last two hold the size at 124M and
+# take the base model down the quality axis, to perplexity 39.4 and then to the
+# 7M model's 107.0. Those two are ordered by how far down that axis they go.
+MODEL_ORDER = ["124M", "30M", "7M", "30M@19.7", "7M@18.0", "124M@ppl39", "124M@ppl107"]
 MODEL_LABEL = {
     "124M": "124M",
     "30M": "30M",
     "7M": "7M",
     "30M@19.7": "30M @ 19.7 tok/param",
     "7M@18.0": "7M @ 18.0 tok/param",
+    "124M@ppl39": "124M @ perplexity 39.4",
     "124M@ppl107": "124M @ perplexity 107",
 }
 CORPUS_LABEL = {
@@ -136,18 +144,18 @@ def exponent_table() -> str:
     return "\n".join(lines)
 
 
-def replace(text: str, tag: str, body: str) -> str:
+def replace(text: str, tag: str, body: str, path: Path, required: bool = True) -> str:
     pattern = re.compile(f"<!--{tag}-->.*?<!--/{tag}-->", re.S)
     if not pattern.search(text):
-        raise SystemExit(f"marker <!--{tag}--> not found in {PAPER}; nothing changed")
+        if not required:
+            return text
+        raise SystemExit(f"marker <!--{tag}--> not found in {path}; nothing changed")
     return pattern.sub(f"<!--{tag}-->{body}<!--/{tag}-->", text)
 
 
 def main() -> None:
     total, timed, hours, notes = tally()
-    text = PAPER.read_text()
     split = f" ({', '.join(notes)})" if len(notes) > 1 else ""
-    text = replace(text, "runs", f"{total:,} runs{split}")
     untimed = total - timed
     caveat = (
         f"; {untimed} row{'s' if untimed != 1 else ''} carr"
@@ -155,14 +163,22 @@ def main() -> None:
         f"from earlier runs of the same configs"
         if untimed else ""
     )
-    text = replace(
-        text, "compute",
-        f"about {hours:.0f} GPU-hours (measured across the {timed:,} runs that "
-        f"recorded wall time{caveat})",
-    )
-    text = replace(text, "exponents", exponent_table())
-    PAPER.write_text(text)
-    print(f"{total:,} runs, {timed:,} timed, {hours:.1f} GPU-hours -> {PAPER}")
+    compute = (f"about {hours:.0f} GPU-hours (measured across the {timed:,} runs "
+               f"that recorded wall time{caveat})")
+    table = exponent_table()
+
+    for path in PAPERS:
+        if not path.exists():
+            continue
+        text = path.read_text()
+        # The status block, and so the run count, is a repository artefact and is
+        # not in the workshop build; the other two spans are in appendices both
+        # versions share.
+        text = replace(text, "runs", f"{total:,} runs{split}", path, required=False)
+        text = replace(text, "compute", compute, path)
+        text = replace(text, "exponents", table, path)
+        path.write_text(text)
+        print(f"{total:,} runs, {timed:,} timed, {hours:.1f} GPU-hours -> {path}")
 
 
 if __name__ == "__main__":
