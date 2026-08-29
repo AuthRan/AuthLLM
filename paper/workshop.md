@@ -406,8 +406,8 @@ sits above a third of it by more than the combined seed bound: 2.8x at 124M,
 2.9x at 30M, 2.5x at 7M; against a ninth, 4.1x and 5.0x. The 30M case was
 registered while the 30M pretraining run was still going, committing to
 direction plus margin -- that Alpaca's exponent would exceed its third's by
-more than 0.135. The measured gap is 0.531.
-This is the paper's most repeated result and the one we would defend hardest.
+more than 0.135. The measured gap is 0.531, and this is the
+paper's most repeated result.
 
 **Model size moves the exponent across the full span, but not between adjacent
 sizes.** Every point estimate is ordered the same way — all six pairs put the
@@ -445,10 +445,16 @@ model's perplexity and the 124M model's parameter count it reads 0.906: 0.789
 below 7M's 1.695, or 2.7x the registered margin, and 0.149 from the fully
 pretrained 124M model's own 1.055 against a combined bound of 0.241. Base-model
 quality was moved by a factor of 4.6 in perplexity and the exponent did not
-follow it. H1 is confirmed on the criterion named in advance.
+follow it. H1 is confirmed on the criterion named in advance, and the middle of
+that range — `step_2500` at perplexity 39.4 — was registered separately and holds
+too, at **1.133 ± 0.107** against a requirement to land below 1.178. It passes by
+0.045 rather than by the extreme point's 2.7x, and the three estimates (1.055,
+1.133, 0.906) are not monotone; no pair of them separates, at 0.46x to 0.98x of
+their bounds, so what the axis establishes is flatness at this resolution rather
+than a shape.
 
 **It does move both optima, by three to four times** — the padded optimum rises
-4.00x and the packed one 3.20x. That is §4.7.1's finding over a much longer
+4.00x and the packed one 3.20x, with the midpoint between at 1.86x and 2.09x. That is §4.7.1's finding over a much longer
 range, and the registration expected it and recorded in advance that it
 discriminates nothing between the two hypotheses. It is the practical half: a
 practitioner reading an *optimum* off this paper would be wrong by 4x if their
@@ -527,11 +533,8 @@ step fixed holds the optimum fixed. The failure mode this paper documents is the
 other practice — keep the batch, keep the rate, take the throughput — which is
 what turning a `packing=True` flag on gives a practitioner by default. The two
 recipes differ by a factor of `p` in supervised tokens per step, and that factor
-is the entire effect.
-
-**Bracket against supervised tokens per step, not windows.** §4.4 is what makes
-the packing factor the right variable, and the two differ by more than they look —
-4.47x against 4.53x on Alpaca, 2.92x against 3.16x on Dolly.
+is the entire effect, computed from supervised tokens per step and not from the
+ratio of windows (4.47x against 4.53x on Alpaca).
 
 **Retune, and sweep rather than scale.** An earlier draft offered a bracket:
 look for the packed optimum inside `[lr_pad * sqrt(p), lr_pad * 1.2p]`. It held
@@ -581,17 +584,15 @@ to 12.7x across the settings measured here, and on several of them a packed run
 at the inherited rate does not beat the padded run it inherited from. What
 packing is doing is settled as far as this evidence goes -- the same batch
 assembled by padding, at several times the forward-pass cost, reaches the same
-optimum -- which is also why Krell et al.'s original recipe, shrinking the batch
-by the packing factor, needs no learning-rate change. It is packing to make the
-step *bigger* that is exposed. How much the optimum moves is not settled, and we
-think it is not settleable in the form the question is usually asked: the
-exponent runs 0.39 to 1.70, rises with the scale of the run and as the model
-shrinks, and is indifferent to how well the base model was pretrained. A bracket
-we proposed in an earlier draft fails on five of thirteen settings and is
-retracted here rather than quietly dropped. What would move this forward is not
-more seeds but model sizes above 124M, corpora drawn independently, batches near
-production scale, and a downstream metric beside held-out loss. Until then, the
-sweep in §6.
+optimum -- which is why Krell et al.'s recipe needs no learning-rate change and
+packing to make the step *bigger* is what is exposed. How much the optimum moves
+is not settled, and we think it is not settleable in
+the form the question is usually asked: the exponent runs 0.39 to 1.70, rises
+with the scale of the run and as the model shrinks, and is indifferent to how
+well the base model was pretrained. A bracket we proposed in an earlier draft
+fails on five of thirteen settings and is retracted here rather than quietly
+dropped. What would move this forward is model sizes above 124M, corpora drawn
+independently, and batches near production scale. Until then, the sweep in §6.
 
 ## References
 
@@ -877,7 +878,7 @@ epochs from the headline for the reason in Appendix B. The tables in §4.1 and t
 ratios in §4.2 are its output rather than transcriptions of it.
 
 Hardware is a single RTX 2080 Ti per run, and the whole grid is
-<!--compute-->about 63 GPU-hours (measured across the 647 runs that recorded wall time; 2 rows carry no wall time, having been harvested from earlier runs of the same configs)<!--/compute-->. One caveat for anyone reproducing the schedule estimate rather than the science:
+<!--compute-->about 69 GPU-hours (measured across the 669 runs that recorded wall time; 2 rows carry no wall time, having been harvested from earlier runs of the same configs)<!--/compute-->. One caveat for anyone reproducing the schedule estimate rather than the science:
 the second card in this machine thermally throttles under sustained load and
 takes about 2.5x as long per step, which the sweep's planner accounts for and a
 naive divide-by-GPU-count does not.
@@ -958,6 +959,7 @@ through that ratio, so it is a range and not a standard error (§4.5).
 | 30M @ 19.7 tok/param | Alpaca, whole | 50,868 | 4.47x | 5.06e-05 | 3.56e-04 | 7.03x | **1.302 ± 0.119** | 3 |
 | 7M @ 18.0 tok/param | Alpaca, random third | 16,956 | 4.51x | 2.73e-04 | 1.04e-03 | 3.80x | **0.886 ± 0.201** | 3 |
 | 7M @ 18.0 tok/param | Alpaca, whole | 50,868 | 4.47x | 2.19e-04 | 2.38e-03 | 10.85x | **1.592 ± 0.333** | 3 |
+| 124M @ perplexity 39.4 | Alpaca, whole | 50,868 | 4.47x | 5.22e-05 | 2.85e-04 | 5.46x | **1.133 ± 0.107** | 3 |
 | 124M @ perplexity 107 | Alpaca, whole | 50,868 | 4.47x | 1.12e-04 | 4.36e-04 | 3.88x | **0.906 ± 0.204** | 3 |
 <!--/exponents-->
 

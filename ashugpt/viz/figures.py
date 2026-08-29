@@ -558,7 +558,7 @@ def lr_scaling_regime() -> Path:
 
     # Drawn large and typeset small; see style.paper_text().
     with paper_text():
-        fig, (left, right) = plt.subplots(1, 2, figsize=(11.6, 4.4))
+        fig, (left, right) = plt.subplots(1, 2, figsize=(11.6, 3.9))
 
         series: dict[tuple[str, str], list] = {}
         for r in rows:
@@ -707,7 +707,7 @@ def lr_scaling_quality() -> Path:
 
     # Drawn large and typeset small; see style.paper_text().
     with paper_text():
-        fig, (left, right) = plt.subplots(1, 2, figsize=(11.6, 4.4))
+        fig, (left, right) = plt.subplots(1, 2, figsize=(11.6, 3.9))
 
         for family in ("124M", "30M", "7M"):
             pts = sorted((p for p in points if p["family"] == family),
@@ -832,7 +832,7 @@ def lr_scaling_bracket() -> Path:
     # taller aspect costs two-thirds of a page, and thirteen rows do not need it.
     # Drawn large and typeset small; see style.paper_text().
     with paper_text():
-        fig, ax = plt.subplots(figsize=(10.4, 4.9))
+        fig, ax = plt.subplots(figsize=(10.4, 3.6))
         y = list(range(len(items)))
 
         for i, d in enumerate(items):

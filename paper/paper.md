@@ -1,6 +1,6 @@
 # Does Sequence Packing Change the Optimal Learning Rate?
 
-**Status: draft, complete, <!--runs-->649 runs (342 at 124M, 84 at 30M, 59 at 30M at the matched budget, 70 at 7M, 55 at 7M at the matched budget, 10 at 124M grid extension, 29 at 124M at the 7M model's quality)<!--/runs--> in the
+**Status: draft, complete, <!--runs-->671 runs (342 at 124M, 84 at 30M, 59 at 30M at the matched budget, 70 at 7M, 55 at 7M at the matched budget, 10 at 124M grid extension, 29 at 124M at the 7M model's quality, 22 at 124M at perplexity 39.4)<!--/runs--> in the
 ledger. Every cell carries a full grid and every cell the paper rests on is
 seed-replicated — three seeds throughout, bar the two curves Appendix C records
 as dropped — and all five registered predictions are scored. Remaining: an
@@ -995,7 +995,8 @@ being the combined seed bound §4.7 already reports for the pair.
 | base model | perplexity | lr* padded | lr* packed | shift | exponent |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | 124M, step 20,000 | 23.5 | 2.81e-5 | 1.37e-4 | 4.86x | 1.055 ± 0.128 |
-| 124M, step 500 | 107.0 | 1.12e-4 | 4.36e-4 | 3.88x | 0.906 ± 0.204 |
+| 124M, step 2,500 | 39.4 | 5.22e-5 | 2.85e-4 | 5.46x | 1.133 ± 0.107 |
+| 124M, step 500 | 107.0 | 1.12e-4 | 4.36e-4 | 3.89x | 0.906 ± 0.204 |
 | 7M, final | 115.2 | 1.19e-4 | 1.51e-3 | 12.66x | 1.695 ± 0.261 |
 
 **The exponent tracks parameter count, not base-model quality.** At the 7M
@@ -1006,8 +1007,26 @@ quality was moved by a factor of 4.6 in perplexity and the exponent did not
 follow it; it stayed with the parameter count. H1 is confirmed on the criterion
 named in advance, and §4.7's claim is a claim about model size.
 
+**The middle of that range was then registered and run, and it holds there too.**
+`step_2500`, at perplexity 39.4 against the 30M model's 38.0, was predicted in
+advance to land below 1.178 — the midpoint of 124M's 1.055 and 30M's 1.300 — and
+to leave the three-point series spanning no more than 0.332. It reads **1.133 ±
+0.107** and the series spans 0.227, so both conditions hold, but the second
+number is the honest one to quote: it passes the side condition by 0.045, where
+the `step_500` point cleared its margin by 2.7x. Two things are worth stating
+rather than smoothing. The registered point estimate was 1.00 and the measured
+value sits outside the 0.90–1.10 band that registration named. And the three
+point estimates run 1.055, 1.133, 0.906 as the base model gets worse, which is
+**not monotone**. What holds the reading up is that no pair of the three
+separates — the gaps are 0.46x, 0.62x and 0.98x of their own combined bounds — so
+the claim this section makes is that the exponent is flat across a 4.6-fold range
+of base-model perplexity to within the resolution of this study, and not that it
+rises and then falls. The widest of those gaps sits at 0.98x of its bound, which
+is as close to separating as a pair can come without doing so.
+
 **It does move both optima, by three to four times.** The padded optimum rises
-4.00x against the fully pretrained model and the packed one 3.20x. That is
+4.00x against the fully pretrained model and the packed one 3.20x, and the
+midpoint sits between at 1.86x and 2.09x. That is
 §4.7.1's finding over a much longer range: a less well trained base model wants
 a larger fine-tuning rate in both arms, while the *distance* between the arms —
 the only quantity this paper measures — is left where it was. The registration
@@ -1035,9 +1054,11 @@ so matching on perplexity matches one number and not the state, and this is the
 main reason to read the result as evidence about the confound rather than as its
 dissolution. Perplexity is also one axis of quality among several, and the two
 models are matched on held-out FineWeb-Edu loss rather than on any downstream
-capability. And it is one corpus at one packing factor: the middle point of the
-series, `step_2500` at perplexity 39.4 against the 30M model's 38.0, is
-unswept, so the quality axis has two points rather than three.
+capability. And it is one corpus at one packing factor. The axis now has
+three points rather than two, but three points an order of magnitude apart in
+perplexity, none of which separates from the others, constrain the *shape* of
+the dependence hardly at all — they establish that it is flat at this
+resolution, not that it is flat.
 
 
 ## 5. Threats to validity
@@ -1051,9 +1072,11 @@ a second reading in which the exponent tracked base-model quality instead.
 across a factor of 4.6, at the extreme point where a 124M model is taken to the
 7M model's perplexity: the exponent stays with the parameter count. What is left
 open is the shape rather than the direction. The middle point of the quality
-series is unswept, so the axis has two points; and an early checkpoint of a large
-model is not a converged small model, since matching on perplexity matches one
-number and not the state of the weights. We read §4.7.2 as evidence about the
+series has since been registered and run and it agrees, so the axis has
+three points; but none of the three separates from the others, so they bound the
+dependence rather than describing it. And an early checkpoint of a large model is
+not a converged small model, since matching on perplexity matches one number and
+not the state of the weights. We read §4.7.2 as evidence about the
 confound rather than as its dissolution.
 
 **Three model sizes, two source corpora, and a ratio axis built by subsetting
@@ -1607,7 +1630,7 @@ epochs from the headline for the reason in Appendix B. The tables in §4.1 and t
 ratios in §4.2 are its output rather than transcriptions of it.
 
 Hardware is a single RTX 2080 Ti per run, and the whole grid is
-<!--compute-->about 63 GPU-hours (measured across the 647 runs that recorded wall time; 2 rows carry no wall time, having been harvested from earlier runs of the same configs)<!--/compute-->. One caveat for anyone reproducing the schedule estimate rather than the science:
+<!--compute-->about 69 GPU-hours (measured across the 669 runs that recorded wall time; 2 rows carry no wall time, having been harvested from earlier runs of the same configs)<!--/compute-->. One caveat for anyone reproducing the schedule estimate rather than the science:
 the second card in this machine thermally throttles under sustained load and
 takes about 2.5x as long per step, which the sweep's planner accounts for and a
 naive divide-by-GPU-count does not.
@@ -1680,6 +1703,7 @@ through that ratio, so it is a range and not a standard error (§4.5).
 | 30M @ 19.7 tok/param | Alpaca, whole | 50,868 | 4.47x | 5.06e-05 | 3.56e-04 | 7.03x | **1.302 ± 0.119** | 3 |
 | 7M @ 18.0 tok/param | Alpaca, random third | 16,956 | 4.51x | 2.73e-04 | 1.04e-03 | 3.80x | **0.886 ± 0.201** | 3 |
 | 7M @ 18.0 tok/param | Alpaca, whole | 50,868 | 4.47x | 2.19e-04 | 2.38e-03 | 10.85x | **1.592 ± 0.333** | 3 |
+| 124M @ perplexity 39.4 | Alpaca, whole | 50,868 | 4.47x | 5.22e-05 | 2.85e-04 | 5.46x | **1.133 ± 0.107** | 3 |
 | 124M @ perplexity 107 | Alpaca, whole | 50,868 | 4.47x | 1.12e-04 | 4.36e-04 | 3.88x | **0.906 ± 0.204** | 3 |
 <!--/exponents-->
 

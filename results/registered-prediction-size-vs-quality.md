@@ -172,6 +172,14 @@ did.
 which is recorded in §4.7.2 and in §5 as a limit on the shape rather than on
 the direction.
 
+> **Superseded 2026-08-30.** It was run, under its own registration in
+> `results/registered-prediction-quality-midpoint.md`, and it agrees: 1.133 ±
+> 0.107 against a registered requirement to land below 1.178. The axis has three
+> points. Two caveats that file records and this one should not hide: the pass is
+> by 0.045 rather than by a wide margin, and the three point estimates are not
+> monotone. No pair of the three separates, so what the axis establishes is
+> flatness at this resolution rather than a shape.
+
 ## What was learned that was not predicted
 
 That the quality axis and the pretraining-budget axis of §4.7.1 behave the same
