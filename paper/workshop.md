@@ -537,9 +537,9 @@ invoke: if the optimum tracks supervised tokens per step, then holding tokens pe
 step fixed holds the optimum fixed. The failure mode this paper documents is the
 other practice (keep the batch, keep the rate, take the throughput), which is
 what turning a `packing=True` flag on gives a practitioner by default. The two
-recipes differ by a factor of `p` in supervised tokens per step, and that factor
-is the entire effect, computed from supervised tokens per step and not from the
-ratio of windows (4.47x against 4.53x on Alpaca).
+recipes differ by a factor of `p`, computed from supervised tokens per step and
+not from the ratio of windows (4.47x against 4.53x on Alpaca), and that factor is
+the entire effect.
 
 **Retune, and sweep rather than scale.** An earlier draft offered a bracket:
 look for the packed optimum inside `[lr_pad * sqrt(p), lr_pad * 1.2p]`. It held
@@ -593,9 +593,7 @@ learning-rate change and packing to make the step *bigger* is what is
 exposed. How much it moves is not settled and we think not settleable as the
 question is usually asked: the exponent runs 0.41 to 1.70, rises with the
 scale of the run and as the model shrinks, and is indifferent to how well
-the base model was pretrained. A bracket we proposed in an earlier draft
-fails on five of thirteen settings and is retracted here rather than quietly
-dropped. Until then, the sweep in §6.
+the base model was pretrained. The recipe is the sweep in §6.
 
 ## References
 
