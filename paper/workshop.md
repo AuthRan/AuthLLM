@@ -506,13 +506,14 @@ early checkpoint of a large model is not a converged small one, and matching on
 perplexity matches one number and not the state of the weights.
 
 **Small absolute batch, and three design confounds.** At 1,888 and 8,444
-supervised tokens per step both arms sit far below the batch sizes at which
-scaling rules are usually measured, in the regime where Li et al. (2024) predict
-square-root behaviour. Appendix M records the rest: that a rise in loss at the
-top of a grid could be fp16 overflow, which every run log argues against; that
-warmup is a fixed *fraction* of the schedule, so the step effect is measured
-across cells warming up over 22 steps and over 100; and that the fixed-step
-comparison necessarily varies data seen. §4.3's losses are seed 1337
+supervised tokens per step both arms sit well below the batch sizes at which
+scaling rules are usually measured — the regime where Li et al. (2024) predict
+square-root behaviour, though we could only assert it: two attempts did not
+resolve the noise scale at 124M, and at 7M the packed arm sat *at* it. Appendix M records three more: fp16 overflow at
+the top of a grid, which every run log argues against; a warmup that is a fixed
+*fraction* of the schedule, so the step effect is measured across cells warming
+up over 22 steps and over 100; and a fixed-step comparison that necessarily
+varies data seen. §4.3's losses are seed 1337
 throughout and its sign turns on one grid point. Each held-out split shares a
 distribution with its own training split, so the optimum here is not the optimum
 for a downstream pipeline — which §4.3 measures rather than assumes, and which
@@ -587,14 +588,12 @@ at the inherited rate does not beat the padded run it inherited from. What
 packing is doing is settled as far as this evidence goes -- the same batch
 assembled by padding, at several times the forward-pass cost, reaches the same
 optimum -- which is why Krell et al.'s recipe needs no learning-rate change and
-packing to make the step *bigger* is what is exposed. How much the optimum moves
-is not settled, and we think it is not settleable in
-the form the question is usually asked: the exponent runs 0.41 to 1.70, rises
-with the scale of the run and as the model shrinks, and is indifferent to how
-well the base model was pretrained. A bracket we proposed in an earlier draft
-fails on five of thirteen settings and is retracted here rather than quietly
-dropped. What would move this forward is model sizes above 124M, corpora drawn
-independently, and batches near production scale. Until then, the sweep in §6.
+packing to make the step *bigger* is what is exposed. How much it moves is not
+settled and we think not settleable as the question is usually asked: the
+exponent runs 0.41 to 1.70, rises with the scale of the run and as the model
+shrinks, and is indifferent to how well the base model was pretrained. A bracket
+we proposed in an earlier draft fails on five of thirteen settings and is
+retracted here rather than quietly dropped. Until then, the sweep in §6.
 
 ## References
 

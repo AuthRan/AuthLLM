@@ -226,7 +226,13 @@ scale of the run and the size of the model, and that no one value of it
 survives. The batch sizes here are small in absolute terms — 1,888 and 8,444
 supervised tokens per optimizer step — which places us in the regime where Li
 et al. predict square-root behaviour, and makes any departure from it worth
-reporting rather than assuming.
+reporting rather than assuming. We tried to check that rather than assert it,
+and mostly could not: `results/noise-scale.md` records two attempts to measure
+the noise scale, both of which failed to resolve it at 124M. At 7M, the one size
+where the fit converged, the packed arm came out at **1.08x** of the noise scale
+rather than well below it. That is a single number against three settings that
+returned nothing, and it points the other way, so the sentence above should be
+read as an assumption this study could not check.
 
 We are not aware of prior work that measures where the optimum actually sits
 when the batch size is changed *by packing* rather than by the number of
@@ -841,7 +847,8 @@ its supersets rather than independent draws. And "scale" is not one variable: a
 larger corpus at one epoch means both more data and more optimizer steps, and at
 a fixed data budget those are the same quantity, so nothing here separates them.
 Li et al. (2024) place the dependence on where the batch sits relative to the
-gradient noise scale, which our batch sizes do not move enough to test.
+gradient noise scale. We could not measure where ours sit: the estimator
+resolves `tr(S)` and not `|G|^2` at this model size, twice (`results/noise-scale.md`).
 
 ### 4.7 Three model sizes
 
@@ -1151,7 +1158,10 @@ window.
 **Small absolute batch.** At 1,888 and 8,444 supervised tokens per step on
 Alpaca, and 2,272 and 6,632 on Dolly, both arms are far below the batch sizes at
 which large-scale scaling rules are usually measured, and Li et al. (2024)
-predict this is the regime where the square-root rule holds. Results here should
+predict this is the regime where the square-root rule holds — though the one
+setting where we could measure the noise scale put the packed arm *at* it rather
+than below, which if it generalised would make that prediction the wrong one to
+be leaning on. Results here should
 not be extrapolated to production batch sizes without further points.
 
 **fp16 dynamic range.** All runs use fp16 autocast with a gradient scaler, so at
