@@ -9,8 +9,8 @@ directly against the padded and packed columns beside it.
 
 | setting | exponent | padded | packed | `B_simple` | packed / `B_simple` | R^2 | tokens rise with rows |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
-| 124M, Alpaca whole | 1.055 | 1,888 | 8,444 | fit failed | — | 0.9909 | yes |
-| 124M, Alpaca third | 0.670 | 1,841 | 8,296 | fit failed | — | 0.9162 | yes |
-| 124M, Alpaca ninth | 0.412 | 1,824 | 8,263 | fit failed | — | 0.9536 | yes |
-| 30M, Alpaca whole | 1.300 | 1,888 | 8,444 | fit failed | — | 0.9997 | yes |
-| 7M, Alpaca whole | 1.695 | 1,888 | 8,444 | fit failed | — | 0.9992 | yes |
+| 124M, Alpaca whole | 1.055 | 1,888 | 8,444 | fit failed | — | 0.9815 | yes |
+| 124M, Alpaca third | 0.670 | 1,841 | 8,296 | fit failed | — | 0.8790 | yes |
+| 124M, Alpaca ninth | 0.412 | 1,824 | 8,263 | fit failed | — | 0.9240 | yes |
+| 30M, Alpaca whole | 1.300 | 1,888 | 8,444 | fit failed | — | 0.9949 | yes |
+| 7M, Alpaca whole | 1.695 | 1,888 | 8,444 | 7,834 | 1.08x | 0.9984 | yes |

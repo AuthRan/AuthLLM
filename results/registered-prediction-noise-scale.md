@@ -191,3 +191,74 @@ has been seen. If the second run also fails, that is the answer: this estimator
 cannot resolve the noise scale on this hardware, and the paper's three
 assertions about the regime stay assertions — which would itself be worth
 reporting, because the paper currently states them as though they were settled.
+
+---
+
+# Scoring, 2026-08-30
+
+**P1 and P2 are unscored: the measurement failed on all three settings of
+record.** The validity check cannot even be evaluated, because it compares three
+values and only one of the five settings produced one.
+
+| setting | exponent | padded | packed | `B_simple` | packed / `B_simple` | R^2 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 124M, Alpaca whole *(of record)* | 1.055 | 1,888 | 8,444 | **fit failed** | — | 0.9815 |
+| 124M, Alpaca third *(of record)* | 0.670 | 1,841 | 8,296 | **fit failed** | — | 0.8790 |
+| 124M, Alpaca ninth *(of record)* | 0.412 | 1,824 | 8,263 | **fit failed** | — | 0.9240 |
+| 30M, Alpaca whole *(exploratory)* | 1.300 | 1,888 | 8,444 | **fit failed** | — | 0.9949 |
+| 7M, Alpaca whole *(exploratory)* | 1.695 | 1,888 | 8,444 | **7,834** | **1.08x** | 0.9984 |
+
+"Fit failed" is a negative intercept: the estimator resolves the slope `tr(S)`
+and cannot resolve `|G|^2`, so their ratio does not exist. The `mean tokens`
+column rose with batch size in every one of the five, so the runs are measuring
+what they should be; what they cannot do is see the true gradient underneath the
+noise at 124M.
+
+This is the outcome the second addendum named in advance: *"If the second run
+also fails, that is the answer: this estimator cannot resolve the noise scale on
+this hardware, and the paper's three assertions about the regime stay
+assertions."* They stay assertions. Sections 2, 4.6 and 5 say where these batches
+sit relative to `B_noise` and this study cannot show it for the model that
+carries most of its results.
+
+## The one setting that resolved, which was not of record
+
+The 7M model gives `B_simple = 7,834` supervised tokens per step, with an R^2 of
+0.9984 and a monotone token column. Against it:
+
+* the **padded** arm carries 1,888 tokens — **0.24x** the noise scale;
+* the **packed** arm carries 8,444 — **1.08x** of it.
+
+If that number is right, then at 7M the packed arm sits *at* the gradient noise
+scale rather than far below it, and section 2's "our batch sizes are small in
+absolute terms [...] which places us in the regime where Li et al. predict
+square-root behaviour" is wrong for the packed arm at that size. Li et al.'s
+optimum is non-monotone with its peak at `B_noise`, so a padded arm at a quarter
+of the scale and a packed arm at the peak would be a candidate mechanism for a
+shift much larger than square-root — and 7M is the setting with the largest
+exponent in this paper, 1.695.
+
+**That paragraph is one data point and should be read as one.** It was
+explicitly not of record; the three settings that were of record all failed; and
+nothing here tests whether `B_simple` differs across model sizes, because the two
+larger models did not resolve. A single suggestive number that agrees with a
+cited theory is exactly the kind of thing this paper's own retractions are about.
+It is reported because it points *against* an assertion the paper makes, and an
+inconvenient single data point is worth more than a convenient one.
+
+## What the paper should do about it
+
+Not claim the mechanism. Soften the assertion: sections 2 and 5 state the regime
+as settled, and it is not — for the 124M model it is unmeasured, and the one
+model where it could be measured came out at the boundary rather than far below
+it. `results/noise-scale.md` carries the table.
+
+## Why no third attempt
+
+The registration named the failure condition before the first run and the second
+addendum named it again before the second. Iterating the estimator until it
+returns a number for the settings of record would be choosing the method by its
+answer, which is the thing the whole registration apparatus exists to stop. The
+honest report is that two attempts failed, that the second reached the batch
+sizes the paper is about and still could not see the intercept, and that the
+question stays open.
