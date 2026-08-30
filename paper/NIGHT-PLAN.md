@@ -38,16 +38,32 @@ form cap, and a figure drawn 4.9in tall for thirteen rows.
   their bounds -- so the claim is flatness at this resolution, not a shape.
 - **The gradient noise scale** -- registered because the paper asserts in three
   places where its batches sit relative to `B_noise` and had never run the script
-  that measures it. The first scoring run **failed**: negative intercept
-  everywhere, because the estimator did one backward per batch and topped out at
-  443 supervised tokens against the 1,888 and 8,444 the paper uses. It now
-  accumulates gradients over micro-batches, token-weighted, and a second run is
-  in flight.
+  that measures it. **Both scoring runs failed and P1 and P2 are unscored.** The
+  first had the estimator doing one backward per batch, topping out at 443
+  supervised tokens against the 1,888 and 8,444 the paper uses. Micro-batch
+  accumulation fixed that -- the second reached 14,628 -- and the intercept still
+  came out negative, because the two-parameter model does not hold across the
+  whole sweep and the smallest batches carry nearly all the variance behind an
+  R^2 of 0.98. A post-hoc fit restricted to the decade the paper's own batches
+  sit in converges on all five settings, and **the registration's own validity
+  check then fails**: three settings that share a distribution span 1.55x against
+  a 1.5x tolerance set in advance. So no value is quoted as a measurement. What
+  survives is the sign -- every fit puts the packed arm several times above the
+  noise scale rather than below it -- and §2, §4.6 and §5 are softened to say the
+  regime is assumed and could not be confirmed. No third attempt: iterating the
+  estimator until it returns a number would be choosing the method by its answer.
 - **A downstream test of §4.3**, registered because §7 names a downstream metric
   as one of four things that would move the work forward and it is the only one
   this machine can do. §4.3's three conditions re-run with checkpoints kept --
   they reproduce §4.3 to **0.0000 nats** -- then scored on Dolly's held-out
-  split, which none of them was fine-tuned on. In flight.
+  split, which none of them was fine-tuned on. **Falsified, and the gain reverses
+  sign.** C beats B by 0.050 nats on Alpaca and loses to B by 0.087 on Dolly, so
+  §4.3's number is a statement about held-out loss on the corpus that was tuned
+  on and not about quality. The central claim is untouched; §4.3's and §6's
+  practical framing changed. The obvious next run is the mirror -- does the
+  Dolly-retuned model lose on Alpaca? -- and it is **not done**: if the reversal
+  is symmetric it is specialisation, and if it is not, something else is going
+  on.
 
 ### Every curve now brackets
 
@@ -327,17 +343,59 @@ Nothing was dropped: appendices are excluded from the limit, so sections 1-7
 keep a summary in place and the rest moved to appendices H through M. All three
 main-body figures stayed.
 
-### Anonymity — an open question that changes the title page
+### Anonymity — settled 2026-08-30. It is NOT double-blind. Build with the author block.
 
-NeurIPS 2026's main track is double-blind and its handbook forbids identifying
-information. **The workshop's own call does not say** whether it inherits that,
-and OpenReview renders through JavaScript so the group page could not be read
-from here. This has to be settled before submitting, but it is
-cheap either way: `paper/paper.md` was grepped on 2026-08-30 for the repository,
-the published web version, the author's name and the address, and **carries none
-of them**. All four live only in `build_tex.py`'s `AUTHOR`/`AFFILIATION`/
-`CONTACT`, so a blind build is a flag that suppresses one title block, not a
-pass over the prose. The arXiv build keeps all of it either way.
+The call still does not say, and the OpenReview group page still will not render
+without a login. The venue's configuration answers it anyway, and is public:
+
+```
+curl -s "https://api2.openreview.net/invitations?id=NeurIPS.cc/2026/Workshop/Pre-to-Post/-/Submission"
+curl -s "https://api2.openreview.net/groups?id=NeurIPS.cc/2026/Workshop/Pre-to-Post"
+```
+
+Three things in it agree, and none of them is a guess:
+
+* the submission's `content.authors` field carries **no `readers` restriction**.
+  A double-blind venue restricts it to the authors and the program chairs so
+  that reviewers cannot see it. Here whoever can read the paper can read the
+  names;
+* the venue config has **no blind key at all** -- no `blind_submission_id`, no
+  `anonymous` anything -- and `submission_name` is `Submission`, not
+  `Blind_Submission`. What it does anonymise is the other direction:
+  `reviewers_anon_name = "Reviewer_"`;
+* the submission form makes you tick `data_release`, which reads "accepted
+  submissions, **along with their author names**, will be released to the public
+  after the conference is over".
+
+So `--anonymous` is not wanted for this venue, and `build_tex.py --neurips`
+without it is the submission build. Note the review period is still private:
+the note's readers are the venue and the authors, and `public_submissions` is
+false, so nothing is world-readable until acceptance.
+
+If the author wants this from a human rather than from the API, the organisers
+are at `pre2post-neurips2026@googlegroups.com`. Worth doing only if the answer
+above is ever contradicted, because it is three independent signals agreeing.
+
+### What the submission form will ask for, which the plan had not recorded
+
+Read off the same invitation. Two of these need the author and cannot be
+prepared from here:
+
+- **Every author needs an OpenReview profile before submitting.** The `authors`
+  field takes profile IDs, not free text.
+- **A reciprocal reviewer is mandatory** -- `reciprocal_reviewing` wants the
+  OpenReview profile ID of one author on the paper willing to review for the
+  venue if asked. This is new since the plan was written and it is a required
+  field, not a checkbox.
+- `keywords` required; `TLDR` optional; `abstract` up to 5,000 characters and
+  markdown-capable, so the 1,291-character workshop abstract is comfortable and
+  arXiv's ~1,920 cap is the binding one, not this;
+- `pdf` up to 50 MB. The compiled workshop build is 0.7 MB.
+- Two consent tick-boxes, `email_sharing` and `data_release`.
+
+**Deadline, from the invitation rather than from the page:** `duedate` is
+2026-09-05 12:00 UTC, which is 4 September 11:59pm AoE as advertised. There is a
+30-minute grace `expdate` at 12:30 UTC. Do not plan around the grace.
 
 ### Still open
 
