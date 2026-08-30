@@ -222,3 +222,55 @@ def test_the_exported_exponents_keep_more_digits_than_the_paper_quotes(exported)
                 f"quotes three, so the CSV needs at least five to round-trip faithfully."
             )
 
+
+
+DECOMPOSITION_CSV = REPO / "results" / "decomposition.csv"
+
+
+@pytest.fixture(scope="module")
+def decomposed():
+    import csv
+
+    if not DECOMPOSITION_CSV.exists():
+        pytest.skip("results/decomposition.csv absent; run scripts/export_decomposition.py")
+    with DECOMPOSITION_CSV.open() as handle:
+        return {(r["model"], r["dataset"]): r for r in csv.DictReader(handle)}
+
+
+@pytest.mark.parametrize("dataset", ["alpaca", "alpaca_third", "alpaca_ninth"])
+def test_section_4_6_decomposition_matches_the_ledger(paper, decomposed, dataset):
+    """The batch and step terms in 4.6's table, which used to be typed by hand.
+
+    They were, and they went stale: an earlier seed replication moved an optimum
+    and the derived terms did not move with it, so the whole-corpus step term sat
+    at 0.379 in the paper against a real 0.385 for some time. Nothing checked it,
+    because the tests here guarded Appendix F -- which is generated -- and not the
+    tables in section 4 which are written out.
+
+    scripts/export_decomposition.py derives them now. This is the check that they
+    are what got written down.
+    """
+    row = decomposed.get(("124M", dataset))
+    if row is None:
+        pytest.skip(f"124M/{dataset} not in decomposition.csv")
+    batch = f"{float(row['batch_term']):.3f}"
+    step = f"{float(row['step_term']):.3f}"
+    assert f"| {batch} | {step} |" in paper, (
+        f"124M/{dataset} decomposes as batch {batch} + step {step} in "
+        f"results/decomposition.csv, and section 4.6's table does not say so. "
+        f"Re-run scripts/export_decomposition.py and update the table."
+    )
+
+
+def test_the_decomposition_identity_holds(decomposed):
+    """exponent = batch term + step term, which is why the split is meaningful.
+
+    It is an identity in logs rather than a fit, so a residual above floating
+    point means the three optima were not solved from the same curves.
+    """
+    for (model, dataset), row in decomposed.items():
+        residual = abs(float(row["residual"]))
+        assert residual < 1e-9, (
+            f"{model}/{dataset} decomposes with residual {residual:.2e}; "
+            f"exponent = batch + step should hold exactly."
+        )
