@@ -143,3 +143,51 @@ move the goalposts. What the smoke test does change is the method: the scoring
 run uses more repeats than the default and reports the `mean tokens` column, so
 that a non-monotone one is visible as the failure it is rather than being
 averaged into a plausible-looking ratio.
+
+## Second addendum: the first scoring run failed, and why
+
+**Written before the second run, with no `B_simple` yet measured for any
+registered setting.**
+
+The scoring run was made at 32 repeats and returned **"fit failed" for all five
+settings**: the fitted intercept `|G|^2` was negative everywhere, so the ratio
+`tr(S)/|G|^2` does not exist. That is limitation 3 above arriving exactly as
+written, and under the registration it means the measurement failed rather than
+that anything was learned. P1 and P2 are unscored.
+
+The cause is visible in the data and is not subtle. `measure_noise_scale.py` ran
+one backward pass per batch, so its largest batch was 8 sequences carrying **443
+supervised tokens** — against the 1,888 and 8,444 the paper's steps carry. Every
+point sat in the regime where the noise term `tr(S)/T` dominates completely, so
+extrapolating to `1/T = 0` ran off the bottom:
+
+```
+  rows  mean tokens    mean |G|^2
+     1         41.8  7.584403e+02
+     2        101.1  2.212723e+02
+     4        212.1  9.619484e+01
+     6        380.2  3.792629e+01
+     8        443.4  3.687135e+01
+  |G|^2 (intercept) = -6.12e+01   R^2 = 0.9909
+```
+
+An R^2 of 0.99 on a line whose intercept is negative is the estimator saying it
+can see the slope and cannot see the intercept.
+
+**What changed, and what did not.** The estimator now accumulates gradients over
+micro-batches, weighted by token count, so the batch it can measure is bounded by
+patience rather than by memory. That is a fix to reach the range the paper is
+about; it is not a change to what is being estimated, and it was validated by
+checking that one backward pass over 8 sequences and four micro-batches of 2 give
+the same squared norm to five significant figures (6.003064e+01 against
+6.003014e+01). The second run sweeps to 256 sequences, which is roughly 10,700
+supervised tokens and past the packed arm's 8,444, so the fit interpolates across
+the paper's batch sizes instead of extrapolating from an order of magnitude below
+them.
+
+**P1 and P2 are unchanged and unrevised.** The failure was in reaching the
+measurement, not in what it would say, and no value for any registered setting
+has been seen. If the second run also fails, that is the answer: this estimator
+cannot resolve the noise scale on this hardware, and the paper's three
+assertions about the regime stay assertions — which would itself be worth
+reporting, because the paper currently states them as though they were settled.

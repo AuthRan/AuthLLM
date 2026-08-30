@@ -77,30 +77,52 @@ def read_jsonl(path: Path) -> list[InstructionExample]:
     return out
 
 
-def grad_sq_norm(model, batch, device) -> tuple[float, int]:
-    """Squared norm of the token-mean gradient on one batch, and its token count.
+def grad_sq_norm(model, micro_batches, device) -> tuple[float, int]:
+    """Squared norm of the token-mean gradient over a batch, and its token count.
 
     The loss is the same one training uses -- token-mean cross-entropy over
     supervised positions -- so the gradient here is the gradient the optimizer
     would have seen from this batch.
+
+    The batch arrives split into micro-batches and is accumulated, which is what
+    lets this reach the sizes the paper's steps actually use: 8,444 supervised
+    tokens is about 143 Alpaca examples, and 143 sequences of 512 tokens will not
+    fit in one backward pass on an 11 GB card. A first attempt without this
+    capped out at 443 supervised tokens against the 1,888 and 8,444 the paper
+    measures, and every fit came back with a negative intercept -- the true
+    gradient was below the resolution of an extrapolation from that far away.
+
+    Accumulation has to be weighted. Each micro-batch's loss is a token-mean over
+    its own tokens, so summing the gradients would average the micro-batches
+    rather than the tokens whenever they carry different counts, which they
+    always do. Scaling each backward by its token count and dividing the total by
+    the sum gives the token-mean over the union, which is the quantity a single
+    large batch would have produced.
     """
     model.zero_grad(set_to_none=True)
-    tensors = [t.to(device) for t in batch]
-    if len(tensors) == 4:
-        input_ids, labels, segment_ids, position_ids = tensors
-        output = model(input_ids, labels=labels,
-                       segment_ids=segment_ids, position_ids=position_ids)
-    else:
-        input_ids, labels = tensors
-        output = model(input_ids, labels=labels)
-    output.loss.backward()
+    total_tokens = 0
+    for batch in micro_batches:
+        tensors = [t.to(device) for t in batch]
+        if len(tensors) == 4:
+            input_ids, labels, segment_ids, position_ids = tensors
+            output = model(input_ids, labels=labels,
+                           segment_ids=segment_ids, position_ids=position_ids)
+        else:
+            input_ids, labels = tensors
+            output = model(input_ids, labels=labels)
+        count = int((labels != IGNORE_INDEX).sum())
+        if count == 0:
+            continue
+        (output.loss * count).backward()
+        total_tokens += count
+    if total_tokens == 0:
+        return 0.0, 0
     total = 0.0
     for p in model.parameters():
         if p.grad is not None:
-            total += float(p.grad.detach().double().pow(2).sum())
-    tokens = int((labels != IGNORE_INDEX).sum())
+            total += float((p.grad.detach().double() / total_tokens).pow(2).sum())
     model.zero_grad(set_to_none=True)
-    return total, tokens
+    return total, total_tokens
 
 
 def collate(dataset, indices):
@@ -116,6 +138,10 @@ def main() -> None:
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--packed", action="store_true")
     parser.add_argument("--seq-len", type=int, default=512)
+    parser.add_argument("--micro-batch", type=int, default=8,
+                        help="Sequences per backward pass; a size larger than "
+                             "this is accumulated over several, so the reachable "
+                             "batch is bounded by patience and not by memory")
     parser.add_argument("--sizes", nargs="+", type=int, default=[1, 2, 4, 8, 16, 32],
                         help="Rows per batch; token counts follow from them")
     parser.add_argument("--repeats", type=int, default=24,
@@ -145,7 +171,9 @@ def main() -> None:
         norms, tokens = [], []
         for _ in range(args.repeats):
             idx = [rng.randrange(len(dataset)) for _ in range(size)]
-            n, t = grad_sq_norm(model, collate(dataset, idx), args.device)
+            chunks = [collate(dataset, idx[i:i + args.micro_batch])
+                      for i in range(0, len(idx), args.micro_batch)]
+            n, t = grad_sq_norm(model, chunks, args.device)
             if t == 0:
                 continue
             norms.append(n)
