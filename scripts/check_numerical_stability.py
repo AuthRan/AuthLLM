@@ -48,6 +48,9 @@ LEDGERS = [
     (REPO / "results" / "lr_scaling_mini.csv", "7M"),
     (REPO / "results" / "lr_scaling_mini2k.csv", "7M at the matched budget"),
     (REPO / "results" / "lr_scaling_ckpt.csv", "124M grid extension"),
+    (REPO / "results" / "lr_scaling_quality.csv", "124M at perplexity 107.0"),
+    (REPO / "results" / "lr_scaling_quality2500.csv", "124M at perplexity 39.4"),
+    (REPO / "results" / "lr_scaling_downstream.csv", "124M, 4.3's kept checkpoints"),
 ]
 
 
