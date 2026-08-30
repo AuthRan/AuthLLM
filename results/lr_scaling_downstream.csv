@@ -1,3 +1,4 @@
 dataset,cell,pack_sequences,max_steps,max_lr,seed,final_val_loss,best_val_loss,best_val_step,wall_seconds,log_path
 alpaca,packed_350,True,350,3e-05,1337,2.0678,2.0678,350,255,logs/lr_scaling_downstream/alpaca_packed_350_lr3e-05_seed1337.csv
 alpaca,packed_350,True,350,0.00015,1337,2.0175,2.0175,350,258,logs/lr_scaling_downstream/alpaca_packed_350_lr0.00015_seed1337.csv
+alpaca,unpacked_1600,False,1600,3e-05,1337,2.0720,2.0720,1596,2597,logs/lr_scaling_downstream/alpaca_unpacked_1600_lr3e-05_seed1337.csv
