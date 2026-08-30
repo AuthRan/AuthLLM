@@ -77,13 +77,14 @@ FIELDS = {
 
 
 def measure(config: str, checkpoint: str, corpus: str, repeats: int,
-            packed: bool) -> dict:
+            packed: bool, sizes: list[int]) -> dict:
     command = [
         str(PYTHON), str(REPO / "scripts" / "measure_noise_scale.py"),
         "--model", str(REPO / "configs" / "model" / config),
         "--init-from", str(REPO / "checkpoints" / checkpoint),
         "--data", str(REPO / "data" / "sft" / f"{corpus}.jsonl"),
         "--repeats", str(repeats),
+        "--sizes", *[str(n) for n in sizes],
     ]
     if packed:
         command.append("--packed")
@@ -110,6 +111,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--repeats", type=int, default=24)
+    # The default in measure_noise_scale.py runs to 32 sequences, which is a
+    # 32x512 backward pass and does not fit on an 11.26 GB card beside the
+    # desktop and the inference server: the 124M model OOMs there. These are
+    # measurement points for a fit that extrapolates, so a shorter lever arm
+    # costs precision and not validity.
+    parser.add_argument("--sizes", nargs="+", type=int, default=[1, 2, 4, 6, 8])
     parser.add_argument("--packed", action="store_true",
                         help="Measure the packed dataset as well as the padded one")
     args = parser.parse_args()
@@ -120,7 +127,8 @@ def main() -> None:
     rows = []
     for label, config, checkpoint, corpus, record in SETTINGS:
         tokens = SUPERVISED_TOKENS[corpus]
-        got = measure(config, checkpoint, corpus, args.repeats, packed=False)
+        got = measure(config, checkpoint, corpus, args.repeats, packed=False,
+                      sizes=args.sizes)
         rows.append({"label": label, "corpus": corpus,
                      "exponent": exponent_of(config, corpus),
                      "pad": tokens[False], "pack": tokens[True],
