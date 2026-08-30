@@ -138,6 +138,13 @@ def main() -> None:
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--packed", action="store_true")
     parser.add_argument("--seq-len", type=int, default=512)
+    parser.add_argument("--fit-from", type=float, default=0.0,
+                        help="Only fit points whose mean supervised-token count "
+                             "is at least this. E|G_T|^2 = |G|^2 + tr(S)/T is a "
+                             "large-batch approximation and it does not hold "
+                             "down to a handful of tokens; fitting it over a "
+                             "range where it does not returns a negative "
+                             "intercept and a high R^2 at the same time")
     parser.add_argument("--micro-batch", type=int, default=8,
                         help="Sequences per backward pass; a size larger than "
                              "this is accumulated over several, so the reachable "
@@ -185,6 +192,11 @@ def main() -> None:
         points.append((1.0 / mean_tokens, mean_norm))
         print(f"{size:>6}{mean_tokens:>13.1f}{mean_norm:>14.6e}{len(norms):>9}")
 
+    fitted = [(x, y) for x, y in points if 1.0 / x >= args.fit_from]
+    if args.fit_from:
+        print(f"\nfitting the {len(fitted)} of {len(points)} points at or above "
+              f"{args.fit_from:,.0f} supervised tokens")
+    points = fitted
     if len(points) < 3:
         raise SystemExit("not enough points to fit")
 
@@ -197,7 +209,12 @@ def main() -> None:
     ss_tot = sum((y - my) ** 2 for _, y in points)
     ss_res = sum(r * r for r in residuals)
 
+    worst = max(abs(y - (intercept + slope * x)) / y for x, y in points)
     print()
+    print(f"largest relative residual = {worst:.1%}")
+    if worst > 0.25:
+        print("the two-parameter model does not describe these points; R^2 will")
+        print("still look high if the small-batch end carries most of the variance")
     print(f"|G|^2  (intercept) = {intercept:.6e}")
     print(f"tr(S)  (slope)     = {slope:.6e}")
     print(f"R^2 of the fit     = {1 - ss_res / ss_tot:.4f}")

@@ -262,3 +262,87 @@ answer, which is the thing the whole registration apparatus exists to stop. The
 honest report is that two attempts failed, that the second reached the batch
 sizes the paper is about and still could not see the intercept, and that the
 question stays open.
+
+---
+
+# Post-hoc analysis, 2026-08-30 — not a rescue of the prediction
+
+**The scoring above stands. P1 and P2 are unscored and this section does not
+change that.** What follows was decided after seeing the failure and is labelled
+so throughout.
+
+## Why the registered fit failed, which the R^2 concealed
+
+Re-running one 124M setting verbosely showed the estimator had reached **14,628
+supervised tokens** — past the packed arm's 8,444 — and that the failure was not
+a matter of range at all. The model `E|G_T|^2 = |G|^2 + tr(S)/T` simply does not
+hold across the whole sweep, and the unweighted fit is dominated by the smallest
+batches, whose values are two orders of magnitude larger:
+
+| T | measured | the all-points fit predicts |
+| ---: | ---: | ---: |
+| 41.8 | 758.44 | 723.21 |
+| 509.0 | 30.03 | 45.07 |
+| 1,875.6 | 14.16 | 0.86 |
+| 3,623.8 | 11.58 | **−7.08** |
+| 7,285.0 | 9.38 | **−11.37** |
+| 14,628.0 | 8.92 | **−13.49** |
+
+It predicts a negative squared norm at every batch size the paper actually uses,
+and still scores **R^2 = 0.9817**, because the two smallest points carry almost
+all the variance. **The monotonicity column added after the first smoke test did
+not catch this** — the token counts rise correctly; it is the residuals that
+fail. `measure_noise_scale.py` now reports the largest relative residual and says
+outright when the model does not describe its points, which is the check that was
+missing.
+
+## The restricted fit, and what it does not license
+
+Fitting only the points at or above 1,000 supervised tokens — a threshold set by
+the paper's own batch sizes of 1,824 to 8,494, which were fixed long before any
+of this — all five settings converge, at R^2 0.983 to 0.999:
+
+| setting | `B_simple` | padded / `B_simple` | packed / `B_simple` |
+| --- | ---: | ---: | ---: |
+| 124M, Alpaca whole | 1,440 | 1.31x | 5.86x |
+| 124M, Alpaca third | 2,230 | 0.83x | 3.72x |
+| 124M, Alpaca ninth | 1,541 | 1.18x | 5.36x |
+| 30M, Alpaca whole | 1,180 | 1.60x | 7.16x |
+| 7M, Alpaca whole | 1,143 | 1.65x | 7.39x |
+
+**And the registration's validity check still fails.** The three 124M settings
+are a corpus and two random subsets of it, sharing an example distribution
+exactly, so they cannot have three different noise scales. They span **1.55x**
+against a threshold of 1.5x written down before any of this ran. By the standard
+this file set for itself, **the individual values are not interpretable** — the
+spread between them is estimator noise, and it is larger than the tolerance that
+was set in advance for calling them a measurement.
+
+That check was written first precisely so this could not be argued away
+afterwards, and it is not being argued away. No value in that table is quoted as
+a measurement anywhere in the paper.
+
+## What survives the spread, and is the reason this section exists
+
+One qualitative statement is robust to 1.55x of noise, because it does not depend
+on which of these values is right. Every one of the five lands between **1,143
+and 2,230** supervised tokens. The padded arm carries 1,824 to 1,888 — *inside*
+that band. The packed arm carries 8,263 to 8,444 — **3.7x to 7.4x above every
+one of them.**
+
+So whatever the noise scale is exactly, these batches are not far below it. The
+padded arm sits at it and the packed arm well above it, and sections 2 and 5 say
+both arms are "far below the batch sizes at which large-scale scaling rules are
+usually measured, in the regime where Li et al. predict square-root behaviour".
+On this evidence that is the wrong description, and it is wrong in the direction
+that matters: Li et al.'s optimum is non-monotone with its peak at `B_noise`, and
+a paper reporting exponents up to 1.695 while assuming it sits in the
+square-root regime is assuming away a candidate mechanism for its own central
+negative result.
+
+**This does not establish that mechanism** and no part of the paper claims it.
+Three settings that should agree do not agree well enough to be quoted; one model
+size is not a series; and the estimator has now failed once and been restricted
+once to get here. What it establishes is that the paper's regime claim was never
+checked and does not survive the first attempt to check it, which is enough to
+require the claim to be softened and not enough to replace it.
