@@ -408,6 +408,43 @@ prepared from here:
   decision, not an unfilled field -- do not "fix" it. One consequence: a title
   page with no institution makes a personal contact address the consistent
   choice, so the Gmail stays.
+- **arXiv submission is open and parked at the endorsement gate, 2026-08-30.**
+  Account `AuthRan` is registered and verified against `b230006@nitsikkim.ac.in`.
+  Submission **8012815** exists, with the licence set to arXiv's perpetual
+  non-exclusive one and the primary classification `cs.LG`. It stops at "You are
+  not endorsed for this archive", which is the expected gate and not an error.
+  The endorsement code arXiv issued is **in the author's email and deliberately
+  not written here**, because this repository is public and a negative
+  endorsement counts against the positive ones.
+
+  Licence reasoning, so it is not revisited: the non-exclusive licence is the one
+  that survives a traditional publisher. Springer permits arXiv preprints
+  outright but requires the preprint's DOI *and licensing terms* to be declared
+  at submission, and CC BY's compatibility with their copyright agreement is
+  documented as unclear. arXiv also allows a later *version* to carry a more
+  liberal licence, so the conservative choice is the reversible one.
+
+  **A live arXiv bug to expect.** The `/auth/` endpoints -- `show-endorsers` and
+  `need-endorsement.php` -- do not share a session with the v1.5 submission
+  system, and the redirect they build downgrades to `http://`, which drops the
+  secure cookie. Symptom: "Login Required" while plainly logged in. Fix: log in
+  again through the bounce, after which the `/auth/` pages work.
+
+- **Qualified `cs.LG` endorsers, looked up 2026-08-30** via each paper's "Which
+  authors can endorse?" link. The rule is 3 papers in any `cs.*` category
+  submitted between three months and five years ago.
+
+  | person | paper | why them |
+  | --- | --- | --- |
+  | Mario Michael Krell | 2107.02027, the packing paper | §6 vindicates his recipe and supplies the mechanism his paper did not need to invoke. Ask first. |
+  | Shuhe Wang | 2410.08081, Packing Analysis | The paper engages his directly, though it also says his §5.3 does not locate the optimum. |
+  | Laurence Aitchison | 2402.18824, batch-size invariant Adam | Established academic on exactly §2's scaling rules. |
+  | Xi Wang | 2402.18824 | Same paper. |
+
+  Li et al. (2405.14578) is ruled out: **no author of it is currently an
+  endorser**, which is unlucky, since it is the closest theoretical reference.
+  arXiv asks that endorsers not be emailed in bulk, so these go one at a time.
+
 - **Endorsement -- harder than this list assumed.** A first `cs.LG` submission
   needs one, and **an institutional email address no longer earns it**. arXiv
   changed the policy on 2026-01-21: automatic endorsement now requires an
