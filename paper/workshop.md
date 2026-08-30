@@ -508,8 +508,9 @@ perplexity matches one number and not the state of the weights.
 **Small absolute batch, and three design confounds.** At 1,888 and 8,444
 supervised tokens per step both arms sit well below the batch sizes at which
 scaling rules are usually measured — the regime where Li et al. (2024) predict
-square-root behaviour, though we could only assert it: two attempts did not
-resolve the noise scale at 124M, and at 7M the packed arm sat *at* it. Appendix M records three more: fp16 overflow at
+square-root behaviour, which we assume rather than establish: our own attempt
+puts the noise scale *below* both arms across five settings, though too spread
+between settings that should agree to quote a value. Appendix M records three more: fp16 overflow at
 the top of a grid, which every run log argues against; a warmup that is a fixed
 *fraction* of the schedule, so the step effect is measured across cells warming
 up over 22 steps and over 100; and a fixed-step comparison that necessarily

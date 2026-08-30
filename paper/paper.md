@@ -226,13 +226,16 @@ scale of the run and the size of the model, and that no one value of it
 survives. The batch sizes here are small in absolute terms — 1,888 and 8,444
 supervised tokens per optimizer step — which places us in the regime where Li
 et al. predict square-root behaviour, and makes any departure from it worth
-reporting rather than assuming. We tried to check that rather than assert it,
-and mostly could not: `results/noise-scale.md` records two attempts to measure
-the noise scale, both of which failed to resolve it at 124M. At 7M, the one size
-where the fit converged, the packed arm came out at **1.08x** of the noise scale
-rather than well below it. That is a single number against three settings that
-returned nothing, and it points the other way, so the sentence above should be
-read as an assumption this study could not check.
+reporting rather than assuming. We tried to check it rather than assume it, and
+the check does not support it. Fitted over the decade our own batches sit in, the
+noise scale comes out between 1,143 and 2,230 supervised tokens across five
+settings, which would put the padded arm *at* it and the packed arm three to
+seven times above it rather than below. Three of those five are a corpus and two
+random subsets of it, which must share a noise scale and disagree by 1.55x, so no
+individual value is a measurement and none is quoted as one
+(`results/noise-scale.md`). What survives that spread is the sign, and the sign
+is against the sentence above. Read it as an assumption this study could not
+confirm.
 
 We are not aware of prior work that measures where the optimum actually sits
 when the batch size is changed *by packing* rather than by the number of
@@ -847,8 +850,10 @@ its supersets rather than independent draws. And "scale" is not one variable: a
 larger corpus at one epoch means both more data and more optimizer steps, and at
 a fixed data budget those are the same quantity, so nothing here separates them.
 Li et al. (2024) place the dependence on where the batch sits relative to the
-gradient noise scale. We could not measure where ours sit: the estimator
-resolves `tr(S)` and not `|G|^2` at this model size, twice (`results/noise-scale.md`).
+gradient noise scale. We could not measure where ours sit well enough to quote a
+number — the three settings that share a distribution disagree by 1.55x — but
+every fit puts the packed arm several times above the scale rather than below it
+(`results/noise-scale.md`), which is the opposite of what §2 assumes.
 
 ### 4.7 Three model sizes
 
@@ -1158,10 +1163,12 @@ window.
 **Small absolute batch.** At 1,888 and 8,444 supervised tokens per step on
 Alpaca, and 2,272 and 6,632 on Dolly, both arms are far below the batch sizes at
 which large-scale scaling rules are usually measured, and Li et al. (2024)
-predict this is the regime where the square-root rule holds — though the one
-setting where we could measure the noise scale put the packed arm *at* it rather
-than below, which if it generalised would make that prediction the wrong one to
-be leaning on. Results here should
+predict this is the regime where the square-root rule holds. Our own attempt to
+measure that scale puts it below both arms rather than far above them, though
+with too much spread between settings that should agree to quote a value; if
+that sign is right, the packed arm sits past the peak of Li et al.'s
+non-monotone optimum rather than in its square-root tail, and the regime this
+paragraph assumes is not the regime this study ran in. Results here should
 not be extrapolated to production batch sizes without further points.
 
 **fp16 dynamic range.** All runs use fp16 autocast with a gradient scaler, so at
