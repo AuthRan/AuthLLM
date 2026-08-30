@@ -243,15 +243,8 @@ square-root rule's 1.71x, while Alpaca's 2.73x sits well above its own
 square-root prediction of 2.11x. The failure is larger than the noise — both
 cells were run at three seeds with spreads of 1.08x and 1.03x, about 1.09x
 combined on their ratio, and the prediction misses by 1.28x, roughly 2.9 times
-that spread.
-
-| | Alpaca | Dolly |
-| --- | ---: | ---: |
-| packing factor (supervised tokens/step) | 4.47x | 2.92x |
-| batch effect at matched steps | 2.73x | 1.60x |
-| — as an exponent | **0.670** | **0.440** |
-| matched data budget (one epoch each) | 4.86x | 2.07x |
-| — as an exponent | **1.055** | **0.681** |
+that spread. At a matched data budget the two corpora shift 4.86x and 2.07x, or
+**1.055** and **0.681** as exponents; Appendix F has every comparison.
 
 We therefore do not fit a shared power law. The
 obvious reading is that the exponent is corpus-dependent; §4.5 tests that against
@@ -271,15 +264,24 @@ to the packed run at the same data budget:
 | Dolly | 2.7517 (3e-5) | 2.7662 (3e-5) | **2.7484** (9e-5) |
 
 Retuning is worth **0.050 nats on Alpaca and 0.018 on Dolly** against
-inheriting. Measured against the padded baseline instead, the packed run at
-its own optimum wins on both corpora, while the packed run at the inherited
-rate wins on neither: 0.004 nats better than padding on Alpaca, which at this
-scale is a wash, and 0.015 nats *worse* on Dolly. A practitioner who turns
-packing on and changes nothing else buys throughput and collects, at best,
-none of the quality packing had available. Appendix H gives the full
-comparison, and the caution that the batch effect, the step effect and the
-matched-budget shift are three views of the same four optima -- their agreeing
-is arithmetic, not corroboration.
+inheriting. Against the padded baseline instead, the packed run at its own
+optimum wins on both corpora while the inherited-rate run wins on neither —
+0.004 nats better on Alpaca, a wash at this scale, and 0.015 *worse* on Dolly.
+A practitioner who turns packing on and changes nothing else collects, at best,
+none of the quality packing had available.
+
+**That gain does not transfer, and it reverses.** Registered before any of it
+existed, the three conditions were re-run with checkpoints kept — reproducing
+the losses above to 0.0000 nats — and scored on Dolly's held-out split, which
+none of them saw. **The retuned run loses there by 0.087 nats, having won by
+0.050 on Alpaca** (2.9739 against 2.8873, and 2.0175 against 2.0678): the
+comparison reverses sign by more than the gain it reverses, and on Dolly the
+*inherited* run ranks first of the three. The 0.050 nats is real and
+reproduces; it is a gain on the corpus being tuned, which is what §5 says every
+number here is. One seed, and Dolly is a second instruction corpus rather than a
+downstream task. Appendix H has the rest, including the caution that the batch
+effect, the step effect and the matched-budget shift are three views of the same
+four optima.
 
 ### 4.4 Is it the batch, or is it the packing?
 
@@ -510,11 +512,11 @@ square-root behaviour. Appendix M records the rest: that a rise in loss at the
 top of a grid could be fp16 overflow, which every run log argues against; that
 warmup is a fixed *fraction* of the schedule, so the step effect is measured
 across cells warming up over 22 steps and over 100; and that the fixed-step
-comparison necessarily varies data seen. §4.3's losses are seed 1337 throughout
-and its sign turns on one grid point, which is why the quantity we defend there
-is the distance between the inherited and the retuned rate. Each held-out split
-shares a distribution with its own training split, so the optimum here is not
-the optimum for a downstream pipeline.
+comparison necessarily varies data seen. §4.3's losses are seed 1337
+throughout and its sign turns on one grid point. Each held-out split shares a
+distribution with its own training split, so the optimum here is not the optimum
+for a downstream pipeline — which §4.3 measures rather than assumes, and which
+bites harder than that phrasing suggests.
 
 ## 6. What to do about it
 

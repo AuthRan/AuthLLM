@@ -528,6 +528,38 @@ practitioner who turns packing on and changes nothing else buys throughput and
 collects, at best, none of the quality packing had available; on one of the two
 corpora they pay for it.
 
+**That gain does not transfer, and it reverses.** Registered before any of it
+existed (`results/registered-prediction-downstream.md`), the three conditions
+above were re-run with their checkpoints kept — they reproduce the losses in this
+table to 0.0000 nats — and scored on Dolly's held-out split, which none of them
+was fine-tuned on, every checkpoint in one invocation so the columns see the same
+examples. The prediction of record was that the retuned run would still beat the
+inherited one out of distribution, by more than a fifth of the in-distribution
+gain. **It loses by 0.087 nats, where it wins by 0.050 on Alpaca.**
+
+| | Alpaca held-out | Dolly held-out |
+| --- | ---: | ---: |
+| base model, no fine-tune | 2.5711 | 3.0653 |
+| padded at its optimum | 2.0720 | 2.9518 |
+| packed, inherited rate | 2.0678 | **2.8873** |
+| packed, retuned rate | **2.0175** | 2.9739 |
+
+The same comparison reverses sign between the two corpora, and by more than the
+gain it reverses. On Dolly the ranking puts the *inherited* run first of the
+three fine-tunes: the condition this section describes as collecting none of the
+quality packing had available is the one that generalises best of them.
+
+What that costs this section is its practical framing and not its measurement.
+The 0.050 nats is real and it reproduces exactly; it is a gain *on the corpus
+being tuned*, which is what §5 says every number in this paper is, and it does
+not survive a change of distribution. A mechanism is available and is not tested
+here: the retuned run trains at five times the inherited rate, so it moves
+further from the base model and specialises harder on what it sees — "specialised
+harder" and "generalises worse" are the same observation twice. One training
+seed, as everywhere in this section, and Dolly is a second instruction corpus
+rather than a downstream task, so this is transfer between instruction
+distributions and not performance on anything a user would ask for.
+
 The Alpaca column is where this effect is easiest to overstate, so it is worth
 reading closely. One grid point below the inherited rate, at 2e-5, the packed
 run scores 2.0911 against padding's 2.0745 — a clear regression. The sign of
@@ -1178,13 +1210,18 @@ it loses to padding by 0.017. We report the Alpaca case as a wash for that
 reason. The quantity that is robust on both corpora is the distance between the
 inherited and the retuned rate, which is many times the seed spread.
 
-**Held-out set drawn from the training distribution.** Each corpus's held-out
-split shares a distribution with its own training split, and this project has
-repeatedly measured that such a split ranks checkpoints differently from a
-downstream one. The learning-rate optimum reported here is the optimum *for
+**Held-out set drawn from the training distribution, and that matters more than
+it sounds.** Each corpus's held-out split shares a distribution with its own
+training split. The learning-rate optimum reported here is the optimum *for
 held-out validation loss on the same corpus*, which is the right target for a
-scaling question and is not the same as the optimum for a downstream
-pipeline.
+scaling question and is not the same as the optimum for a downstream pipeline.
+That was a caveat until §4.3 measured it: scored on a corpus it was not tuned on,
+the retuned packed run *loses* to the inherited one by 0.087 nats, having beaten
+it by 0.050 on the corpus it was tuned on. The caveat bites harder than this
+paragraph used to imply. It does not reach the optima themselves — where the
+minimum of same-corpus held-out loss sits is what §4 measures and what §6's
+recipe is for — but any claim about what retuning is *worth* is a claim about one
+distribution.
 
 ## 6. What to do about it
 
@@ -1340,11 +1377,16 @@ paper fails on five of thirteen settings and is retracted here rather than
 quietly dropped.
 
 What would move this forward is not more seeds. It is model sizes above 124M,
-corpora drawn independently rather than sliced from two, batches near the scales
-where production fine-tuning actually runs, and a downstream metric to sit
-beside held-out loss — this project has separately measured that the two can
-rank checkpoints differently. Until then the honest recipe is the sweep in §6:
-three to six points, spanning `p^0.4` to `p^1.7`, and no inherited rate.
+corpora drawn independently rather than sliced from two, and batches near the
+scales where production fine-tuning actually runs. The fourth item on that list
+was a metric other than same-corpus held-out loss, and §4.3 now carries one:
+scored on a corpus it was not tuned on, the retuned packed run loses to the
+inherited one by 0.087 nats, having beaten it by 0.050 on the corpus it was
+tuned on. That does not move the optima — where the minimum of same-corpus loss
+sits is what this paper measures — but it means the *worth* of retuning is a
+statement about one distribution, and a reader who wants it to be more than that
+should measure their own. Until then the honest recipe is the sweep in §6: three
+to six points, spanning `p^0.4` to `p^1.7`, and no inherited rate.
 
 
 ## References
