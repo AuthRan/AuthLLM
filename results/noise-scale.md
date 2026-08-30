@@ -4,13 +4,48 @@
 *`results/registered-prediction-noise-scale.md`, which was written before*
 *`scripts/measure_noise_scale.py` had ever been run.*
 
+**Fitted over the points at or above 1,000 supervised tokens,**
+**which is POST-HOC.** The registered form fits every point, and doing that
+returned a negative intercept on all five settings: the two-parameter model
+does not hold across the whole sweep, and the smallest batches carry almost
+all of the variance. The threshold is the decade the paper's own batch sizes
+sit in, and those were fixed long before any of this ran -- but it was chosen
+after seeing the failure, so nothing here scores the registered predictions.
+`results/registered-prediction-noise-scale.md` carries the scoring, and it
+stands: **P1 and P2 are unscored.**
+
 `B_simple = tr(S)/|G|^2` in supervised tokens per step, so it compares
 directly against the padded and packed columns beside it.
 
-| setting | exponent | padded | packed | `B_simple` | packed / `B_simple` | R^2 | tokens rise with rows |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
-| 124M, Alpaca whole | 1.055 | 1,888 | 8,444 | fit failed | — | 0.9815 | yes |
-| 124M, Alpaca third | 0.670 | 1,841 | 8,296 | fit failed | — | 0.8790 | yes |
-| 124M, Alpaca ninth | 0.412 | 1,824 | 8,263 | fit failed | — | 0.9240 | yes |
-| 30M, Alpaca whole | 1.300 | 1,888 | 8,444 | fit failed | — | 0.9949 | yes |
-| 7M, Alpaca whole | 1.695 | 1,888 | 8,444 | 7,834 | 1.08x | 0.9984 | yes |
+| setting | exponent | padded | packed | `B_simple` | padded / `B_simple` | packed / `B_simple` | R^2 | tokens rise with rows |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| 124M, Alpaca whole | 1.055 | 1,888 | 8,444 | 1,440 | 1.31x | 5.86x | 0.9890 | yes |
+| 124M, Alpaca third | 0.670 | 1,841 | 8,296 | 2,230 | 0.83x | 3.72x | 0.9829 | yes |
+| 124M, Alpaca ninth | 0.412 | 1,824 | 8,263 | 1,541 | 1.18x | 5.36x | 0.9991 | yes |
+| 30M, Alpaca whole | 1.300 | 1,888 | 8,444 | 1,180 | 1.60x | 7.16x | 0.9943 | yes |
+| 7M, Alpaca whole | 1.695 | 1,888 | 8,444 | 1,143 | 1.65x | 7.39x | 0.9971 | yes |
+
+## The validity check
+
+The corpus and its two random subsets span **1.55x** in `B_simple`,
+against a tolerance of 1.5x set before any of this ran, on the
+grounds that three samples of one distribution cannot have three noise
+scales. **The check fails.**
+
+**So no individual value in the table above is a measurement**, and none
+is quoted as one in the paper. The spread between three settings that
+must agree is this estimator's noise floor here, and it is wider than the
+tolerance set in advance for calling any of it a number.
+
+One qualitative statement survives that spread, because it does not
+depend on which of the values is right: every setting lands between
+**1,143** and **2,230** supervised tokens, the padded arm sits
+inside that band, and the packed arm is several times above all of them.
+The paper uses this table for that, and for nothing finer.
+
+---
+
+*The invocation that produced this table was not recorded, and neither were*
+*its per-size points: it ran before this script recorded either. The values*
+*are the ones the 2026-08-30 restricted-fit run reported. Re-running would*
+*record both, and would also move the numbers the paper quotes.*
