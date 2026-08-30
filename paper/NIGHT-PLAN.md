@@ -399,12 +399,15 @@ prepared from here:
 
 ### Still open
 
-- **Author list and affiliation -- settled 2026-08-30.** `paper/build_tex.py`
-  now reads "Ashutosh Ranjan / National Institute of Technology Sikkim /
-  authran.off@gmail.com". The affiliation names the institution rather than the
-  degree, which is the convention: a title page says where an author is, never
-  their rank within it. Still worth doing: swap the personal address for an
-  institutional one, which is a one-line edit in `build_tex.py`.
+- **Author list and affiliation -- settled 2026-08-30, as Independent
+  Researcher.** `paper/build_tex.py` reads "Ashutosh Ranjan / Independent
+  Researcher / authran.off@gmail.com". The institution was tried on the title
+  page and reverted the same day: the author is enrolled at NIT Sikkim but the
+  work was done on personal hardware with no advisor, no institutional compute
+  and no funding, so independent status describes the work accurately. This is a
+  decision, not an unfilled field -- do not "fix" it. One consequence: a title
+  page with no institution makes a personal contact address the consistent
+  choice, so the Gmail stays.
 - **Endorsement -- harder than this list assumed.** A first `cs.LG` submission
   needs one, and **an institutional email address no longer earns it**. arXiv
   changed the policy on 2026-01-21: automatic endorsement now requires an
@@ -412,7 +415,19 @@ prepared from here:
   in that domain, so a first submission cannot qualify. The remaining route is a
   personal endorsement from an established arXiv author in the same domain.
   <https://blog.arxiv.org/2026/01/21/attention-authors-updated-endorsement-policy/>
-  Changing the affiliation does not affect this.
+  Affiliation does not affect this either way.
+
+  **The procedure, so it does not have to be looked up again.** Start a
+  submission in `cs.LG`; arXiv answers with an endorsement request carrying a
+  **six-character code** and a shareable link. That code goes to a qualified
+  endorser, who enters it on arXiv's endorsement form and endorses, declines, or
+  abstains. Endorsers qualify per domain by having submitted to it **between
+  three months and five years ago**, and any arXiv abstract page lists "Which
+  authors of this paper are endorsers?" -- that link is how you find one rather
+  than guessing. Endorsement is **not peer review**: it attests that the work
+  belongs in the archive, not that it is correct, so an endorser is not being
+  asked to referee. arXiv asks that you not email many potential endorsers at
+  once, nor the same one twice. <https://info.arxiv.org/help/endorsement.html>
 - **Cheapest open check — running now.** `checkpoints/medium/step_2500.pt`
   (perplexity 39.4, against the 30M model's 38.0), the middle point of §4.7.2's
   quality series. Ledger `results/lr_scaling_quality2500.csv`, prediction
