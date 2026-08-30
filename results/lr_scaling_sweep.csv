@@ -341,3 +341,6 @@ dolly,wide_136,False,136,9e-05,1338,2.6509,2.6509,136,288,logs/lr_scaling/dolly_
 dolly,wide_136,False,136,9e-05,1339,2.6636,2.6636,136,726,logs/lr_scaling/dolly_wide_136_lr9e-05_seed1339.csv
 dolly,wide_136,False,136,0.00015,1338,2.6631,2.6631,136,291,logs/lr_scaling/dolly_wide_136_lr0.00015_seed1338.csv
 dolly,wide_136,False,136,0.00015,1339,2.6764,2.6764,136,790,logs/lr_scaling/dolly_wide_136_lr0.00015_seed1339.csv
+alpaca,packed_1600,True,1600,6e-05,1339,2.1524,2.0923,684,1090,logs/lr_scaling/alpaca_packed_1600_lr6e-05_seed1339.csv
+alpaca_mid,packed_109,True,109,6e-05,1339,2.0455,2.0455,109,97,logs/lr_scaling/alpaca_mid_packed_109_lr6e-05_seed1339.csv
+alpaca_ninth,packed_39,True,39,0.00025,1339,2.2426,2.2426,39,40,logs/lr_scaling/alpaca_ninth_packed_39_lr0.00025_seed1339.csv

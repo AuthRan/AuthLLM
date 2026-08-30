@@ -33,7 +33,7 @@ Inheriting is expensive, and more so as the model shrinks. Retuning is worth 0.0
 
 A control identifies the mechanism. A padded run whose gradient accumulation is raised until it matches a packed step on supervised tokens, examples and data seen finds the same optimum, against the three- to four-and-a-half-fold shift a rule keyed on rows predicts. Packing acts on the learning rate purely as a change of batch size.
 
-How large a change has no single answer: as an exponent against the packing factor it runs from 0.39 to 1.70 across thirteen settings. Corpus identity is ruled out and the packing ratio is unsupported once seed spread is carried onto the exponent; what survives is the scale of the run, confirmed by three predictions registered in advance. The exponent also rises as the model shrinks, separated from base-model quality by a control holding parameter count fixed while dropping the base model to the smallest model's perplexity. No fixed bracket survives: the one an earlier draft proposed fails on five of the thirteen settings, once by 2.4x. We give a range instead. Results are at 7M to 124M parameters and should not be extrapolated to production batch sizes.
+How large a change has no single answer: as an exponent against the packing factor it runs from 0.41 to 1.70 across thirteen settings. Corpus identity is ruled out and the packing ratio is unsupported once seed spread is carried onto the exponent; what survives is the scale of the run, confirmed by three predictions registered in advance. The exponent also rises as the model shrinks, separated from base-model quality by a control holding parameter count fixed while dropping the base model to the smallest model's perplexity. No fixed bracket survives: the one an earlier draft proposed fails on five of the thirteen settings, once by 2.4x. We give a range instead. Results are at 7M to 124M parameters and should not be extrapolated to production batch sizes.
 
 \end{abstract}
 
@@ -339,7 +339,7 @@ Splitting one corpus by length gives that. Sorted by encoded length, Alpaca's te
 corpus & packing factor & lr* padded & lr* packed & shift & exponent \\
 \midrule
 Alpaca short third & 7.84x & 4.80e-5 & 1.39e-4 & 2.90x & \textbf{0.517 $\pm$ 0.042} \\
-Alpaca middle third & 4.87x & 4.48e-5 & 1.33e-4 & 2.96x & \textbf{0.686 $\pm$ 0.067} \\
+Alpaca middle third & 4.87x & 4.48e-5 & 1.33e-4 & 2.96x & \textbf{0.651 $\pm$ 0.133} \\
 Alpaca long third & 2.73x & 6.73e-5 & 1.37e-4 & 2.03x & \textbf{0.707 $\pm$ 0.265} \\
 Alpaca, whole & 4.47x & 2.81e-5 & 1.37e-4 & 4.86x & \textbf{1.055 $\pm$ 0.128} \\
 Dolly & 2.92x & 3.78e-5 & 7.84e-5 & 2.07x & \textbf{0.681 $\pm$ 0.099} \\
@@ -362,7 +362,7 @@ The one comparison in \S{}4.5's table that clears its bound is between a corpus 
 
 It measures \textbf{0.670 $\pm$ 0.043} over three seeds, against a registered 0.67.
 
-One comparison falls out of that unplanned. The middle \emph{length tercile} sits at 0.686 and the \emph{random} third at 0.670, inside either one's bound. They share size (16,956 examples) and step count (530) and differ in packing ratio (4.87x against 4.51x) and in composition. Two subsets matched on scale and differing in ratio and composition agree; a subset and its parent matched on ratio and composition and differing in scale do not.
+One comparison falls out of that unplanned. The middle \emph{length tercile} sits at 0.651 and the \emph{random} third at 0.670, inside either one's bound. They share size (16,956 examples) and step count (530) and differ in packing ratio (4.87x against 4.51x) and in composition. Two subsets matched on scale and differing in ratio and composition agree; a subset and its parent matched on ratio and composition and differing in scale do not.
 
 Extending to a third point, with everything but scale held:
 
@@ -373,15 +373,15 @@ Extending to a third point, with everything but scale held:
 \toprule
 corpus & examples & padded steps & packing & exponent & batch term & step term \\
 \midrule
-Alpaca ninth & 5,652 & 177 & 4.53x & \textbf{0.385 $\pm$ 0.100} & 0.323 & 0.062 \\
-Alpaca third & 16,956 & 530 & 4.51x & \textbf{0.670 $\pm$ 0.043} & 0.520 & 0.151 \\
-Alpaca, whole & 50,868 & 1,600 & 4.47x & \textbf{1.055 $\pm$ 0.128} & 0.670 & 0.379 \\
+Alpaca ninth & 5,652 & 177 & 4.53x & \textbf{0.412 $\pm$ 0.136} & 0.350 & 0.062 \\
+Alpaca third & 16,956 & 530 & 4.51x & \textbf{0.670 $\pm$ 0.043} & 0.520 & 0.150 \\
+Alpaca, whole & 50,868 & 1,600 & 4.47x & \textbf{1.055 $\pm$ 0.128} & 0.670 & 0.385 \\
 \bottomrule
 \end{tabular}}
 \ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
-The exponent rises monotonically across a ninefold span of scale, and both steps clear their combined bounds --- 2.6x and 2.8x. So does each of the two terms it decomposes into. That decomposition is worth stating on its own: at a fixed data budget the exponent is a batch term plus a step term (\S{}4.3), and running the padded arm at the \emph{packed} step count isolates the first. Both fall at smaller scale, and the step term falls faster: from the whole corpus down to a ninth the batch term drops to 0.48 of its value and the step term to 0.16. \textbf{The scale effect is not localised in the batch term}, which is what a rule about batch size alone would have predicted. A shorter run is less sensitive to both levers, and at the smallest scale here the step count has nearly stopped mattering.
+The exponent rises monotonically across a ninefold span of scale, and both steps clear their combined bounds --- 1.8x and 2.9x. So does each of the two terms it decomposes into. That decomposition is worth stating on its own: at a fixed data budget the exponent is a batch term plus a step term (\S{}4.3), and running the padded arm at the \emph{packed} step count isolates the first. Both fall at smaller scale, and the step term falls faster: from the whole corpus down to a ninth the batch term drops to 0.52 of its value and the step term to 0.16. \textbf{The scale effect is not localised in the batch term}, which is what a rule about batch size alone would have predicted. A shorter run is less sensitive to both levers, and at the smallest scale here the step count has nearly stopped mattering.
 
 \begin{figure}[htbp]
 \centering
@@ -402,14 +402,14 @@ corpus & examples & packing factor & exponent \\
 \midrule
 Alpaca, random third & 16,956 & 4.51x & 0.670 $\pm$ 0.043 \\
 Dolly, whole & 13,756 & 2.92x & 0.681 $\pm$ 0.099 \\
-Alpaca, random ninth & 5,652 & 4.53x & 0.385 $\pm$ 0.100 \\
+Alpaca, random ninth & 5,652 & 4.53x & 0.412 $\pm$ 0.136 \\
 Dolly, random third & 4,585 & 3.14x & 0.456 $\pm$ 0.092 \\
 \bottomrule
 \end{tabular}}
 \ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
-Two corpora of different provenance and length distribution, differing by about half again in packing ratio and matched only to within 1.23x on the size of the run, agree on the exponent at \textbf{both} scales --- by 0.011 against a bound of 0.108, and by 0.071 against 0.136, or 0.10x and 0.53x of their own noise. One corpus moved 3x in scale disagrees with \emph{itself} by 2.85x its bound. Scale matched, two different corpora agree; scale changed, one corpus does not.
+Two corpora of different provenance and length distribution, differing by about half again in packing ratio and matched only to within 1.23x on the size of the run, agree on the exponent at \textbf{both} scales --- by 0.011 against a bound of 0.108, and by 0.044 against 0.164, or 0.10x and 0.27x of their own noise. One corpus moved 3x in scale disagrees with \emph{itself} by 2.85x its bound. Scale matched, two different corpora agree; scale changed, one corpus does not.
 
 These two are worth more than the rest of this section's comparisons for a reason \S{}5 gives: every other scale comparison here is a corpus against a nested subset of itself, so a property of that corpus cannot show up as variation. These are between corpora. The only other cross-corpus pair in the paper is \S{}4.5's long tercile against Dolly, and that one is matched on packing ratio rather than on scale --- so between them the two sections check the same independence on both axes, and it holds on both.
 
@@ -417,7 +417,7 @@ They are weaker individually than that framing suggests. The scales are matched 
 
 These two pairs are also the ones most exposed to how the shift is summarised, because unlike every other comparison in \S{}4.6 and \S{}4.7 they do not hold the packing factor fixed --- 4.51x against 2.92x, and 4.53x against 3.14x (\S{}3.3). The agreement survives under two alternative normalizations, at 0.50x and 0.51x of the bound rather than 0.10x, so the conclusion does not depend on the choice; the \emph{closeness} partly does. Appendix G gives the table.
 
-\textbf{A retraction worth reporting.} Before replication the three Alpaca points sat exactly 3x apart in scale with exponent differences of +0.369 and +0.371 --- a straight line in log(scale) with residuals of $\pm$0.0006. We declined to call it a law at the time, on the grounds that residuals two orders of magnitude below the seed bounds are coincidence rather than signal. Replication settles it: the differences are now \textbf{+0.285 and +0.385} and the line is gone. What survives is the monotone increase, at roughly 0.3 of exponent per tripling of scale, with no functional form behind it. We report this because the tidy version was available for several hours and would have been the more quotable result.
+\textbf{A retraction worth reporting.} Before replication the three Alpaca points sat exactly 3x apart in scale with exponent differences of +0.369 and +0.371 --- a straight line in log(scale) with residuals of $\pm$0.0006. We declined to call it a law at the time, on the grounds that residuals two orders of magnitude below the seed bounds are coincidence rather than signal. Replication settles it: the differences are now \textbf{+0.258 and +0.385} and the line is gone. What survives is the monotone increase, at roughly 0.3 of exponent per tripling of scale, with no functional form behind it. We report this because the tidy version was available for several hours and would have been the more quotable result.
 
 Two limits remain. The three Alpaca samples are nested, so these are a set and its supersets rather than independent draws. And "scale" is not one variable: a larger corpus at one epoch means both more data and more optimizer steps, and at a fixed data budget those are the same quantity, so nothing here separates them. Li et al. (2024) place the dependence on where the batch sits relative to the gradient noise scale, which our batch sizes do not move enough to test.
 
@@ -427,7 +427,7 @@ Every result so far is one model. To test whether any of it survives a change of
 
 The intent was to match the three on tokens per parameter rather than on absolute tokens, so that each would be comparably trained \emph{for its size}. The budget we set does not do that, and the error is worth stating plainly because it changes what the comparison below means. The 124M run saw 2.46B tokens --- 19.9 per parameter --- and both smaller runs were sized from a stale note that assumed twice that: 1.18B tokens at 30M and 288M at 7M, or 39.4 and 39.5 per parameter. Both smaller models are therefore trained about twice as heavily for their size as the model they are being compared against, which would confound \emph{better-trained-for-its-size} with \emph{smaller} throughout this section. \S{}4.7.1 measures that axis directly at 30M rather than leaving it as a caveat, and finds it null; the rest of this section is written on that basis. Validation perplexities are 23.5, 38.0 and 115.2.
 
-Repeating the scale series of \S{}4.6 at each size. Three seeds stand behind every cell here except the 124M ninth, which has two for the reason in Appendix C; none of the fourteen cells added at 30M and 7M lost a seed:
+Repeating the scale series of \S{}4.6 at each size. Three seeds stand behind every cell here, including the 124M ninth, whose window Appendix C records as having been extended to get there; none of the fourteen cells added at 30M and 7M lost a seed:
 
 \begin{center}
 \small
@@ -436,7 +436,7 @@ Repeating the scale series of \S{}4.6 at each size. Three seeds stand behind eve
 \toprule
 corpus & examples & 124M & 30M & 7M \\
 \midrule
-Alpaca ninth & 5,652 & 0.385 $\pm$ 0.100 & 0.456 $\pm$ 0.059 & --- \\
+Alpaca ninth & 5,652 & 0.412 $\pm$ 0.136 & 0.456 $\pm$ 0.059 & --- \\
 Alpaca third & 16,956 & 0.670 $\pm$ 0.043 & 0.768 $\pm$ 0.094 & 0.905 $\pm$ 0.174 \\
 Alpaca whole & 50,868 & 1.055 $\pm$ 0.128 & 1.300 $\pm$ 0.159 & \textbf{1.695 $\pm$ 0.261} \\
 \bottomrule
@@ -448,7 +448,7 @@ Alpaca whole & 50,868 & 1.055 $\pm$ 0.128 & 1.300 $\pm$ 0.159 & \textbf{1.695 $\
 
 The left panel of the figure in \S{}4.6 draws all three sizes together.
 
-\textbf{The scale dependence replicates at every model size, and the first replication was registered before it ran.} Within each model the whole corpus sits above a third of it by more than the combined seed bound: 2.8x at 124M, 2.9x at 30M, 2.5x at 7M. Against a ninth, where we have two of the three sizes, it is 4.1x and 5.0x. Five comparisons on three base models, and \S{}4.7.1 adds a fourth base model and a sixth. This is the paper's most repeated result and the one we would defend hardest.
+\textbf{The scale dependence replicates at every model size, and the first replication was registered before it ran.} Within each model the whole corpus sits above a third of it by more than the combined seed bound: 2.8x at 124M, 2.9x at 30M, 2.5x at 7M. Against a ninth, where we have two of the three sizes, it is 3.4x and 5.0x. Five comparisons on three base models, and \S{}4.7.1 adds a fourth base model and a sixth. This is the paper's most repeated result and the one we would defend hardest.
 
 The 30M case is the fourth registered prediction in this paper and the third confirmed (\texttt{results/\allowbreak{}registered-prediction-model-size.md}, written while the 30M pretraining run was still going and before any 30M fine-tune existed). It committed to direction plus margin rather than to values: that Alpaca's exponent would exceed its third's \emph{by more than 0.135}, the combined bound at 124M, with the alternative on record that a gap under 0.135 in either direction would mean \S{}4.6's scale reading had to be reported as 124M-specific. The measured gap is 0.531. That document also recorded, as an explicit limitation, that the 30M sweep as queued ran seed 1337 only and so would carry no seed bound of its own until replicated; the replication was run afterwards and is in Appendix C, and it did not move the verdict.
 
@@ -573,7 +573,7 @@ The failure mode this paper documents is the other practice --- keep the batch, 
 \toprule
 setting & where the packed optimum landed \\
 \midrule
-Alpaca ninth, 124M & 16\% \textbf{below} the floor \\
+Alpaca ninth, 124M & 12\% \textbf{below} the floor \\
 Alpaca ninth, 30M & 6\% below the floor \\
 Dolly third, 124M & 5\% below the floor \\
 Alpaca whole, 30M & 31\% \textbf{above} the ceiling \\
@@ -583,7 +583,7 @@ Alpaca whole, 7M & 136\% \textbf{above} the ceiling \\
 \ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
 \end{center}
 
-The three misses below the floor are the three smallest-scale settings, where the exponent is 0.385, 0.456 and 0.456 --- under the 0.5 that \texttt{sqrt(p)} assumes. The two above the ceiling are the two smaller models on the largest corpus, where it is 1.300 and 1.695, and the second misses by a factor of 2.4. A bracket fixed in \texttt{p} cannot work when the exponent itself moves with the scale of the run and with the size of the model, and reporting one would have been the most quotable and least durable thing in this paper.
+The three misses below the floor are the three smallest-scale settings, where the exponent is 0.412, 0.456 and 0.456 --- under the 0.5 that \texttt{sqrt(p)} assumes. The two above the ceiling are the two smaller models on the largest corpus, where it is 1.300 and 1.695, and the second misses by a factor of 2.4. A bracket fixed in \texttt{p} cannot work when the exponent itself moves with the scale of the run and with the size of the model, and reporting one would have been the most quotable and least durable thing in this paper.
 
 \begin{figure}[htbp]
 \centering
@@ -591,7 +591,7 @@ The three misses below the floor are the three smallest-scale settings, where th
 \caption{Every one of the thirteen settings against the bracket an earlier draft proposed. In exponent terms that bracket is 0.5 at the floor and log(1.2p)/log(p) at the ceiling -- about 1.12 to 1.17 over the packing factors here -- drawn as the grey band. Five settings fall outside it, and not at random: the three below the floor are the three smallest-scale settings, and the two above the ceiling are the two smaller models on the largest corpus. The dashed verticals are the range this section recommends instead. Error bars are the seed bound of \S{}4.5.}
 \end{figure}
 
-What the measurements support instead is a range. Across all thirteen settings the exponent runs from \textbf{0.385 to 1.695}, so the packed optimum sits somewhere in
+What the measurements support instead is a range. Across all thirteen settings the exponent runs from \textbf{0.412 to 1.695}, so the packed optimum sits somewhere in
 
 [ lr\_pad \emph{ p\textasciicircum{}0.4,  lr\_pad } p\textasciicircum{}1.7 ]
 
@@ -613,7 +613,7 @@ We set out to check a piece of standard advice --- that packing is an efficiency
 
 What packing is doing is settled, as far as this evidence goes. Assembling the same batch by padding instead --- matched on supervised tokens, examples and data seen, at several times the forward-pass cost --- reaches the same optimum, so the optimum is set by what a step contains and not by how it is laid out. That also explains why Krell et al.'s original recipe, which shrinks the batch by the packing factor, needs no learning-rate change: it is the practice of packing to make the step \emph{bigger} that is exposed.
 
-How much the optimum moves is not settled, and we think it is not settleable in the form the question is usually asked. There is no exponent to report: it runs from 0.39 to 1.70, it rises with the scale of the run on two corpora and three model sizes, it rises as the model shrinks, and it is indifferent to how well the base model was pretrained --- indifferent across a doubling of the pretraining budget at fixed size, and across a 4.6-fold change in perplexity at fixed size. A bracket we proposed in an earlier draft of this paper fails on five of thirteen settings and is retracted here rather than quietly dropped.
+How much the optimum moves is not settled, and we think it is not settleable in the form the question is usually asked. There is no exponent to report: it runs from 0.41 to 1.70, it rises with the scale of the run on two corpora and three model sizes, it rises as the model shrinks, and it is indifferent to how well the base model was pretrained --- indifferent across a doubling of the pretraining budget at fixed size, and across a 4.6-fold change in perplexity at fixed size. A bracket we proposed in an earlier draft of this paper fails on five of thirteen settings and is retracted here rather than quietly dropped.
 
 What would move this forward is not more seeds. It is model sizes above 124M, corpora drawn independently rather than sliced from two, batches near the scales where production fine-tuning actually runs, and a downstream metric to sit beside held-out loss --- this project has separately measured that the two can rank checkpoints differently. Until then the honest recipe is the sweep in \S{}6: three to six points, spanning \texttt{p\textasciicircum{}0.4} to \texttt{p\textasciicircum{}1.7}, and no inherited rate.
 
@@ -706,9 +706,13 @@ Alpaca's four optima were re-run at seeds 1338 and 1339 on the three learning ra
 
 Dolly's three cells that are not overfitting-contaminated were replicated the same way, with spreads of 1.08x, 1.11x and 1.03x. That spread is the yardstick \S{}4.2 is measured against: it is what makes a 1.28x miss a failed prediction rather than a noisy one.
 
-The six subsets of \S{}4.5 and \S{}4.6 were replicated the same way, and every exponent quoted from them carries the resulting bound. Worst-cell spreads run 1.06x to 1.25x: Alpaca's short, middle and long terciles at 1.08x, 1.10x and 1.25x, its random ninth and third at 1.11x and 1.06x, and Dolly's third at 1.10x. Every cell brackets its optimum. Three seeds stand behind each except the middle tercile and the ninth, which have two: in each a third seed put the minimum on the edge of the replicated points, and we drop such a curve rather than extrapolate from it, as with Alpaca's packed 1,600-step cell above.
+The six subsets of \S{}4.5 and \S{}4.6 were replicated the same way, and every exponent quoted from them carries the resulting bound. Worst-cell spreads run 1.06x to 1.25x: Alpaca's short, middle and long terciles at 1.08x, 1.20x and 1.25x, its random ninth and third at 1.19x and 1.06x, and Dolly's third at 1.10x. Every cell brackets its optimum at all three seeds.
 
-Two of those replications changed a number this paper had already reported, and both are recorded where they were claimed. The random third moved from 0.685 to 0.670 --- \emph{toward} the value registered for it, not away. The random ninth moved from 0.316 to 0.385, which dissolved the straight line \S{}4.6 had already flagged as too regular to be real. Neither reverses a conclusion; the second retires an artefact, and \S{}4.6 reports it as the caution being borne out rather than quietly restating the table.
+That last sentence is newer than the rest of this appendix. The middle tercile and the random ninth stood at two seeds each for most of this study, because in each a third seed put its minimum on the edge of the replicated points and the rule elsewhere is to drop such a curve rather than extrapolate from it. Both have now been extended instead, one point each, and both bracket. The reason for extending is the one \S{}4.7.2's padded cell already established: dropping is only neutral when the drop is not systematic, and neither of these was. The ninth's dropped seed sat \emph{above} its window and the tercile's \emph{below} it, so dropping them biased one exponent down and the other up. Alpaca's packed 1,600-step cell was extended at the same time and now brackets too, which leaves \textbf{no curve anywhere in this paper resting on fewer than three seeds, and none dropped}.
+
+It moved two numbers, both inside their own bounds and both with the bound roughly doubled, because the curve that had been dropped was in each case the one furthest from the other two. The middle tercile went from 0.686 $\pm$ 0.067 to \textbf{0.651 $\pm$ 0.133} and the random ninth from 0.385 $\pm$ 0.100 to \textbf{0.412 $\pm$ 0.136}. The ninth is one end of the range \S{}6 recommends, so the paper's headline span is now 0.412 to 1.695 rather than 0.385 to 1.695, and the first step of \S{}4.6's scale series clears its combined bound by 1.8x where it previously cleared it by 2.6x. Nothing changes sign and no conclusion turns, but the scale series is measurably weaker at its small end than the earlier version of this appendix claimed, and that is the direction an honest replication is expected to move in.
+
+Two earlier replications had already changed a number this paper reported, and both are recorded where they were claimed. The random third moved from 0.685 to 0.670 --- \emph{toward} the value registered for it, not away. The random ninth moved from 0.316 to 0.385, which dissolved the straight line \S{}4.6 had already flagged as too regular to be real, and has now moved again to 0.412 for the reason above. Neither reverses a conclusion; the second retires an artefact, and \S{}4.6 reports it as the caution being borne out rather than quietly restating the table.
 
 The loss tables in \S{}4.1 and the inherit-versus-retune table in \S{}4.3 are seed 1337 throughout. They have to be: a seed changes which examples are held out, so losses are comparable down a column within one seed and not across seeds. Only the optima are aggregated across seeds, and only after each seed is solved on its own curve. One consequence is worth stating plainly: the replication seeds were run on the points bracketing each optimum, which does not include the inherited rate, so \S{}4.3's comparison has no cross-seed check behind it. That is the reason \S{}4.3 leans on the inherit-to-retune distance rather than on the sign of the inherit-to-padding difference.
 
@@ -800,7 +804,7 @@ python scripts/plot_results.py --only lr-scaling
 
 \texttt{scripts/\allowbreak{}analyze\_\allowbreak{}lr\_\allowbreak{}scaling.py} is the single place the optima are solved: it fits the parabola of 3.3, keeps each seed's curve separate for the reason in 3.1, drops a seed whose curve brackets no minimum, and excludes cells past 1.5 epochs from the headline for the reason in Appendix B. The tables in \S{}4.1 and the ratios in \S{}4.2 are its output rather than transcriptions of it.
 
-Hardware is a single RTX 2080 Ti per run, and the whole grid is about 69 GPU-hours (measured across the 669 runs that recorded wall time; 2 rows carry no wall time, having been harvested from earlier runs of the same configs). One caveat for anyone reproducing the schedule estimate rather than the science: the second card in this machine thermally throttles under sustained load and takes about 2.5x as long per step, which the sweep's planner accounts for and a naive divide-by-GPU-count does not.
+Hardware is a single RTX 2080 Ti per run, and the whole grid is about 70 GPU-hours (measured across the 672 runs that recorded wall time; 2 rows carry no wall time, having been harvested from earlier runs of the same configs). One caveat for anyone reproducing the schedule estimate rather than the science: the second card in this machine thermally throttles under sustained load and takes about 2.5x as long per step, which the sweep's planner accounts for and a naive divide-by-GPU-count does not.
 
 \section{The full loss grids}
 
@@ -859,9 +863,9 @@ Every row is a matched-budget comparison: one epoch padded against one epoch pac
 \toprule
 base model & corpus & examples & \texttt{p} & lr* padded & lr* packed & shift & exponent & seeds \\
 \midrule
-124M & Alpaca, random ninth & 5,652 & 4.53x & 5.83e-05 & 1.04e-04 & 1.79x & \textbf{0.385 $\pm$ 0.099} & 2 \\
+124M & Alpaca, random ninth & 5,652 & 4.53x & 5.83e-05 & 1.09e-04 & 1.86x & \textbf{0.412 $\pm$ 0.136} & 3 \\
 124M & Alpaca, short tercile & 16,956 & 7.84x & 4.80e-05 & 1.39e-04 & 2.90x & \textbf{0.517 $\pm$ 0.042} & 3 \\
-124M & Alpaca, middle tercile & 16,956 & 4.87x & 4.48e-05 & 1.33e-04 & 2.96x & \textbf{0.686 $\pm$ 0.067} & 2 \\
+124M & Alpaca, middle tercile & 16,956 & 4.87x & 4.48e-05 & 1.26e-04 & 2.80x & \textbf{0.651 $\pm$ 0.133} & 3 \\
 124M & Alpaca, long tercile & 16,956 & 2.73x & 6.73e-05 & 1.37e-04 & 2.03x & \textbf{0.707 $\pm$ 0.265} & 3 \\
 124M & Alpaca, random third & 16,956 & 4.51x & 4.59e-05 & 1.26e-04 & 2.74x & \textbf{0.670 $\pm$ 0.043} & 3 \\
 124M & Alpaca, whole & 50,868 & 4.47x & 2.81e-05 & 1.37e-04 & 4.86x & \textbf{1.055 $\pm$ 0.128} & 3 \\
@@ -918,7 +922,7 @@ conclusion & \texttt{power} & \texttt{linear} & \texttt{sqrtrel} & verdict \\
 Scale moves it (whole vs third, 124M) & 2.85x & 2.24x & 2.23x & \textbf{clears under all three} \\
 The tercile ratio trend is unsupported & 0.71x & \textbf{1.01x} & 0.57x & holds, but only just under \texttt{linear} \\
 Alpaca third and Dolly whole agree & 0.10x & 0.50x & 0.51x & \textbf{agree under all three} \\
-Alpaca ninth and Dolly third agree & 0.53x & 0.86x & 0.69x & \textbf{agree under all three} \\
+Alpaca ninth and Dolly third agree & 0.27x & 0.55x & 0.37x & \textbf{agree under all three} \\
 \bottomrule
 \end{tabular}}
 \ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\usebox0\fi
@@ -926,7 +930,7 @@ Alpaca ninth and Dolly third agree & 0.53x & 0.86x & 0.69x & \textbf{agree under
 
 Each number is the gap between the two settings as a multiple of their combined seed bound, under that normalization.
 
-\textbf{The central claim is not an artefact of the summary.} Scale clears its bound under every normalization tried, which is what \S{}3.3 predicts: that comparison holds \texttt{p} to within 1\%, so it is really a statement that the raw shift moves from 1.79x to 2.74x to 4.86x, and no monotone rescaling of a ratio can undo that. The same argument covers the model-size series of \S{}4.7, whose \texttt{p} is identical across the three sizes to four significant figures.
+\textbf{The central claim is not an artefact of the summary.} Scale clears its bound under every normalization tried, which is what \S{}3.3 predicts: that comparison holds \texttt{p} to within 1\%, so it is really a statement that the raw shift moves from 1.86x to 2.74x to 4.86x, and no monotone rescaling of a ratio can undo that. The same argument covers the model-size series of \S{}4.7, whose \texttt{p} is identical across the three sizes to four significant figures.
 
 \textbf{The one that is exposed is the tercile null}, and it is exposed in the direction of the retraction rather than against it. Under \texttt{power} the three terciles span 0.71x their noise and under \texttt{sqrtrel} 0.57x, and under \texttt{sqrtrel} they are not even monotone; under \texttt{linear} the spread is 1.01x its noise --- equal to it, which is not evidence of a trend but is close enough that we say so rather than lean on the 0.71x. \S{}4.5 reports the packing-ratio trend as unsupported, and that verdict is the same under all three; what changes is how comfortably.
 
