@@ -2,6 +2,99 @@
 
 *Written so the state survives a context reset. Update it when something lands.*
 
+## What landed overnight, 2026-08-30
+
+**The paper is submittable.** A workshop version cut to nine content pages lives
+in `paper/workshop.md` and builds in the real NeurIPS style; `paper/paper.md`
+keeps its full length for arXiv. 674 runs, ~70 GPU-hours.
+
+### The measurement that mattered most
+
+**Sections 1-7 were measured against the wrong ruler for three days.** The
+"21 pages against a 9-page limit" figure was taken in the arXiv preamble, and
+the limit is defined in `neurips_2026.sty`. In that style the same text was 9.6
+pages, not 11.9: the column is an inch narrower but Times at 10pt beats Computer
+Modern at 11pt by far more than the width costs. `build_tex.py --neurips` now
+builds in the vendored style so this cannot recur, and `--anonymous` selects
+between its `dblblindworkshop` and `sglblindworkshop` options, which is the whole
+of the anonymity question.
+
+**Compression by rewriting does not work.** Twelve passes took 21 pages to about
+10 and then stopped dead -- two consecutive passes rewrote whole sections and
+saved 0.08 and 0.00 pages. Dense prose rewritten by the same hand comes out the
+same length. What moved the last page and a half was *deleting claims the paper
+made twice*, an abstract that was 1,890 characters only because that is arXiv's
+form cap, and a figure drawn 4.9in tall for thirteen rows.
+
+### Two registered predictions scored, one measurement failed
+
+- **The midpoint of the quality series (§4.7.2)** -- 22 runs, all six curves
+  bracketing at three seeds with nothing dropped, the cleanest ledger here. Both
+  registered conditions hold: **1.133 ± 0.107** against a requirement to land
+  below 1.178, series spanning 0.227 against a 0.332 cap. Reported with its
+  weaknesses: it passes by 0.045 where the extreme point cleared by 2.7x, the
+  registered point estimate of 1.00 was wrong, and the three estimates (1.055,
+  1.133, 0.906) are **not monotone**. No pair separates -- 0.46x, 0.62x, 0.98x of
+  their bounds -- so the claim is flatness at this resolution, not a shape.
+- **The gradient noise scale** -- registered because the paper asserts in three
+  places where its batches sit relative to `B_noise` and had never run the script
+  that measures it. The first scoring run **failed**: negative intercept
+  everywhere, because the estimator did one backward per batch and topped out at
+  443 supervised tokens against the 1,888 and 8,444 the paper uses. It now
+  accumulates gradients over micro-batches, token-weighted, and a second run is
+  in flight.
+- **A downstream test of §4.3**, registered because §7 names a downstream metric
+  as one of four things that would move the work forward and it is the only one
+  this machine can do. §4.3's three conditions re-run with checkpoints kept --
+  they reproduce §4.3 to **0.0000 nats** -- then scored on Dolly's held-out
+  split, which none of them was fine-tuned on. In flight.
+
+### Every curve now brackets
+
+The last three 124M curves that had a seed on the edge of its window were
+extended rather than dropped, because dropping was directional in all three: the
+ninth's dropped seed sat above its window and the middle tercile's below it. **No
+curve anywhere in this paper is now on fewer than three seeds, and none is
+dropped.**
+
+It moved two exponents and widened both bounds, since the dropped curve was in
+each case the furthest from the other two. The middle tercile 0.686 ± 0.067 ->
+**0.651 ± 0.133**; the random ninth 0.385 ± 0.100 -> **0.412 ± 0.136**. The ninth
+is one end of the headline range, so that is now **0.412 to 1.695**, and §4.6's
+first scale step clears its bound by 1.8x where it cleared by 2.6x. Nothing
+changes sign; the scale series is measurably weaker at its small end than the
+previous version of Appendix C claimed.
+
+### Two figures added, and a bug they exposed
+
+`09-lr-scaling-quality` puts the exponent against base-model perplexity -- the
+124M series flat across the whole range while the smaller models sit far above at
+the same perplexities. `10-lr-scaling-bracket` puts all thirteen settings against
+the retracted bracket. Both read `results/exponents.csv`; the perplexities come
+out of each model's own pretraining log rather than being typed.
+
+Rendering the compiled PDF rather than the PNGs showed that **three of five
+figures were illegible in the paper** -- drawn 11.6in wide and set in a 5.5in
+column, their 8.5pt labels printed at 4pt. `style.paper_text()` scales the type
+with the canvas.
+
+### Bugs and gaps closed
+
+- **The sweep left runs on the cards.** Worker threads are daemons, so a killed
+  driver left `finetune.py` children training with nobody recording them. Now
+  reaped on the way out; the test caught that the first version signalled without
+  waiting, which leaves a zombie still holding its card.
+- **Two sweeps could share a card.** They did, at 05:09, and a 124M run died at
+  step 220 with no error in its log. `wait_for_gpus` answers "is the card free
+  now" and cannot answer "will it still be free". There is a per-card lock now.
+- **The batch and step terms in §4.6 were typed by hand** and had gone stale --
+  0.379 against a real 0.385. `scripts/export_decomposition.py` derives them, and
+  two tests guard them.
+- **A citation overreached.** The paper said Wang et al.'s claim "is not
+  accompanied by a sweep"; their §5.3 does vary batch size and learning rate
+  together. Corrected to the narrower and defensible claim after reading both
+  cited papers rather than trusting memory of them.
+
 ## What landed overnight, 2026-08-28
 
 **The quality control (§4.7.2) and the 7M budget control (§4.7.1) are measured,
@@ -56,6 +149,8 @@ step):
 | `results/lr_scaling_small9k.csv` | 30M, 19.7 tok/param |
 | `results/lr_scaling_mini2k.csv` | 7M, 18.0 tok/param |
 | `results/lr_scaling_quality.csv` | 124M at perplexity 107.0 |
+| `results/lr_scaling_quality2500.csv` | 124M at perplexity 39.4 |
+| `results/lr_scaling_downstream.csv` | 124M, 4.3's three conditions with checkpoints kept |
 | `results/lr_scaling_ckpt.csv` | 124M grid extension |
 
 `scripts/export_exponents.py` -> `results/exponents.csv` is the single table of
