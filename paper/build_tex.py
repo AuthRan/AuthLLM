@@ -44,7 +44,7 @@ ABSTRACT_CAP = 1920
 # The author block is the one thing in this file that is not derived from the
 # markdown, because the markdown does not carry it. Edit here.
 AUTHOR = "Ashutosh Ranjan"
-AFFILIATION = "Independent Researcher"
+AFFILIATION = "National Institute of Technology Sikkim"
 CONTACT = "authran.off@gmail.com"
 
 # Kept as one named string so `--anonymous` removes the whole block rather than

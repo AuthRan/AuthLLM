@@ -38,9 +38,15 @@ paper/arxiv/
 2. **The author block is filled in.** `paper/build_tex.py` carries `AUTHOR`,
    `AFFILIATION` and `CONTACT` near the top; they are the only content in the
    build script that is not derived from the markdown, because the markdown
-   does not carry them. They read "Ashutosh Ranjan / Independent Researcher /
-   authran.off@gmail.com", and the address is set as a `mailto:` link through
-   `hyperref`. Edit there, not in `main.tex`.
+   does not carry them. They read "Ashutosh Ranjan / National Institute of
+   Technology Sikkim / authran.off@gmail.com", and the address is set as a
+   `mailto:` link through `hyperref`. Edit there, not in `main.tex`.
+
+   The affiliation names the institution and not the degree: a title page
+   carries where an author is, never their rank within it, so "BTech student"
+   would be wrong in the way "PhD student" or "postdoc" would be. The contact
+   is still a personal address; an institutional one would sit better beside an
+   institutional affiliation, and swapping it is a one-line edit here.
 
 3. **The wide tables set legibly.** Every table is wrapped in a conditional
    `\resizebox` that shrinks it only if it overruns the text width. Checked in

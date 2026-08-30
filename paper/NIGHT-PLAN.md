@@ -399,14 +399,20 @@ prepared from here:
 
 ### Still open
 
-- **Author list and affiliation.** `paper/build_tex.py` carries `AUTHOR` and
-  `AFFILIATION` near the top and there is a `% TODO` beside them in the
-  generated preamble. They currently read "Ashutosh Ranjan / Independent
-  Researcher", with no contact address. This is the one thing in the arXiv
-  package not derived from the markdown, and the only item on this list that
-  needs the author rather than the machine.
-- **Endorsement.** A first `cs.LG` submission needs one, which is an
-  account-level step and cannot be done from here.
+- **Author list and affiliation -- settled 2026-08-30.** `paper/build_tex.py`
+  now reads "Ashutosh Ranjan / National Institute of Technology Sikkim /
+  authran.off@gmail.com". The affiliation names the institution rather than the
+  degree, which is the convention: a title page says where an author is, never
+  their rank within it. Still worth doing: swap the personal address for an
+  institutional one, which is a one-line edit in `build_tex.py`.
+- **Endorsement -- harder than this list assumed.** A first `cs.LG` submission
+  needs one, and **an institutional email address no longer earns it**. arXiv
+  changed the policy on 2026-01-21: automatic endorsement now requires an
+  academic address *and* prior authorship on a paper already accepted to arXiv
+  in that domain, so a first submission cannot qualify. The remaining route is a
+  personal endorsement from an established arXiv author in the same domain.
+  <https://blog.arxiv.org/2026/01/21/attention-authors-updated-endorsement-policy/>
+  Changing the affiliation does not affect this.
 - **Cheapest open check — running now.** `checkpoints/medium/step_2500.pt`
   (perplexity 39.4, against the 30M model's 38.0), the middle point of §4.7.2's
   quality series. Ledger `results/lr_scaling_quality2500.csv`, prediction
